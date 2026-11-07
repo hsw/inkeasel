@@ -1,5 +1,7 @@
 package io.github.hsw.inkeasel
 
+import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.time.Instant
@@ -8,8 +10,8 @@ import java.time.format.DateTimeFormatter
 
 /**
  * The rules of "Share → InkEasel" ([ShareActivity]), free of Android types: which shared URIs are taken, the
- * file name a shared picture gets in the pictures folder, the size cap of the copy, what happens to the saved
- * picture ([step]), and when a share that waited for the Bluetooth permission is still sent.
+ * file name a shared picture gets in the pictures folder and how it is saved there ([save]), the size cap of
+ * the copy, and when a share that waited for the Bluetooth permission is still sent.
  */
 object ShareRules {
     /** The largest shared picture copied; a bigger stream is cut off and the copy dropped. */
@@ -21,10 +23,12 @@ object ShareRules {
     /**
      * Only a `content://` URI of another app is taken: a `file://` one would make the app read a path of the
      * sender's choosing with its own rights, and a URI of this app's own provider would hand it its own files.
+     * A `userId@` prefix of an authority is dropped first, as `ContentResolver` does before it looks the
+     * provider up.
      */
     fun acceptShare(scheme: String?, authority: String?, ownPackage: String): Boolean {
         if (!scheme.equals("content", ignoreCase = true) || authority.isNullOrBlank()) return false
-        return authority.split(';').none { it == ownPackage || it.startsWith("$ownPackage.") }
+        return authority.split(';').map { it.substringAfterLast('@') }.none { it == ownPackage || it.startsWith("$ownPackage.") }
     }
 
     /**
@@ -51,6 +55,39 @@ object ShareRules {
         var n = 2
         while (exists(name)) name = "$base-${n++}.$ext"
         return name
+    }
+
+    /**
+     * Save a shared picture in [dir] under [sharedFileName] and return the file. The name is reserved by
+     * creating its `.part` file (two shares at once never pick the same one), the stream from [open] is copied
+     * into it ([copyCapped] with [cap] and [check]), and it is renamed to the final name, which is never
+     * overwritten. The `.part` file is deleted when anything fails or [check] cancels.
+     */
+    fun save(
+        dir: File,
+        displayName: String?,
+        mime: String?,
+        nowMs: Long,
+        open: () -> InputStream,
+        cap: Long = MAX_BYTES,
+        check: () -> Unit = {},
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): File {
+        var name: String
+        var part: File
+        do {
+            name = sharedFileName(displayName, mime, nowMs, { File(dir, it).exists() || File(dir, "$it.part").exists() }, zone)
+            part = File(dir, "$name.part")
+        } while (!part.createNewFile()) // taken by another share since the check: pick again
+        val dest = File(dir, name)
+        try {
+            open().use { inp -> part.outputStream().use { out -> copyCapped(inp, out, cap, check) } }
+            if (dest.exists() || !part.renameTo(dest)) throw IOException("cannot rename ${part.name}")
+            return dest
+        } catch (e: Throwable) {
+            part.delete()
+            throw e
+        }
     }
 
     /** The extension for an image MIME type the app can show; `null` for a generic or unknown one. */
@@ -99,27 +136,4 @@ object ShareRules {
      */
     fun sendPending(savedAtMs: Long, nowMs: Long, fileExists: Boolean): Boolean =
         fileExists && nowMs - savedAtMs in 0..PENDING_MAX_AGE_MS
-
-    /** What [ShareActivity] does with a picture it has saved. */
-    enum class Step {
-        /** Hand it to the upload service. */
-        SEND,
-
-        /** Remember it as the pending share and open the app, which asks for the permissions. */
-        WAIT_IN_APP,
-
-        /**
-         * Keep it in "My pictures" and say that no frame is chosen. Said by the share itself, while it is in
-         * the foreground: the upload service's own refusal toast comes after the share has finished, when
-         * Android 13+ suppresses toasts of an app without notification permission.
-         */
-        NO_FRAME,
-    }
-
-    /** The [Step] for a saved share: the permissions first (that path also waits for a frame), then a frame. */
-    fun step(permitted: Boolean, frameSelected: Boolean): Step = when {
-        !permitted -> Step.WAIT_IN_APP
-        !frameSelected -> Step.NO_FRAME
-        else -> Step.SEND
-    }
 }

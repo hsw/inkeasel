@@ -130,5 +130,7 @@
     <string name="share_failed">Could not take the shared picture: %1$s</string>
     <string name="share_too_big">the picture is larger than %1$d MB</string>
     <string name="share_needs_permission">Saved to \"My pictures\". Allow Bluetooth access (and choose a frame) to send it.</string>
+    <!-- no result toast is promised: Android 13+ may hide the service's toast while the gallery is in front -->
+    <string name="share_sending">Saved to \"My pictures\" and sending it to the frame. The frame redraws when the picture arrives.</string>
     <string name="share_no_frame">Saved to \"My pictures\". No frame selected: choose one in the settings, then send it from there.</string>
 </resources>

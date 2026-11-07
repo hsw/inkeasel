@@ -287,10 +287,8 @@ class MainActivity : ComponentActivity() {
     // Hand the upload to the background service, so it survives leaving the app and does not
     // interrupt playback in another app. A short toast confirms; the service toasts again when done.
     private fun sendToFrame(p: Picture) {
-        val i = Intent(this, UploadService::class.java)
-        if (p.local) i.putExtra(UploadService.EXTRA_PATH, p.fullUrl)
-        else i.putExtra(UploadService.EXTRA_URL, p.fullUrl).putExtra(UploadService.EXTRA_TITLE, p.title)
-        startForegroundService(i)
+        if (p.local) UploadService.startManual(this, path = p.fullUrl)
+        else UploadService.startManual(this, url = p.fullUrl, title = p.title)
         Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
     }
 
@@ -300,10 +298,10 @@ class MainActivity : ComponentActivity() {
      * Called after the permission request, on resume and when a frame is selected.
      */
     private fun sendPendingShare() {
-        if (!permitted || vm.selected == null || !pendingShare.exists()) return
+        if (!permitted || vm.selected == null) return
         val path = pendingShare.take(System.currentTimeMillis()) ?: return
         Log.i(TAG, "sending the pending share: ${File(path).name}")
-        startForegroundService(Intent(this, UploadService::class.java).putExtra(UploadService.EXTRA_PATH, path))
+        UploadService.startManual(this, path = path)
         Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
     }
 

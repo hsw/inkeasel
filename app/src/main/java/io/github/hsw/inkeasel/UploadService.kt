@@ -277,6 +277,15 @@ class UploadService : Service() {
         const val EXTRA_KEY = "key"
         const val EXTRA_STAMP = "stamp"
 
+        /** Start a manual upload of the file at [path], or of [url] (with [title] for the toast and notification). */
+        fun startManual(context: Context, path: String? = null, url: String? = null, title: String? = null) {
+            val i = Intent(context, UploadService::class.java)
+            path?.let { i.putExtra(EXTRA_PATH, it) }
+            url?.let { i.putExtra(EXTRA_URL, it) }
+            title?.let { i.putExtra(EXTRA_TITLE, it) }
+            context.startForegroundService(i)
+        }
+
         /** Find a file in the pictures folder by name, with or without extension, case-insensitive. */
         fun resolvePhoto(context: Context, name: String): File? {
             val dir = File(context.getExternalFilesDir(null), "pictures")

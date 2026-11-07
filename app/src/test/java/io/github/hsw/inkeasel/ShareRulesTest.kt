@@ -6,12 +6,21 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.time.ZoneOffset
 
 class ShareRulesTest {
+    @get:Rule
+    val tmp = TemporaryFolder()
+
     private val own = "io.github.hsw.inkeasel"
 
     // 2026-11-07 18:30:05 UTC
@@ -35,6 +44,10 @@ class ShareRulesTest {
         assertFalse(ShareRules.acceptShare("content", own, own))
         assertFalse(ShareRules.acceptShare("content", "$own.fileprovider", own))
         assertFalse(ShareRules.acceptShare("content", "media;$own.files", own))
+        // ContentResolver drops a user-id prefix before it looks the provider up
+        assertFalse(ShareRules.acceptShare("content", "0@$own.x", own))
+        assertFalse(ShareRules.acceptShare("content", "10@$own", own))
+        assertTrue(ShareRules.acceptShare("content", "0@media", own))
     }
 
     @Test
@@ -126,7 +139,17 @@ class ShareRulesTest {
         } catch (e: TxtException) {
             assertEquals(txt(R.string.share_too_big, 3), e.txt)
         }
-        assertEquals(50L * 1024 * 1024, ShareRules.MAX_BYTES)
+    }
+
+    @Test
+    fun copyCapped_defaultCapIsMaxBytes() {
+        try {
+            ShareRules.copyCapped(zeros(ShareRules.MAX_BYTES + 1), OutputStream.nullOutputStream())
+            fail("no exception over the default cap")
+        } catch (e: TxtException) {
+            assertEquals(txt(R.string.share_too_big, 50), e.txt)
+        }
+        assertEquals(ShareRules.MAX_BYTES, ShareRules.copyCapped(zeros(ShareRules.MAX_BYTES), OutputStream.nullOutputStream()))
     }
 
     @Test
@@ -157,12 +180,88 @@ class ShareRulesTest {
         assertFalse(ShareRules.sendPending(savedAtMs = now + 60_000, nowMs = now, fileExists = true)) // clock set back
     }
 
+    /** A stream of [size] zero bytes, without holding them. */
+    private fun zeros(size: Long) = object : InputStream() {
+        var left = size
+
+        override fun read(): Int = if (left-- > 0) 0 else -1
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (left <= 0) return -1
+            val n = minOf(len.toLong(), left).toInt()
+            b.fill(0, off, off + n)
+            left -= n
+            return n
+        }
+    }
+
+    private fun save(dir: File, display: String? = "sea.jpg", data: ByteArray = ByteArray(1_000) { 1 }, cap: Long = ShareRules.MAX_BYTES, check: () -> Unit = {}) =
+        ShareRules.save(dir, display, "image/jpeg", now, { ByteArrayInputStream(data) }, cap, check, ZoneOffset.UTC)
+
     @Test
-    fun step_permissionsFirst_thenFrame() {
-        assertEquals(ShareRules.Step.SEND, ShareRules.step(permitted = true, frameSelected = true))
-        assertEquals(ShareRules.Step.NO_FRAME, ShareRules.step(permitted = true, frameSelected = false))
-        // the in-app path waits for a frame as well
-        assertEquals(ShareRules.Step.WAIT_IN_APP, ShareRules.step(permitted = false, frameSelected = false))
-        assertEquals(ShareRules.Step.WAIT_IN_APP, ShareRules.step(permitted = false, frameSelected = true))
+    fun save_copiesAndRenames() {
+        val dir = tmp.newFolder()
+        val data = ByteArray(200_000) { (it % 7).toByte() }
+        val f = save(dir, data = data)
+        assertEquals(File(dir, "sea.jpg"), f)
+        assertArrayEquals(data, f.readBytes())
+        assertEquals(listOf("sea.jpg"), dir.list()!!.toList())
+    }
+
+    @Test
+    fun save_takenNamesAndPartFilesCount() {
+        val dir = tmp.newFolder()
+        File(dir, "sea.jpg").writeText("old")
+        File(dir, "sea-2.jpg.part").writeText("another share in progress")
+        val f = save(dir)
+        assertEquals("sea-3.jpg", f.name)
+        assertEquals("old", File(dir, "sea.jpg").readText())
+        assertEquals("another share in progress", File(dir, "sea-2.jpg.part").readText())
+    }
+
+    @Test
+    fun save_failingStream_leavesNothing() {
+        val dir = tmp.newFolder()
+        val broken = object : InputStream() {
+            override fun read(): Int = throw IOException("read failed")
+        }
+        try {
+            ShareRules.save(dir, "sea.jpg", "image/jpeg", now, { broken }, zone = ZoneOffset.UTC)
+            fail("no exception from a failing stream")
+        } catch (e: IOException) {
+            assertEquals("read failed", e.message)
+        }
+        try {
+            ShareRules.save(dir, "sea.jpg", "image/jpeg", now, { throw IOException("no stream") }, zone = ZoneOffset.UTC)
+            fail("no exception without a stream")
+        } catch (e: IOException) {
+            assertEquals("no stream", e.message)
+        }
+        assertEquals(emptyList<String>(), dir.list()!!.toList())
+    }
+
+    @Test
+    fun save_overTheCap_leavesNothing() {
+        val dir = tmp.newFolder()
+        try {
+            save(dir, data = ByteArray(3 * 1024 * 1024 + 1), cap = 3L * 1024 * 1024)
+            fail("no exception over the cap")
+        } catch (e: TxtException) {
+            assertEquals(txt(R.string.share_too_big, 3), e.txt)
+        }
+        assertEquals(emptyList<String>(), dir.list()!!.toList())
+    }
+
+    @Test
+    fun save_cancelled_leavesNothing() {
+        val dir = tmp.newFolder()
+        val cancel = IllegalStateException("cancelled")
+        try {
+            save(dir, data = ByteArray(1_000_000)) { throw cancel }
+            fail("check did not stop the copy")
+        } catch (e: IllegalStateException) {
+            assertTrue(e === cancel)
+        }
+        assertEquals(emptyList<String>(), dir.list()!!.toList())
     }
 }

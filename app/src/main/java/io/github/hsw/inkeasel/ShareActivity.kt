@@ -28,8 +28,11 @@ import java.io.IOException
  *
  * Without the Bluetooth permissions ([BlePermissions]) it still copies the picture, remembers it as the
  * pending share ([PendingShare]) and opens [MainActivity], which asks for them and sends the picture once
- * they are granted and a frame is chosen. With the permissions but no chosen frame it keeps the picture in
- * "My pictures" and says so ([ShareRules.step]).
+ * they are granted and a frame is chosen (that path waits for a frame as well). With the permissions but no
+ * chosen frame it keeps the picture in "My pictures" and says so itself, while it is in the foreground: the
+ * upload service's own refusal toast would come after the share has finished, when Android 13+ suppresses
+ * toasts of an app without the notification permission. For the same reason its toast on sending does not
+ * promise a result: the service's result toast may not appear.
  */
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,12 +54,15 @@ class ShareActivity : ComponentActivity() {
                 val file = copy(uri)
                 Log.i(TAG, "shared picture saved: ${file.name} (${file.length()} B)")
                 val frameSelected = FrameStore(this@ShareActivity).selected() != null
-                when (ShareRules.step(BlePermissions.granted(this@ShareActivity), frameSelected)) {
-                    ShareRules.Step.SEND -> send(file)
-                    ShareRules.Step.WAIT_IN_APP -> waitForPermissions(file)
-                    ShareRules.Step.NO_FRAME -> {
+                when {
+                    !BlePermissions.granted(this@ShareActivity) -> waitForPermissions(file)
+                    !frameSelected -> {
                         Log.i(TAG, "no frame selected: ${file.name} stays in the pictures folder")
                         toast(Txt(R.string.share_no_frame))
+                    }
+                    else -> {
+                        UploadService.startManual(this@ShareActivity, path = file.absolutePath)
+                        toast(Txt(R.string.share_sending))
                     }
                 }
             } catch (e: CancellationException) {
@@ -69,26 +75,16 @@ class ShareActivity : ComponentActivity() {
         }
     }
 
-    /** Copy the shared stream into the pictures folder; the partial file is deleted on failure or cancel. */
+    /** Copy the shared stream into the pictures folder ([ShareRules.save]). */
     private suspend fun copy(uri: Uri): File = withContext(Dispatchers.IO) {
-        val dir = LocalImages(application).dir()
-        val name = ShareRules.sharedFileName(
+        ShareRules.save(
+            dir = LocalImages(application).dir(),
             displayName = displayName(uri),
             mime = contentResolver.getType(uri) ?: intent.type,
             nowMs = System.currentTimeMillis(),
-            exists = { File(dir, it).exists() || File(dir, "$it.part").exists() },
+            open = { contentResolver.openInputStream(uri) ?: throw IOException("no stream for $uri") },
+            check = { ensureActive() },
         )
-        val part = File(dir, "$name.part")
-        val dest = File(dir, name)
-        try {
-            val input = contentResolver.openInputStream(uri) ?: throw IOException("no stream for $uri")
-            input.use { inp -> part.outputStream().use { out -> ShareRules.copyCapped(inp, out) { ensureActive() } } }
-            if (!part.renameTo(dest)) throw IOException("cannot rename ${part.name}")
-            dest
-        } catch (e: Throwable) {
-            part.delete()
-            throw e
-        }
     }
 
     /** The sender's name for the picture, if it gives one. */
@@ -99,11 +95,6 @@ class ShareActivity : ComponentActivity() {
     } catch (e: Exception) { // a provider without the column, or one that throws
         Log.w(TAG, "no display name for $uri: $e")
         null
-    }
-
-    private fun send(file: File) {
-        startForegroundService(Intent(this, UploadService::class.java).putExtra(UploadService.EXTRA_PATH, file.absolutePath))
-        toast(Txt(R.string.sending))
     }
 
     private fun waitForPermissions(file: File) {
@@ -147,8 +138,6 @@ class PendingShare(context: Context) {
         return path.takeIf { ShareRules.sendPending(savedAt, nowMs, File(it).isFile) }
             .also { if (it == null) Log.i("PendingShare", "dropped (stale or gone): ${File(path).name}") }
     }
-
-    fun exists(): Boolean = prefs.contains(PATH)
 
     private companion object {
         const val PATH = "path"
