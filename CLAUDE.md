@@ -2,7 +2,8 @@
 
 Android app (Kotlin, Compose; `androidx.tv.material3`) that uploads pictures and now-playing posters to an
 e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets and phones (touch via
-`Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/` (local, git-ignored).
+`Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/`;
+implementation plans: `docs/plans/`. Both are local and git-ignored: never stage, commit or force-add them.
 
 ## Build and test
 - `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug`
@@ -14,12 +15,35 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
   Emulator Bluetooth is virtual: uploads to a real frame need a real device.
 - The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
+- `lintDebug` reports two known manifest errors (backlog `lint-manifest-errors`); anything else is new.
+- CI (`.github/workflows/`): `ci.yml` runs the build above; `release.yml` builds a signed APK for a `v*` tag.
+  Release signing comes only from `INKEASEL_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`;
+  none set falls back to the debug key, a partial set fails the build. No keystore or secret in the repo.
 
 ## Conventions
-- Code, comments, commit messages, README and backlog items: English. UI strings: currently Russian
-  (English default + Russian translation is a backlog item).
+- Code, comments, commit messages, README and backlog items: English. UI strings live in resources:
+  English in `res/values/strings.xml`, Russian in `res/values-ru/strings.xml`; every new string goes into
+  both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin.
 - Pure logic stays free of Android types so it runs as JVM unit tests (see `nowplaying/`, `FrameFormat.kt`).
+  It returns a `Txt` (`R.string` id + args; `Txt.kt`) instead of a string, and tests compare `Txt` values,
+  not translations. Upload-path failures meant for the user throw `TxtException`; other exceptions keep their
+  raw message inside a generic text (`UploadOutcome.reason`). `Txt` is put into words only at the edge
+  (`TxtAndroid.kt`: `resolve(ctx)`, `@Composable text()`). Stored data (`FrameStore`, `DefaultStore`) never
+  holds translated text.
 - tv-material components ignore touch: every new clickable component also gets `Modifier.onTap(...)`.
+- Orientation is free and rotation does not recreate `MainActivity` (`configChanges`): keep state that must
+  survive in Compose, not in a recreate. Widths come from `CatalogLayout.forWidth` (columns, padding, split
+  header); a TV (960 dp) must keep 4 columns, 48 dp and one header row.
+- `BlePermissions` is the one BLE permission set (scan + connect on 12+, fine location before); every screen
+  asks for and checks it through it. "Permissions and features" in the settings is where the app shows what
+  it needs; a new permission or feature switch gets a row there.
+- Now-playing poster: `FeatureStore.posterEnabled` (default on) gates `FrameController` before any frame
+  rule; whoever changes it calls `FrameController.onPosterSwitched()`. Notification access screens differ per
+  device (`ListenerAccess`: detail screen, list screen, or the adb hint on older Android TV).
+- Share → InkEasel (`ShareActivity`, rules in `ShareRules`): only `content://` URIs of other apps; the copy is
+  capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
+  with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on
+  Android 13+ (no notification permission), so the share reports its own outcome while in the foreground.
 
 ## Public-repo hygiene
 This repository will become public. Committed text must contain no IP addresses, MAC addresses of real
