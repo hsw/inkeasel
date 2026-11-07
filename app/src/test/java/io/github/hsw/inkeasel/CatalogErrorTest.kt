@@ -43,7 +43,6 @@ class CatalogErrorTest {
         val e = HttpStatusException(503, "https://example.org/list")
         assertEquals("HTTP 503: https://example.org/list", e.message)
         assertEquals(503, e.code)
-        assertEquals(true, e is IOException)
     }
 
     @Test

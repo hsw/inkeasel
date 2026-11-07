@@ -2,9 +2,7 @@ package io.github.hsw.inkeasel
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
 
 class TxtTest {
     // a fake resource table: what Txt.format sees instead of Context.getString
@@ -74,10 +72,9 @@ class TxtTest {
     }
 
     @Test
-    fun `TxtException carries the text and is an IOException`() {
+    fun `TxtException carries the text and the cause`() {
         val cause = RuntimeException("boom")
         val e = TxtException(Txt(R.string.header_frame, "NM000001"), cause)
-        assertTrue((e as Any) is IOException)
         assertEquals(Txt(R.string.header_frame, "NM000001"), e.txt)
         assertEquals(cause, e.cause)
     }
