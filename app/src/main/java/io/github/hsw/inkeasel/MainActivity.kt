@@ -228,7 +228,11 @@ class MainActivity : ComponentActivity() {
         permitted = hasPermissions()
         blocked = BlePermissions.blocked(permitted) { p -> shouldShowRequestPermissionRationale(p) }
         Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
+        sendPendingShare()
     }
+
+    /** A shared picture that waits for the permissions and a frame ([ShareActivity]). */
+    private val pendingShare by lazy { PendingShare(this) }
 
     private fun hasPermissions() = BlePermissions.granted(this)
 
@@ -253,12 +257,15 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "no frame selected: opening the frame settings")
             vm.openSettings()
         }
+        // opened by a share without the permissions: the settings show what is missing (the request is above)
+        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) && !permitted) vm.openSettings()
         setContent {
             App(
                 vm,
                 permitted = permitted,
                 permissionBlocked = blocked,
                 onRequestPermissions = ::requestPermissions,
+                onFrameSelected = ::sendPendingShare,
                 onSend = { p ->
                     when {
                         vm.selected == null -> {
@@ -283,6 +290,29 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * Send the picture shared while the permissions were missing, once they are granted and a frame is
+     * chosen (a manual upload); a stale one or one whose file is gone is dropped ([PendingShare.take]).
+     * Called after the permission request, on resume and when a frame is selected.
+     */
+    private fun sendPendingShare() {
+        if (!permitted || vm.selected == null || !pendingShare.exists()) return
+        val path = pendingShare.take(System.currentTimeMillis()) ?: return
+        Log.i(TAG, "sending the pending share: ${File(path).name}")
+        startForegroundService(Intent(this, UploadService::class.java).putExtra(UploadService.EXTRA_PATH, path))
+        Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
+    }
+
+    // A share without the permissions reaches a running app here (ShareActivity: CLEAR_TOP | SINGLE_TOP):
+    // ask for them, or show the settings with "App info" where the system no longer asks.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) || hasPermissions()) return
+        vm.openSettings()
+        if (!blocked) askPermissions.launch(BlePermissions.all)
+    }
+
     // Returning to the app re-scans the local folder, in case files changed while it was away.
     // Permissions may also have been granted from the system settings meanwhile.
     override fun onResume() {
@@ -290,6 +320,12 @@ class MainActivity : ComponentActivity() {
         permitted = hasPermissions()
         if (permitted) blocked = false
         vm.refreshLocal()
+        sendPendingShare()
+    }
+
+    companion object {
+        /** Set by [ShareActivity] when a shared picture waits for the permissions ([PendingShare]). */
+        const val EXTRA_PENDING_SHARE = "pendingShare"
     }
 }
 
@@ -299,6 +335,7 @@ fun App(
     permitted: Boolean,
     permissionBlocked: Boolean,
     onRequestPermissions: () -> Unit,
+    onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
 ) {
     // the cards take the chosen frame's shape; the frame this app was built with while none is chosen
@@ -332,7 +369,7 @@ fun App(
                     permitted = permitted,
                     permissionBlocked = permissionBlocked,
                     onRequestPermissions = onRequestPermissions,
-                    onSelect = vm::select,
+                    onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )
             }

@@ -124,4 +124,10 @@
     <string name="frame_err_busy">%1$s: the Bluetooth stack is busy</string>
     <string name="frame_err_timeout">%1$s: no answer within %2$d ms</string>
     <string name="frame_err_lost">connection lost (status %1$d)</string>
+
+    <!-- Share → InkEasel (ShareActivity) -->
+    <string name="share_unsupported">This share cannot be taken: InkEasel takes a picture shared by another app.</string>
+    <string name="share_failed">Could not take the shared picture: %1$s</string>
+    <string name="share_too_big">the picture is larger than %1$d MB</string>
+    <string name="share_needs_permission">Saved to \"My pictures\". Allow Bluetooth access (and choose a frame) to send it.</string>
 </resources>

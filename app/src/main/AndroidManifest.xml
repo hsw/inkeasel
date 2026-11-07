@@ -52,6 +52,26 @@
             </intent-filter>
         </activity>
 
+        <!-- "Share → InkEasel" from a gallery or a file manager: copies the picture into "My pictures" and sends it
+             (ShareActivity). Invisible, no history, not in the recents. An empty task affinity: it runs in a task of
+             its own (or the sender's), never in the app's task, which a later share would only bring to the front
+             without delivering the new picture; MainActivity, when opened, goes to the app's own task. -->
+        <activity
+            android:name=".ShareActivity"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.InkEasel.Share">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+        </activity>
+
         <!-- Transient foreground service: one background upload, then it stops itself.
              exported so it can be triggered from adb: am start-foreground-service -n .../.UploadService -e photo <name> -->
         <service

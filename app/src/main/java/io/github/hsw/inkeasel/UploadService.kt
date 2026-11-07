@@ -279,7 +279,7 @@ class UploadService : Service() {
         fun resolvePhoto(context: Context, name: String): File? {
             val dir = File(context.getExternalFilesDir(null), "pictures")
             File(dir, name).takeIf { it.isFile }?.let { return it }
-            for (e in listOf("jpg", "jpeg", "png", "webp", "bmp", "gif")) {
+            for (e in LocalImages.EXTENSIONS) {
                 File(dir, "$name.$e").takeIf { it.isFile }?.let { return it }
             }
             return dir.listFiles()?.firstOrNull { it.isFile && it.nameWithoutExtension.equals(name, ignoreCase = true) }

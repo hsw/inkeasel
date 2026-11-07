@@ -116,4 +116,10 @@
     <string name="frame_err_busy">%1$s: стек Bluetooth занят</string>
     <string name="frame_err_timeout">%1$s: нет ответа за %2$d мс</string>
     <string name="frame_err_lost">соединение разорвано (status %1$d)</string>
+
+    <!-- Share → InkEasel (ShareActivity) -->
+    <string name="share_unsupported">Не удалось принять: InkEasel принимает картинку, которой поделилось другое приложение.</string>
+    <string name="share_failed">Не удалось принять картинку: %1$s</string>
+    <string name="share_too_big">картинка больше %1$d МБ</string>
+    <string name="share_needs_permission">Сохранено в «Мои картинки». Разрешите доступ к Bluetooth (и выберите рамку), чтобы отправить.</string>
 </resources>

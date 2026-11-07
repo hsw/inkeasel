@@ -224,14 +224,16 @@ class LocalImages(private val app: Application) : Source {
     companion object {
         /** [dir] as `adb push` sees it, for the hint shown while the folder is empty. */
         const val ADB_DIR = "/sdcard/Android/data/io.github.hsw.inkeasel/files/pictures/"
+
+        /** Extensions of the pictures the folder lists (and `UploadService` resolves `photo` names with). */
+        val EXTENSIONS: List<String> = listOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic")
     }
 
     /** The on-device folder; created on first access so `adb push` always has a target. */
     fun dir(): File = File(app.getExternalFilesDir(null), "pictures").apply { mkdirs() }
 
     override suspend fun load(): List<Picture> = withContext(Dispatchers.IO) {
-        val exts = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
-        dir().listFiles { f -> f.isFile && f.extension.lowercase() in exts }
+        dir().listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }
             ?.sortedByDescending { it.lastModified() }
             ?.map { f ->
                 Picture(

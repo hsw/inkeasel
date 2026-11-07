@@ -3,4 +3,7 @@
     <style name="Theme.InkEasel" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@android:color/black</item>
     </style>
+
+    <!-- ShareActivity: nothing of its own on screen, it copies the picture and finishes -->
+    <style name="Theme.InkEasel.Share" parent="android:Theme.Translucent.NoTitleBar" />
 </resources>

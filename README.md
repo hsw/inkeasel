@@ -65,6 +65,23 @@ Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 
 than 20 s every time, "Paintings" fails each time and its saved list fills only after a fast answer;
 asking for fewer results than `limit=200` would be the next step then.
 
+## Share → InkEasel
+
+On a phone or a tablet, "Share" on a picture in a gallery or a file manager lists InkEasel. The picture is
+copied into "My pictures" (the sender's file name, made safe, with the extension of its type; `-2`, `-3`, …
+when the name is taken; `shared-<date>-<time>` when the sender gives none; at most 50 MB, written to a
+`.part` file and renamed when complete) and sent to the frame as a manual upload, so it becomes the default
+picture. The gallery stays on screen; a toast says "Sending to the frame…", and the upload toasts its result
+as usual (with no frame chosen: "No frame selected").
+
+Only a `content://` picture of another app is taken (no `file://` paths, nothing of the app's own). Types:
+JPEG, PNG, WebP, GIF, BMP and HEIC/HEIF (decoded by the system, Android 9+).
+
+Without the Bluetooth permission the picture is still copied and waits: the app opens with its settings and
+asks for the permission; once it is granted and a frame is chosen, the picture is sent. One share waits at a
+time (the newest), for at most an hour (prefs `share`); after that, or if the file is gone, it is dropped,
+and the picture stays in "My pictures" either way.
+
 ## Choosing the frame
 
 Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
@@ -234,8 +251,12 @@ Code:
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
   next upload waits until 35 s after the previous one was handed over (kept in prefs, so also across
   service starts and app restarts)
-- `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings
+- `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
+  sends a waiting shared picture once the permission is granted and a frame chosen
 - `CatalogLayout.kt`: columns, side padding and header shape for the window width (pure)
+- `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
+  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, the size cap and the
+  pending-share rule (pure)
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
