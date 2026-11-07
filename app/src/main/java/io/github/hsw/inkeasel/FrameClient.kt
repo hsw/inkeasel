@@ -41,11 +41,11 @@ class FrameClient(private val ctx: Context) {
     })
 
     /** Waits while the frame still draws the previous picture ([DrawGate]); not an error. */
-    suspend fun awaitIdle(status: (String) -> Unit = {}) {
+    suspend fun awaitIdle(status: (Txt) -> Unit = {}) {
         val wait = gate.waitMs()
         if (wait <= 0) return
         Log.i(TAG, "frame still drawing the previous picture: waiting $wait ms")
-        status("Рамка ещё рисует, отправка через ${(wait + 999) / 1000} с…")
+        status(txt(R.string.frame_status_waiting, ((wait + 999) / 1000).toInt()))
         delay(wait)
     }
 
@@ -58,13 +58,13 @@ class FrameClient(private val ctx: Context) {
      * selected frame's name only (the name is its identity, the MAC may change) and remembers where it was
      * found; it never falls back to another frame.
      */
-    suspend fun upload(format: FrameFormat, payload: ByteArray, status: (String) -> Unit, progress: (Float) -> Unit) {
-        val sel = store.selected() ?: throw IOException("рамка не выбрана")
-        if (sel.kind != FrameKind.NOWMEAN) throw IOException("рамка ${sel.name}: этот вид рамок пока не поддерживается")
-        if (sel.lookup.formatOrNull != format) throw IOException("параметры рамки ${sel.name} изменились, отправьте снова")
+    suspend fun upload(format: FrameFormat, payload: ByteArray, status: (Txt) -> Unit, progress: (Float) -> Unit) {
+        val sel = store.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
+        if (sel.kind != FrameKind.NOWMEAN) throw TxtException(txt(R.string.frame_err_kind, sel.name))
+        if (sel.lookup.formatOrNull != format) throw TxtException(txt(R.string.frame_err_format_changed, sel.name))
         require(payload.size == format.payloadSize) { "payload ${payload.size} B, the format needs ${format.payloadSize} B" }
-        val bt = adapter ?: throw IOException("на устройстве нет Bluetooth")
-        if (!bt.isEnabled) throw IOException("Bluetooth выключен")
+        val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
+        if (!bt.isEnabled) throw TxtException(Txt(R.string.bt_off))
         var device: BluetoothDevice? = try {
             bt.getRemoteDevice(sel.address)
         } catch (e: IllegalArgumentException) { // not a valid MAC: find the frame by name instead
@@ -74,10 +74,10 @@ class FrameClient(private val ctx: Context) {
         for (reliable in listOf(false, true)) {
             awaitIdle(status)
             val dev = device ?: run {
-                status("Поиск рамки ${sel.name}…")
+                status(txt(R.string.frame_status_searching, sel.name))
                 find(sel.name, format)
             }.also { device = it }
-            status("Подключение к ${sel.name}…")
+            status(txt(R.string.frame_status_connecting, sel.name))
             val session = GattSession(ctx, dev)
             try {
                 try {
@@ -89,9 +89,9 @@ class FrameClient(private val ctx: Context) {
                     continue
                 }
                 store.seen(sel.name, dev.address, null, System.currentTimeMillis())
-                status(if (reliable) "Отправка (надёжный режим)…" else "Отправка…")
+                status(Txt(if (reliable) R.string.frame_status_sending_reliable else R.string.frame_status_sending))
                 if (session.sendImage(format.marker, payload, reliable, progress)) return
-                lastError = IOException("рамка не подтвердила приём")
+                lastError = TxtException(Txt(R.string.frame_err_not_acked))
             } catch (e: IOException) {
                 Log.w(TAG, "upload failed (reliable=$reliable)", e)
                 lastError = e
@@ -101,7 +101,7 @@ class FrameClient(private val ctx: Context) {
             }
             delay(2_000) // let the stack tear down the old link before reconnecting
         }
-        throw lastError ?: IOException("не удалось отправить")
+        throw lastError ?: TxtException(Txt(R.string.frame_err_send))
     }
 
     /**
@@ -109,7 +109,7 @@ class FrameClient(private val ctx: Context) {
      * advertises properties that do not give [format].
      */
     private suspend fun find(name: String, format: FrameFormat): BluetoothDevice {
-        val bt = adapter ?: throw IOException("на устройстве нет Bluetooth")
+        val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
         val found = CompletableDeferred<SeenFrame>()
         val stop = scanner.start(
             onSeen = { if (it.name == name) found.complete(it) },
@@ -120,16 +120,13 @@ class FrameClient(private val ctx: Context) {
         } finally {
             stop()
         }
-            ?: throw IOException(
-                "Рамка $name не найдена. Она рядом и не подключена к телефону? " +
-                    "На Android 11 для поиска BLE также нужна включённая геолокация."
-            )
+            ?: throw TxtException(txt(R.string.frame_err_not_found, name, Txt(R.string.scanning_hint)))
         Log.i(TAG, "found $name at ${seen.address}: ${seen.advert}")
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout
         if (seen.advert != null) when (val l = seen.lookup) {
             is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, name, l.reason))
-            is FormatLookup.Supported -> if (l.format != format) throw IOException("параметры рамки $name изменились, отправьте снова")
+            is FormatLookup.Supported -> if (l.format != format) throw TxtException(txt(R.string.frame_err_format_changed, name))
         }
         return bt.getRemoteDevice(seen.address)
     }
@@ -172,15 +169,15 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
 
     suspend fun open() {
         val g = device.connectGatt(ctx, false, this, BluetoothDevice.TRANSPORT_LE)
-            ?: throw IOException("connectGatt вернул null")
+            ?: throw TxtException(Txt(R.string.frame_err_gatt))
         gatt = g
-        withTimeoutOrNull(15_000) { connected.await() } ?: throw IOException("рамка не отвечает")
+        withTimeoutOrNull(15_000) { connected.await() } ?: throw TxtException(Txt(R.string.frame_err_no_answer))
         delay(300)
         op("MTU", 5_000) { g.requestMtu(512) }
-        if (mtu <= 23) throw IOException("не удалось увеличить MTU")
-        if (op("discoverServices", 10_000) { g.discoverServices() } != BluetoothGatt.GATT_SUCCESS) throw IOException("discoverServices")
+        if (mtu <= 23) throw TxtException(Txt(R.string.frame_err_mtu))
+        if (op("discoverServices", 10_000) { g.discoverServices() } != BluetoothGatt.GATT_SUCCESS) throw TxtException(Txt(R.string.frame_err_discover))
         val chars = g.services.flatMap { it.characteristics }
-        ffe1 = chars.firstOrNull { it.uuid == FrameClient.FFE1 } ?: throw IOException("у устройства нет FFE1: это не рамка?")
+        ffe1 = chars.firstOrNull { it.uuid == FrameClient.FFE1 } ?: throw TxtException(Txt(R.string.frame_err_no_ffe1))
         chars.firstOrNull { it.uuid == FrameClient.FFE2 }?.let { ffe2 ->
             g.setCharacteristicNotification(ffe2, true)
             ffe2.getDescriptor(FrameClient.CCCD)?.let { d ->
@@ -236,7 +233,7 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
     }
 
     private suspend fun write(value: ByteArray, type: Int, timeoutMs: Long = 5_000): Int {
-        val g = gatt ?: throw IOException("нет соединения")
+        val g = gatt ?: throw TxtException(Txt(R.string.frame_err_not_connected))
         return op("write", timeoutMs) {
             if (Build.VERSION.SDK_INT >= 33) g.writeCharacteristic(ffe1, value, type) == BluetoothStatusCodes.SUCCESS
             else @Suppress("DEPRECATION") run { ffe1.writeType = type; ffe1.value = value; g.writeCharacteristic(ffe1) }
@@ -250,12 +247,12 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
         var tries = 0
         while (!start()) {
             lost?.let { throw it }
-            if (++tries > 400) throw IOException("$what: стек BLE занят")
+            if (++tries > 400) throw TxtException(txt(R.string.frame_err_busy, what))
             delay(5)
         }
         val status = withTimeoutOrNull(timeoutMs) { d.await() }
         pending = null
-        return status ?: throw (lost ?: IOException("$what: нет ответа за $timeoutMs мс"))
+        return status ?: throw (lost ?: TxtException(txt(R.string.frame_err_timeout, what, timeoutMs.toInt())))
     }
 
     fun close() {
@@ -270,7 +267,7 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
         if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
             connected.complete(Unit)
         } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-            val e = IOException("соединение разорвано (status $status)")
+            val e = TxtException(txt(R.string.frame_err_lost, status))
             lost = e
             connected.completeExceptionally(e)
             pending?.completeExceptionally(e)

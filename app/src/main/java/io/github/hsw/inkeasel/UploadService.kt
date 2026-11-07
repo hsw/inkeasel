@@ -30,7 +30,6 @@ import io.github.hsw.inkeasel.nowplaying.UploadOutcome
 import io.github.hsw.inkeasel.nowplaying.UploadQueue
 import io.github.hsw.inkeasel.nowplaying.Uploader
 import java.io.File
-import java.io.IOException
 
 /**
  * Sends one image to the frame in the background, so playback in another app (e.g. a video player) is not
@@ -85,7 +84,7 @@ class UploadService : Service() {
         super.onCreate()
         if (Build.VERSION.SDK_INT >= 26) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CH_ID, "Отправка на рамку", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CH_ID, getString(R.string.upload_channel), NotificationManager.IMPORTANCE_LOW)
             )
         }
     }
@@ -108,13 +107,13 @@ class UploadService : Service() {
                 Log.w(TAG, "auto upload: no picture (key=$key)")
                 key?.let { controller.onUploadResult(it, false) }
             } else {
-                toast("Не указано фото для отправки")
+                toast(getString(R.string.upload_no_picture))
             }
             stopIfIdle()
             return START_NOT_STICKY
         }
         if (!auto) frame.gate.waitMs().takeIf { it > 0 }?.let { // known only when no upload is in flight
-            toast("Рамка ещё рисует предыдущую картинку: отправка через ${(it + 999) / 1000} с")
+            toast(getString(R.string.upload_wait, ((it + 999) / 1000).toInt()))
         }
         queue.offer(req)?.let { replaced ->
             Log.i(TAG, "replaced by a newer request: ${replaced.source.title} (key=${replaced.key})")
@@ -136,7 +135,7 @@ class UploadService : Service() {
     private fun refuseNoFrame(auto: Boolean, key: String?, title: String?) {
         Log.w(TAG, "no frame selected: ${if (auto) "auto" else "manual"} upload refused: $title (key=$key)")
         if (auto) key?.let { controller.onUploadResult(it, false) }
-        else toast(NO_FRAME)
+        else toast(getString(R.string.no_frame))
     }
 
     private fun parse(intent: Intent, auto: Boolean, key: String?, stamp: Long): Req? {
@@ -171,7 +170,7 @@ class UploadService : Service() {
                         throw e // onDestroy reported it (UploadQueue.takeAll)
                     } catch (e: Exception) {
                         Log.w(TAG, "upload failed", e)
-                        finish(req, ok = false, error = (e as? TxtException)?.txt?.resolve(this@UploadService) ?: e.message ?: e.toString())
+                        finish(req, ok = false, error = e)
                     }
                 }
             } finally {
@@ -207,7 +206,7 @@ class UploadService : Service() {
             is Art.Url -> Http.bytes(art.url)
         }
         // the selected frame's format: its size, inks and packing (a later rescan may change it, see FrameClient)
-        val sel = frames.selected() ?: throw IOException("рамка не выбрана")
+        val sel = frames.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
         val format = when (val l = sel.lookup) {
             is FormatLookup.Supported -> l.format
             is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, sel.name, l.reason))
@@ -217,12 +216,12 @@ class UploadService : Service() {
     }
 
     /** The in-flight [req] finished; report it unless [onDestroy] already did. */
-    private fun finish(req: Req, ok: Boolean, error: String?) {
+    private fun finish(req: Req, ok: Boolean, error: Throwable?) {
         if (queue.settle(req)) done(req, ok, error)
     }
 
     /** Toast, report and remember as [UploadOutcome] decides. */
-    private fun done(req: Req, ok: Boolean, error: String?) {
+    private fun done(req: Req, ok: Boolean, error: Throwable?) {
         val out = UploadOutcome.of(req.auto, ok, error)
         Log.i(TAG, "${if (req.auto) "auto" else "manual"} upload ${if (ok) "done" else "failed"}: ${req.source.title} (key=${req.key})")
         out.toast?.let { toast(it.resolve(this)) }
@@ -242,7 +241,7 @@ class UploadService : Service() {
     private fun notification(title: String?): Notification {
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH_ID) else Notification.Builder(this)
-        return b.setContentTitle("Отправка на рамку…")
+        return b.setContentTitle(getString(R.string.sending))
             .setContentText(title.orEmpty())
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
@@ -253,7 +252,7 @@ class UploadService : Service() {
         // the worker is cancelled below: report what it would never finish (it reports nothing once taken)
         for (req in queue.takeAll()) {
             Log.w(TAG, "service stopped before the upload finished: ${req.source.title} (key=${req.key})")
-            done(req, ok = false, error = "служба остановлена")
+            done(req, ok = false, error = TxtException(Txt(R.string.upload_stopped)))
         }
         scope.cancel()
         super.onDestroy()
@@ -271,8 +270,6 @@ class UploadService : Service() {
         const val EXTRA_AUTO = "auto"
         const val EXTRA_KEY = "key"
         const val EXTRA_STAMP = "stamp"
-
-        const val NO_FRAME = "Рамка не выбрана — выберите её в настройках"
 
         /** Find a file in the pictures folder by name, with or without extension, case-insensitive. */
         fun resolvePhoto(context: Context, name: String): File? {

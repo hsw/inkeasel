@@ -19,19 +19,31 @@ Unit tests (JVM, JUnit 4 + `kotlinx-coroutines-test`; same `JAVA_HOME` as above)
 
     ./gradlew testDebugUnitTest
 
+## Language
+
+The UI is in English, and in Russian when the device language (or the app's language in the system
+settings, Android 13+) is Russian. All texts are string resources: English in `res/values/strings.xml`,
+Russian in `res/values-ru/strings.xml`. Code that runs as JVM unit tests has no `Context`, so it returns a
+`Txt` (a string resource id and its format arguments, which may be `Txt` themselves) that the UI puts into
+words where it is shown; an upload failure meant for the user is a `TxtException` carrying one. Other
+exceptions (e.g. from the network library) are shown with their raw message. To check a language on a
+device:
+
+    adb shell cmd locale set-app-locales io.github.hsw.inkeasel --locales ru-RU   # or en-US
+
 ## Choosing the frame
 
-Uploads go only to the frame chosen in **Настройки → Рамка**. Open it with the header button ("Рамка: <name>"
-or "Рамка не выбрана"); a fresh start with no frame chosen opens it by itself.
+Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
+or "No frame selected"); a fresh start with no frame chosen opens it by itself.
 
 - While it is open, the app scans for BLE service `0xFFBB` and lists every frame heard, one entry per name
   (the name is the frame's identity; its MAC may change), updated live: name, MAC, colour and panel type,
   resolution and rotation, battery, firmware, signal (RSSI) and safe mode if set. The chosen frame is marked.
   The scan stops when the screen closes or the app goes to the background.
-- Selecting a frame saves it and closes the screen. **Отмена** or Back closes it without changes.
-- Frames the app cannot draw on are listed but greyed out with the reason ("не поддерживается: …") and
+- Selecting a frame saves it and closes the screen. **Cancel** or Back closes it without changes.
+- Frames the app cannot draw on are listed but greyed out with the reason ("not supported: …") and
   cannot be chosen. A supported frame whose format was never seen working on a real panel says
-  "не проверено на железе" under its properties (and in a toast when chosen); it can be chosen.
+  "not verified on hardware" under its properties (and in a toast when chosen); it can be chosen.
 - Supported (rotation 0° and a panel type other than A; formats from the vendor app, every
   type dithered with its own inks, sent raw with content marker MK 0):
 
@@ -44,13 +56,13 @@ or "Рамка не выбрана"); a fresh start with no frame chosen opens i
   | BWR | 1360×480, 1440×600 | split: left black, left red, right black, right red, each part padded to 512 (163,840 / 217,088 B) | no |
   | E4 | every size | 2 bpp, W·H/4 | no |
 
-- Not supported, with the reason shown: BW and BP, E7 ("формат не проверен (приложение производителя не
-  рисует его правильно)"), BWY ("приложение производителя не умеет отправлять на такие рамки"). Their
+- Not supported, with the reason shown: BW and BP, E7 ("format not verified (the vendor app does not draw it
+  correctly)"), BWY ("the vendor app cannot send to such frames"). Their
   palettes and packings are already described in `FrameFormats` and plug in by dropping the reason.
 - The check and the render format (size, inks, packing, marker, verified flag) come from one place,
   `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (taken from the
   advertisement here); a new panel type is one more entry there.
-- Without Bluetooth permission the screen asks for it ("Разрешить"); with Bluetooth off it says so and
+- Without Bluetooth permission the screen asks for it ("Allow"); with Bluetooth off it says so and
   offers the system Bluetooth settings. On Android 11 the scan also needs location on.
 
 Stored in prefs `frame` (next to the upload spacing `endedAt` and the `onFrame` key):
@@ -66,7 +78,7 @@ picture is rendered in the frame's format (size and inks from its advertisement)
 frame now advertises other properties, the upload fails and the next one uses the new format.
 
 **No frame chosen**: the catalog browses normally, but nothing is uploaded:
-- a catalog tap toasts "Рамка не выбрана — выберите её в настройках" and starts nothing;
+- a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing;
 - `UploadService` refuses every request before touching Bluetooth: a manual one (adb) toasts the same, an
   automatic one is reported to `FrameController` as failed (so its key does not stay pending);
 - `FrameController` schedules no poster and no revert, and logs `no frame selected: …`.
@@ -142,7 +154,9 @@ Code:
   mode, battery, firmware; keeps the raw bytes)
 - `FrameStore.kt`: the chosen frame (`SelectedFrame`) in prefs `frame`, and `SeenFrame` (one scan result)
 - `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
-- `FrameSettings.kt`: the "Настройки → Рамка" dialog (live frame list, select, cancel)
+- `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
+  Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
+- `FrameSettings.kt`: the "Settings → Frame" dialog (live frame list, select, cancel)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the

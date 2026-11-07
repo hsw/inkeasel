@@ -65,4 +65,32 @@
     <string name="upload_error_unknown">неизвестная ошибка</string>
     <string name="upload_picture">картинка</string>
     <string name="upload_default_picture">фото по умолчанию</string>
+    <string name="upload_stopped">служба отправки остановлена</string>
+    <string name="upload_channel">Отправка на рамку</string>
+    <string name="upload_no_picture">Не указано фото для отправки</string>
+    <string name="upload_wait">Рамка ещё рисует предыдущую картинку: отправка через %1$d с</string>
+    <string name="no_frame">Рамка не выбрана: выберите её в настройках</string>
+    <string name="no_frame_error">рамка не выбрана</string>
+    <string name="image_decode_failed">не удалось декодировать изображение</string>
+
+    <!-- upload over Bluetooth (FrameClient): status lines and errors -->
+    <string name="frame_status_waiting">Рамка ещё рисует, отправка через %1$d с…</string>
+    <string name="frame_status_searching">Поиск рамки %1$s…</string>
+    <string name="frame_status_connecting">Подключение к %1$s…</string>
+    <string name="frame_status_sending">Отправка…</string>
+    <string name="frame_status_sending_reliable">Отправка (надёжный режим)…</string>
+    <string name="frame_err_kind">рамка %1$s: этот вид рамок пока не поддерживается</string>
+    <string name="frame_err_format_changed">параметры рамки %1$s изменились, отправьте снова</string>
+    <string name="frame_err_not_acked">рамка не подтвердила приём</string>
+    <string name="frame_err_send">не удалось отправить</string>
+    <string name="frame_err_not_found">Рамка %1$s не найдена. %2$s</string>
+    <string name="frame_err_gatt">не удалось открыть соединение Bluetooth</string>
+    <string name="frame_err_no_answer">рамка не отвечает</string>
+    <string name="frame_err_mtu">не удалось увеличить MTU</string>
+    <string name="frame_err_discover">не удалось прочитать сервисы рамки</string>
+    <string name="frame_err_no_ffe1">у устройства нет FFE1: это не рамка?</string>
+    <string name="frame_err_not_connected">нет соединения</string>
+    <string name="frame_err_busy">%1$s: стек Bluetooth занят</string>
+    <string name="frame_err_timeout">%1$s: нет ответа за %2$d мс</string>
+    <string name="frame_err_lost">соединение разорвано (status %1$d)</string>
 </resources>

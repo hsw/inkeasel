@@ -202,7 +202,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         vm.selected == null -> {
                             Log.i(TAG, "no frame selected: upload of ${p.title} refused")
-                            Toast.makeText(this, UploadService.NO_FRAME, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, R.string.no_frame, Toast.LENGTH_SHORT).show()
                         }
                         hasPermissions() -> sendToFrame(p)
                         else -> askPermissions.launch(permissions)

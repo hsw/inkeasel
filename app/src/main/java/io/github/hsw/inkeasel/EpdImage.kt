@@ -19,7 +19,7 @@ object EpdImage {
         while (bounds.outWidth / (sample * 2) >= fmt.width && bounds.outHeight / (sample * 2) >= fmt.height) sample *= 2
         val opts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-            ?: error("не удалось декодировать изображение")
+            ?: throw TxtException(Txt(R.string.image_decode_failed))
     }
 
     /** Scales to cover the panel of [fmt] and centre-crops. */
