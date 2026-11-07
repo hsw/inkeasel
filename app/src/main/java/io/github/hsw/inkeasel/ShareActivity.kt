@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.UploadOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +62,7 @@ class ShareActivity : ComponentActivity() {
                         toast(Txt(R.string.share_no_frame))
                     }
                     else -> {
-                        UploadService.startManual(this@ShareActivity, path = file.absolutePath)
+                        UploadService.startManual(this@ShareActivity, Art.File(file.absolutePath))
                         toast(Txt(R.string.share_sending))
                     }
                 }

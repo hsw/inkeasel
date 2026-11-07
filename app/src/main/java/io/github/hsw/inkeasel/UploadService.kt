@@ -277,13 +277,16 @@ class UploadService : Service() {
         const val EXTRA_KEY = "key"
         const val EXTRA_STAMP = "stamp"
 
-        /** Start a manual upload of the file at [path], or of [url] (with [title] for the toast and notification). */
-        fun startManual(context: Context, path: String? = null, url: String? = null, title: String? = null) {
-            val i = Intent(context, UploadService::class.java)
-            path?.let { i.putExtra(EXTRA_PATH, it) }
-            url?.let { i.putExtra(EXTRA_URL, it) }
+        /** Start a manual upload of [art] ([title] for the toast and notification; a file is named by itself). */
+        fun startManual(context: Context, art: Art, title: String? = null) {
+            val i = Intent(context, UploadService::class.java).putArt(art)
             title?.let { i.putExtra(EXTRA_TITLE, it) }
             context.startForegroundService(i)
+        }
+
+        private fun Intent.putArt(art: Art): Intent = when (art) {
+            is Art.Url -> putExtra(EXTRA_URL, art.url)
+            is Art.File -> putExtra(EXTRA_PATH, art.path)
         }
 
         /** Find a file in the pictures folder by name, with or without extension, case-insensitive. */
@@ -313,10 +316,7 @@ class UploadService : Service() {
                 .putExtra(EXTRA_KEY, key)
                 .putExtra(EXTRA_STAMP, FrameControllers.get(context).manualUploads)
                 .putExtra(EXTRA_TITLE, title)
-            when (art) {
-                is Art.Url -> i.putExtra(EXTRA_URL, art.url)
-                is Art.File -> i.putExtra(EXTRA_PATH, art.path)
-            }
+                .putArt(art)
             try {
                 context.startForegroundService(i)
             } catch (e: RuntimeException) { // e.g. a background start refused by the system

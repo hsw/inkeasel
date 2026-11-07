@@ -62,6 +62,10 @@ import androidx.tv.material3.darkColorScheme
 import coil.Coil
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import io.github.hsw.inkeasel.nowplaying.Art
+import io.github.hsw.inkeasel.nowplaying.FeatureStore
+import io.github.hsw.inkeasel.nowplaying.FrameController
+import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -101,6 +105,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }.apply { startWatching() }
     }
 
+    private val features = FeatureStore(app)
+
+    /** The now-playing poster switch in the settings ([FeatureStore]). */
+    var posterEnabled by mutableStateOf(features.posterEnabled)
+        private set
+
     fun openSettings() {
         settingsOpen = true
     }
@@ -116,6 +126,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         selected = frame
         settingsOpen = false
         Log.i(TAG, "frame selected: ${f.kind.id} ${f.name} ${f.address} ${f.advert}")
+    }
+
+    /** Switch the poster [on] or off: saved, and passed on to the [FrameController] at once. */
+    fun setPoster(on: Boolean) {
+        features.posterEnabled = on
+        posterEnabled = on
+        FrameControllers.get(getApplication()).onPosterSwitched()
     }
 
     fun selectTab(i: Int) {
@@ -168,9 +185,10 @@ class MainActivity : ComponentActivity() {
         if (result.isEmpty()) { // cancelled (another request was running): nothing was answered
             Log.i(TAG, "BLE permission request cancelled: granted=$permitted")
         } else {
+            val perms = BlePermissions.all.toList()
             val rationale = { p: String -> shouldShowRequestPermissionRationale(p) }
-            BlePermissions.noteDenial(this, rationale)
-            blocked = BlePermissions.blocked(BlePermissions.all.toList(), permitted, BlePermissions.deniedBefore(this), rationale)
+            BlePermissions.noteDenial(this, perms, rationale)
+            blocked = BlePermissions.blocked(perms, permitted, BlePermissions.deniedBefore(this), rationale)
             Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
         }
         sendPendingShare()
@@ -200,14 +218,11 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "no frame selected: opening the frame settings")
             vm.openSettings()
         }
-        // opened by a share without the permissions: the settings show what is missing (the request is above)
-        if (savedInstanceState == null && intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) && !permitted) vm.openSettings()
+        if (savedInstanceState == null) handleShareIntent(intent, ask = false) // the request runs already
         setContent {
             App(
                 vm,
-                permitted = permitted,
-                permissionBlocked = blocked,
-                onRequestPermissions = ::requestPermissions,
+                ble = BleAccess(permitted, blocked, ::requestPermissions),
                 onFrameSelected = ::sendPendingShare,
                 onSend = { p ->
                     when {
@@ -226,8 +241,8 @@ class MainActivity : ComponentActivity() {
     // Hand the upload to the background service, so it survives leaving the app and does not
     // interrupt playback in another app. A short toast confirms; the service toasts again when done.
     private fun sendToFrame(p: Picture) {
-        if (p.local) UploadService.startManual(this, path = p.fullUrl)
-        else UploadService.startManual(this, url = p.fullUrl, title = p.title)
+        if (p.local) UploadService.startManual(this, Art.File(p.fullUrl))
+        else UploadService.startManual(this, Art.Url(p.fullUrl), p.title)
         Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
@@ -240,18 +255,26 @@ class MainActivity : ComponentActivity() {
         if (!permitted || vm.selected == null) return
         val path = pendingShare.take(System.currentTimeMillis()) ?: return
         Log.i(TAG, "sending the pending share: ${File(path).name}")
-        UploadService.startManual(this, path = path)
+        UploadService.startManual(this, Art.File(path))
         Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
-    // A share without the permissions reaches a running app here (ShareActivity: CLEAR_TOP | SINGLE_TOP):
-    // ask for them, or show the settings with "App info" where the system no longer asks.
+    // A share without the permissions reaches a running app here (ShareActivity: CLEAR_TOP | SINGLE_TOP).
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleShareIntent(intent, ask = true)
+    }
+
+    /**
+     * Opened by a share that waits for the permissions ([EXTRA_PENDING_SHARE]): while they are missing, show
+     * the settings, which say what is missing (with "App info" where the system no longer asks), and [ask]
+     * for them unless the system no longer shows its dialog.
+     */
+    private fun handleShareIntent(intent: Intent, ask: Boolean) {
         if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) || BlePermissions.granted(this)) return
         vm.openSettings()
-        if (!blocked) askPermissions.launch(BlePermissions.all)
+        if (ask && !blocked) askPermissions.launch(BlePermissions.all)
     }
 
     // Returning to the app re-scans the local folder, in case files changed while it was away.
@@ -273,9 +296,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun App(
     vm: MainViewModel,
-    permitted: Boolean,
-    permissionBlocked: Boolean,
-    onRequestPermissions: () -> Unit,
+    ble: BleAccess,
     onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
 ) {
@@ -307,9 +328,9 @@ fun App(
             if (vm.settingsOpen) {
                 FrameSettingsDialog(
                     selected = vm.selected,
-                    permitted = permitted,
-                    permissionBlocked = permissionBlocked,
-                    onRequestPermissions = onRequestPermissions,
+                    ble = ble,
+                    poster = vm.posterEnabled,
+                    onPoster = vm::setPoster,
                     onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )

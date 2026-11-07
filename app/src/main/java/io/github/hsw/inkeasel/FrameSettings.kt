@@ -59,8 +59,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
-import io.github.hsw.inkeasel.nowplaying.FeatureStore
-import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import kotlinx.coroutines.delay
 
 private const val TAG = "FrameSettings"
@@ -85,9 +83,9 @@ private const val TAG = "FrameSettings"
 @Composable
 fun FrameSettingsDialog(
     selected: SelectedFrame?,
-    permitted: Boolean,
-    permissionBlocked: Boolean,
-    onRequestPermissions: () -> Unit,
+    ble: BleAccess,
+    poster: Boolean,
+    onPoster: (Boolean) -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -99,7 +97,7 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, permitted, permissionBlocked, sidePadding, onRequestPermissions, onSelect, onCancel)
+                FrameSettings(selected, ble, poster, onPoster, sidePadding, onSelect, onCancel)
             }
         }
     }
@@ -127,10 +125,10 @@ private fun EdgeToEdgeDialogWindow() {
 @Composable
 private fun FrameSettings(
     selected: SelectedFrame?,
-    permitted: Boolean,
-    permissionBlocked: Boolean,
+    ble: BleAccess,
+    poster: Boolean,
+    onPoster: (Boolean) -> Unit,
     sidePadding: Int,
-    onRequestPermissions: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -153,7 +151,7 @@ private fun FrameSettings(
         onDispose { ctx.unregisterReceiver(r) }
     }
 
-    if (permitted && btProblem == null && scanError == null) {
+    if (ble.permitted && btProblem == null && scanError == null) {
         LifecycleStartEffect(scanner, scanRun) {
             val stop = scanner.start(
                 onSeen = { frames = SeenFrame.merge(frames, it) },
@@ -208,10 +206,10 @@ private fun FrameSettings(
         Spacer(Modifier.height(16.dp))
         Box(Modifier.fillMaxWidth()) {
             when {
-                !permitted -> Problem(
-                    if (permissionBlocked) blockedText() else stringResource(R.string.ble_permission_needed),
-                    stringResource(if (permissionBlocked) R.string.app_info else R.string.allow),
-                    onRequestPermissions,
+                !ble.permitted -> Problem(
+                    if (ble.blocked) blockedText() else stringResource(R.string.ble_permission_needed),
+                    stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
+                    ble.request,
                 )
                 btProblem != null -> Problem(btProblem!!.sentence.text(), stringResource(R.string.bt_settings)) {
                     try {
@@ -257,24 +255,22 @@ private fun FrameSettings(
             }
         }
         Spacer(Modifier.height(32.dp))
-        FeaturesSection(permitted, permissionBlocked, onRequestPermissions)
+        FeaturesSection(ble, poster, onPoster)
     }
 }
 
 /**
  * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
- * asks, "App info"; the frame list above names the path to it then), and the now-playing poster: a switch
- * ([FeatureStore]) with the notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
+ * asks, "App info"; the frame list above names the path to it then), and the now-playing [poster]: a switch
+ * ([onPoster], see `MainViewModel.setPoster`) with the notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
  * system screen, or shows the adb command where there is none. The access and the screen are read again
  * whenever the app comes back (e.g. from that screen).
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
  */
 @Composable
-private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRequestPermissions: () -> Unit) {
+private fun FeaturesSection(ble: BleAccess, poster: Boolean, onPoster: (Boolean) -> Unit) {
     val ctx = LocalContext.current
-    val features = remember { FeatureStore(ctx) }
-    var posterOn by remember { mutableStateOf(features.posterEnabled) }
     var access by remember { mutableStateOf(ListenerAccess.enabled(ctx)) }
     var hasScreen by remember { mutableStateOf(ListenerAccess.canOpen(ctx)) }
     LifecycleResumeEffect(Unit) {
@@ -287,10 +283,8 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
     val ui = ListenerAccessUi.of(access, hasScreen, Build.VERSION.SDK_INT, tv, sideloaded)
     val openAccess = { ListenerAccess.open(ctx) }
     val togglePoster = {
-        val on = !posterOn
-        posterOn = on
-        features.posterEnabled = on
-        FrameControllers.get(ctx).onPosterSwitched()
+        val on = !poster
+        onPoster(on)
         if (on && !access && hasScreen) openAccess()
     }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
@@ -300,9 +294,9 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
     SectionRow(
         title = stringResource(R.string.perm_bt),
         // the frame list above already says how to allow it (and where, once the system no longer asks)
-        text = stringResource(if (permitted) R.string.perm_bt_granted else R.string.perm_bt_missing),
-        action = if (permitted) null else stringResource(if (permissionBlocked) R.string.app_info else R.string.allow),
-        onAction = onRequestPermissions,
+        text = stringResource(if (ble.permitted) R.string.perm_bt_granted else R.string.perm_bt_missing),
+        action = if (ble.permitted) null else stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
+        onAction = ble.request,
     )
     Spacer(Modifier.height(8.dp))
     ListItem(
@@ -316,7 +310,7 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
                 if (ui.adbHint) Text(stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)), color = dim)
             }
         },
-        trailingContent = { Switch(checked = posterOn, onCheckedChange = null) },
+        trailingContent = { Switch(checked = poster, onCheckedChange = null) },
     )
     if (ui.openButton) {
         Spacer(Modifier.height(8.dp))
@@ -346,7 +340,7 @@ private fun SectionRow(title: String?, text: String, action: String?, onAction: 
 /** The Bluetooth permission is denied for good: where to allow it in the system settings. */
 @Composable
 private fun blockedText(): String =
-    stringResource(R.string.perm_bt_blocked, stringResource(R.string.app_name), stringResource(BlePermissions.settingsName))
+    Txt(R.string.perm_bt_blocked, Txt(R.string.app_name), BlePermissions.settingsName).text()
 
 /**
  * One frame of the scan. An unsupported one stays focusable, so the D-pad can reach it and its reason is

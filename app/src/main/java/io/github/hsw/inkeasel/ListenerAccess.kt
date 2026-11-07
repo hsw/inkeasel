@@ -61,7 +61,7 @@ object ListenerAccess {
      * ([ListenerAccessUi.restrictedHint]). Before Android 13 there is no such restriction to tell.
      */
     fun sideloaded(ctx: Context): Boolean {
-        if (Build.VERSION.SDK_INT < 33) return true
+        if (Build.VERSION.SDK_INT < ListenerAccessUi.RESTRICTED_SINCE) return true
         val source = try {
             ctx.packageManager.getInstallSourceInfo(ctx.packageName).packageSource
         } catch (e: PackageManager.NameNotFoundException) {

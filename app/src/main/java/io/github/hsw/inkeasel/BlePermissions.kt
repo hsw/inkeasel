@@ -22,7 +22,7 @@ object BlePermissions {
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
 
     /** The name of the permission in the system's App info → Permissions screen. */
-    val settingsName: Int = if (Build.VERSION.SDK_INT >= 31) R.string.perm_name_nearby else R.string.perm_name_location
+    val settingsName: Txt = Txt(if (Build.VERSION.SDK_INT >= 31) R.string.perm_name_nearby else R.string.perm_name_location)
 
     fun granted(ctx: Context): Boolean = all.all { ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
@@ -40,15 +40,22 @@ object BlePermissions {
     /** Whether a denial was ever seen ([noteDenial]); kept across starts, since the system remembers it too. */
     fun deniedBefore(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_DENIED, false)
 
-    /** Remember a denial once some rationale is true after a request ([blocked] needs it later). */
-    fun noteDenial(ctx: Context, rationale: (String) -> Boolean) {
-        if (!deniedBefore(ctx) && all.any(rationale)) prefs(ctx).edit().putBoolean(KEY_DENIED, true).apply()
+    /** Remember a denial once the rationale of one of [permissions] is true after a request ([blocked] needs it later). */
+    fun noteDenial(ctx: Context, permissions: List<String>, rationale: (String) -> Boolean) {
+        if (!deniedBefore(ctx) && permissions.any(rationale)) prefs(ctx).edit().putBoolean(KEY_DENIED, true).apply()
     }
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("permissions", Context.MODE_PRIVATE)
 
     private const val KEY_DENIED = "bleDenied"
 }
+
+/**
+ * The Bluetooth permission as the settings see it: whether it is [permitted], whether the system no longer
+ * asks for it ([blocked], see [BlePermissions.blocked]), and [request], which asks for it or, once blocked,
+ * opens App info.
+ */
+data class BleAccess(val permitted: Boolean, val blocked: Boolean, val request: () -> Unit)
 
 /** Open this app's App info screen (permissions, restricted settings); `false` if the device has none. */
 fun openAppInfo(ctx: Context): Boolean = try {
