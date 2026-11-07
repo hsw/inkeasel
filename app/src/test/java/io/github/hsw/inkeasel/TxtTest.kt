@@ -78,4 +78,12 @@ class TxtTest {
         assertEquals(Txt(R.string.header_frame, "NM000001"), e.txt)
         assertEquals(cause, e.cause)
     }
+
+    @Test
+    fun userText_ownTextElseGenericWithMessageOrClassName() {
+        val own = Txt(R.string.bt_off)
+        assertEquals(own, TxtException(own).userText(R.string.catalog_failed))
+        assertEquals(Txt(R.string.catalog_failed, "boom"), IllegalStateException("boom").userText(R.string.catalog_failed))
+        assertEquals(Txt(R.string.upload_error_text, "IOException"), java.io.IOException(" ").userText(R.string.upload_error_text))
+    }
 }

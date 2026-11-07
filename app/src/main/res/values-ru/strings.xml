@@ -117,6 +117,8 @@
     <string name="share_unsupported">Не удалось принять: InkEasel принимает картинку, которой поделилось другое приложение.</string>
     <string name="share_failed">Не удалось принять картинку: %1$s</string>
     <string name="share_too_big">картинка больше %1$d МБ</string>
+    <string name="share_err_read">приложение, которое поделилось, не отдало картинку</string>
+    <string name="share_err_save">не удалось сохранить её в «Мои картинки»</string>
     <string name="share_needs_permission">Сохранено в «Мои картинки». Разрешите доступ к Bluetooth (и выберите рамку), чтобы отправить.</string>
     <string name="share_sending">Сохранено в «Мои картинки» и отправляется на рамку. Рамка перерисуется, когда картинка дойдёт.</string>
     <string name="share_no_frame">Сохранено в «Мои картинки». Рамка не выбрана: выберите её в настройках и отправьте картинку оттуда.</string>

@@ -69,8 +69,8 @@ class UploadOutcomeTest {
 
     @Test
     fun anExceptionWithoutMessageIsNamedByItsClass() {
-        assertEquals(Txt(R.string.upload_error_text, "java.lang.IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
-        assertEquals(Txt(R.string.upload_error_text, "java.io.IOException"), UploadOutcome.reason(IOException(" ")))
+        assertEquals(Txt(R.string.upload_error_text, "IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
+        assertEquals(Txt(R.string.upload_error_text, "IOException"), UploadOutcome.reason(IOException(" ")))
     }
 
     @Test

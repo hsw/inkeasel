@@ -10,6 +10,8 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 
+private const val TAG = "BlePermissions"
+
 /**
  * The runtime permissions the frame search and the upload need: `BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT` on
  * Android 12+, fine location before (BLE scanning needed it then). The one set every screen asks for.
@@ -53,6 +55,6 @@ fun openAppInfo(ctx: Context): Boolean = try {
     ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)))
     true
 } catch (e: ActivityNotFoundException) {
-    Log.w("AppInfo", "no App info screen", e)
+    Log.w(TAG, "no App info screen", e)
     false
 }

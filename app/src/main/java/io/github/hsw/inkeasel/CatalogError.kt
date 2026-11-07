@@ -9,7 +9,6 @@ import java.net.UnknownHostException
 /** Why a catalog tab could not load, in words for the user (shown as is, without a prefix). */
 object CatalogError {
     fun of(e: Throwable): Txt = when (e) {
-        is TxtException -> e.txt
         // no DNS, nothing listening, no route: the device is offline or the source is gone
         is UnknownHostException, is ConnectException, is NoRouteToHostException -> Txt(R.string.catalog_err_offline)
         // a socket timeout, or OkHttp's call timeout ("timeout"), or the whole-load deadline
@@ -17,6 +16,6 @@ object CatalogError {
         is HttpStatusException ->
             if (e.code >= 500) Txt(R.string.catalog_err_http_server, e.code) else Txt(R.string.catalog_err_http, e.code)
         is JSONException -> Txt(R.string.catalog_err_unreadable)
-        else -> Txt(R.string.catalog_failed, e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
+        else -> e.userText(R.string.catalog_failed) // a TxtException as it is, anything else with its message
     }
 }

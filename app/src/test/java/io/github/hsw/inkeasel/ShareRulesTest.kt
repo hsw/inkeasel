@@ -253,6 +253,22 @@ class ShareRulesTest {
     }
 
     @Test
+    fun save_finalNameTakenMeanwhile_failsWithAUserText_keepsTheOtherFile() {
+        val dir = tmp.newFolder()
+        val taken = File(dir, "sea.jpg")
+        val open = { taken.writeText("another app"); ByteArrayInputStream(ByteArray(1_000)) }
+        try {
+            ShareRules.save(dir, "sea.jpg", "image/jpeg", now, open, zone = ZoneOffset.UTC)
+            fail("no exception when the final name is taken")
+        } catch (e: TxtException) {
+            assertEquals(Txt(R.string.share_err_save), e.txt)
+            assertTrue(e.cause?.message.orEmpty().contains("sea.jpg.part")) // the file name only in the log
+        }
+        assertEquals(listOf("sea.jpg"), dir.list()!!.toList())
+        assertEquals("another app", taken.readText())
+    }
+
+    @Test
     fun save_cancelled_leavesNothing() {
         val dir = tmp.newFolder()
         val cancel = IllegalStateException("cancelled")

@@ -82,7 +82,9 @@ object ShareRules {
         val dest = File(dir, name)
         try {
             open().use { inp -> part.outputStream().use { out -> copyCapped(inp, out, cap, check) } }
-            if (dest.exists() || !part.renameTo(dest)) throw IOException("cannot rename ${part.name}")
+            if (dest.exists() || !part.renameTo(dest)) {
+                throw TxtException(Txt(R.string.share_err_save), IOException("cannot rename ${part.name}"))
+            }
             return dest
         } catch (e: Throwable) {
             part.delete()

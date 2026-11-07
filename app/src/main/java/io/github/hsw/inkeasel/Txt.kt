@@ -25,3 +25,11 @@ data class Txt(val id: Int, val args: List<Any>) {
  * report I/O failures handle it unchanged; [message] is only for logs.
  */
 class TxtException(val txt: Txt, cause: Throwable? = null) : IOException("text ${txt.id} ${txt.args}", cause)
+
+/**
+ * This failure in words for the user: a [TxtException] says it itself; any other exception (e.g. from the
+ * network library) keeps its raw message, or its class name when it has none, inside [generic] (a string
+ * resource with one `%1$s`).
+ */
+fun Throwable.userText(generic: Int): Txt =
+    if (this is TxtException) txt else Txt(generic, message?.takeIf { it.isNotBlank() } ?: javaClass.simpleName)

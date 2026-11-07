@@ -39,8 +39,9 @@ implementation plans: `docs/plans/`. Both are local and git-ignored: never stage
   it differs from Android's in corner cases such as `optString` on JSON null, so keep to plain values); any
   other `android.*` class does not.
   It returns a `Txt` (`R.string` id + args; `Txt.kt`) instead of a string, and tests compare `Txt` values,
-  not translations. Upload-path failures meant for the user throw `TxtException`; other exceptions keep their
-  raw message inside a generic text (`UploadOutcome.reason`). `Txt` is put into words only at the edge
+  not translations. Upload- and share-path failures meant for the user throw `TxtException` (details such as
+  a URI or a file name go into its cause, for the log); other exceptions keep their raw message inside a
+  generic text (`Throwable.userText` in `Txt.kt`). `Txt` is put into words only at the edge
   (`TxtAndroid.kt`: `resolve(ctx)`, `@Composable text()`). Stored data (`FrameStore`, `DefaultStore`) never
   holds translated text.
 - tv-material components ignore touch: every new clickable component also gets `Modifier.onTap(...)`.

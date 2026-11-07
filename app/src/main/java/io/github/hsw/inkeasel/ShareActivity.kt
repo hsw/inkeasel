@@ -82,7 +82,8 @@ class ShareActivity : ComponentActivity() {
             displayName = displayName(uri),
             mime = contentResolver.getType(uri) ?: intent.type,
             nowMs = System.currentTimeMillis(),
-            open = { contentResolver.openInputStream(uri) ?: throw IOException("no stream for $uri") },
+            // the URI goes only into the log (the cause), not into the toast
+            open = { contentResolver.openInputStream(uri) ?: throw TxtException(Txt(R.string.share_err_read), IOException("no stream for $uri")) },
             check = { ensureActive() },
         )
     }
@@ -136,10 +137,11 @@ class PendingShare(context: Context) {
         val savedAt = prefs.getLong(SAVED_AT, 0L)
         prefs.edit().clear().apply()
         return path.takeIf { ShareRules.sendPending(savedAt, nowMs, File(it).isFile) }
-            .also { if (it == null) Log.i("PendingShare", "dropped (stale or gone): ${File(path).name}") }
+            .also { if (it == null) Log.i(TAG, "dropped (stale or gone): ${File(path).name}") }
     }
 
     private companion object {
+        const val TAG = "PendingShare"
         const val PATH = "path"
         const val SAVED_AT = "savedAt"
     }

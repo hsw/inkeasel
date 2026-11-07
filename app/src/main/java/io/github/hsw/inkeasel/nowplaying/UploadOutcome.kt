@@ -2,7 +2,7 @@ package io.github.hsw.inkeasel.nowplaying
 
 import io.github.hsw.inkeasel.R
 import io.github.hsw.inkeasel.Txt
-import io.github.hsw.inkeasel.TxtException
+import io.github.hsw.inkeasel.userText
 
 /**
  * What `UploadService` does after one upload: [toast] to show (`null` = log only), whether to [report] the
@@ -22,15 +22,8 @@ data class UploadOutcome(val toast: Txt?, val report: Boolean, val remember: Boo
             else -> UploadOutcome(toast = Txt(R.string.upload_failed, reason(error)), report = false, remember = false)
         }
 
-        /**
-         * The failure as the user reads it: a [TxtException] says it in the user's language; any other
-         * exception (e.g. from the network library) keeps its raw message, or its class when it has none.
-         */
-        fun reason(error: Throwable?): Txt = when {
-            error is TxtException -> error.txt
-            error == null -> Txt(R.string.upload_error_unknown)
-            else -> Txt(R.string.upload_error_text, error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.name)
-        }
+        /** The failure as the user reads it ([userText]); `null` is an unknown error. */
+        fun reason(error: Throwable?): Txt = error?.userText(R.string.upload_error_text) ?: Txt(R.string.upload_error_unknown)
 
         /**
          * What the upload notification calls a picture that has no title of its own ([Source.title] blank):
