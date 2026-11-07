@@ -31,6 +31,23 @@ device:
 
     adb shell cmd locale set-app-locales io.github.hsw.inkeasel --locales ru-RU   # or en-US
 
+## Screens
+
+Made for a TV and the D-pad; phones and tablets work by touch in any orientation. Rotating or resizing
+does not restart the screen (the open tab, the settings and their frame list stay, and no permission is
+asked twice); the layout follows the window width:
+
+| Width         | Columns | Side padding | Header                                     |
+|---------------|---------|--------------|--------------------------------------------|
+| under 600 dp  | 2       | 16 dp        | name and frame button, tabs on a row below |
+| 600–719 dp    | 3       | 32 dp        | as above                                   |
+| 720–839 dp    | 3       | 32 dp        | one row                                    |
+| 840 dp and up | 4       | 48 dp        | one row (a TV is 960 dp wide)              |
+
+The tabs scroll sideways when they do not fit. The app draws behind the status and navigation bars
+(Android 15 requires it) and keeps its content clear of them, with gesture or button navigation; the
+settings dialog does the same. A TV has no bars, so nothing changes there.
+
 ## Catalog
 
 Tabs: "My pictures" (the app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and
@@ -183,6 +200,7 @@ Code:
   next upload waits until 35 s after the previous one was handed over (kept in prefs, so also across
   service starts and app restarts)
 - `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings
+- `CatalogLayout.kt`: columns, side padding and header shape for the window width (pure)
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a

@@ -9,16 +9,21 @@ import android.content.IntentFilter
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -37,10 +42,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.tv.material3.Button
 import androidx.tv.material3.ListItem
@@ -59,6 +66,9 @@ private const val TAG = "FrameSettings"
  *
  * A dialog rather than a separate screen: the catalog stays composed below it, so on close the D-pad focus
  * returns to where it was (the header button that opened it).
+ *
+ * Its window is drawn behind the system bars like the activity's, and the content pads itself with the
+ * safe-drawing insets and the catalog's side padding for the width ([CatalogLayout]).
  */
 @Composable
 fun FrameSettingsDialog(
@@ -68,10 +78,37 @@ fun FrameSettingsDialog(
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
-    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        EdgeToEdgeDialogWindow()
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
-            FrameSettings(selected, permitted, onRequestPermissions, onSelect, onCancel)
+            BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
+                FrameSettings(selected, permitted, sidePadding, onRequestPermissions, onSelect, onCancel)
+            }
         }
+    }
+}
+
+/**
+ * A dialog window is a floating one: even with `decorFitsSystemWindows = false` its `fitInsetsTypes` (Android 11+)
+ * keep it inside the status bar, while its content still reaches under the navigation bar (seen on Android 15).
+ * Clearing them makes it cover the whole screen like the activity, and the content pads itself with the insets.
+ * Older versions keep the platform's layout; the insets padding covers whatever the window overlaps.
+ */
+@Composable
+private fun EdgeToEdgeDialogWindow() {
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
+    DisposableEffect(window) {
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.attributes = window.attributes.apply {
+                fitInsetsTypes = 0
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        onDispose {}
     }
 }
 
@@ -79,6 +116,7 @@ fun FrameSettingsDialog(
 private fun FrameSettings(
     selected: SelectedFrame?,
     permitted: Boolean,
+    sidePadding: Int,
     onRequestPermissions: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
@@ -131,7 +169,7 @@ private fun FrameSettings(
         if (!listTouched) runCatching { targetFocus.requestFocus() }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
+    Column(Modifier.fillMaxSize().padding(horizontal = sidePadding.dp, vertical = 32.dp)) {
         Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.settings_frame), style = MaterialTheme.typography.titleLarge)

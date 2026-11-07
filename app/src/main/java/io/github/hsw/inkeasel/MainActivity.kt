@@ -11,23 +11,29 @@ import android.os.FileObserver
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -226,6 +232,12 @@ class MainActivity : ComponentActivity() {
     private fun hasPermissions() = permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // drawn behind the system bars (Android 15 enforces it for targetSdk 35); the UI pads itself with the
+        // safe-drawing insets. Dark bars always: the app is dark whatever the system theme.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         super.onCreate(savedInstanceState)
         Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
         permitted = hasPermissions()
@@ -279,34 +291,24 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
     val aspect = (vm.selected?.lookup?.formatOrNull ?: FrameFormats.DEFAULT).aspect
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
-            Column(Modifier.padding(horizontal = 48.dp, vertical = 24.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
-                    Spacer(Modifier.width(32.dp))
-                    TabRow(selectedTabIndex = vm.tab) {
-                        vm.sources.forEachIndexed { i, s ->
-                            Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }, modifier = Modifier.onTap { vm.selectTab(i) }) {
-                                Text(s.name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
-                            }
+            // the width outside the layout padding (inside the system bars) picks the columns and the padding
+            BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+                val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
+                Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = 24.dp)) {
+                    Header(vm, layout.splitHeader)
+                    Spacer(Modifier.height(16.dp))
+                    LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
+                    when (val st = vm.catalogs[vm.tab] ?: CatalogState.Loading) {
+                        CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
+                        is CatalogState.Failed -> Column {
+                            Text(st.reason.text())
+                            Spacer(Modifier.height(12.dp))
+                            Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
                         }
-                    }
-                    Spacer(Modifier.weight(1f))
-                    Button(onClick = vm::openSettings, modifier = Modifier.onTap(vm::openSettings)) {
-                        Text(vm.selected?.let { stringResource(R.string.header_frame, it.name) } ?: stringResource(R.string.header_no_frame))
-                    }
-                }
-                Spacer(Modifier.height(16.dp))
-                LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
-                when (val st = vm.catalogs[vm.tab] ?: CatalogState.Loading) {
-                    CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
-                    is CatalogState.Failed -> Column {
-                        Text(st.reason.text())
-                        Spacer(Modifier.height(12.dp))
-                        Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
-                    }
-                    is CatalogState.Loaded -> Column {
-                        if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
-                        CatalogGrid(st, aspect, onSend)
+                        is CatalogState.Loaded -> Column {
+                            if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
+                            CatalogGrid(st, aspect, layout, onSend)
+                        }
                     }
                 }
             }
@@ -319,6 +321,54 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                     onCancel = vm::closeSettings,
                 )
             }
+        }
+    }
+}
+
+/**
+ * The app name, the source tabs and the frame button: one row on a wide screen; on a narrow one ([split]) the
+ * tabs go on their own row under the other two (the tv-material `TabRow` scrolls by itself when they do not fit).
+ */
+@Composable
+private fun Header(vm: MainViewModel, split: Boolean) {
+    val title = @Composable {
+        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+    }
+    val tabs = @Composable {
+        TabRow(selectedTabIndex = vm.tab) {
+            vm.sources.forEachIndexed { i, s ->
+                Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }, modifier = Modifier.onTap { vm.selectTab(i) }) {
+                    Text(s.name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), maxLines = 1)
+                }
+            }
+        }
+    }
+    val frame = @Composable {
+        Button(onClick = vm::openSettings, modifier = Modifier.onTap(vm::openSettings)) {
+            Text(
+                vm.selected?.let { stringResource(R.string.header_frame, it.name) } ?: stringResource(R.string.header_no_frame),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+    if (split) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                title()
+                Spacer(Modifier.width(16.dp).weight(1f))
+                frame()
+            }
+            Spacer(Modifier.height(12.dp))
+            tabs()
+        }
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            title()
+            Spacer(Modifier.width(32.dp))
+            tabs()
+            Spacer(Modifier.weight(1f))
+            frame()
         }
     }
 }
@@ -343,7 +393,7 @@ private fun StaleNote(st: CatalogState.Loaded, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun CatalogGrid(st: CatalogState.Loaded, aspect: Float, onSend: (Picture) -> Unit) {
+private fun CatalogGrid(st: CatalogState.Loaded, aspect: Float, layout: CatalogLayout, onSend: (Picture) -> Unit) {
     if (st.items.isEmpty()) {
         Text(
             stringResource(R.string.local_empty, LocalImages.ADB_DIR),
@@ -351,10 +401,10 @@ private fun CatalogGrid(st: CatalogState.Loaded, aspect: Float, onSend: (Picture
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     } else LazyVerticalGrid(
-        columns = GridCells.Fixed(4),
+        columns = GridCells.Fixed(layout.columns),
         contentPadding = PaddingValues(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
+        verticalArrangement = Arrangement.spacedBy(layout.gap.dp),
     ) {
         items(st.items, key = { it.id }) { p -> PictureCard(p, aspect) { onSend(p) } }
     }
