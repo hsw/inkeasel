@@ -18,13 +18,13 @@ class CatalogCacheTest {
     private val b = Picture("cma:2", "Hills", "", "https://example.org/b-web.jpg", "https://example.org/b-print.jpg")
 
     @Test
-    fun `encode and decode round trip`() {
+    fun encodeDecode_roundTrip() {
         val c = CachedCatalog(1_700_000_000_000L, listOf(a, b))
         assertEquals(c, CatalogCache.decode(CatalogCache.encode(c)))
     }
 
     @Test
-    fun `corrupt or foreign JSON reads as no cache`() {
+    fun corruptOrForeignJson_noCache() {
         assertNull(CatalogCache.decode(""))
         assertNull(CatalogCache.decode("{\"savedAt\": 1, \"items\": [")) // cut off mid-write
         assertNull(CatalogCache.decode("[1, 2]"))
@@ -32,14 +32,14 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `missing savedAt or items reads as no cache`() {
+    fun missingSavedAtOrItems_noCache() {
         val item = "{\"id\":\"x\",\"thumbUrl\":\"t\",\"fullUrl\":\"f\"}"
         assertNull(CatalogCache.decode("{\"items\": [$item]}"))
         assertNull(CatalogCache.decode("{\"savedAt\": 5}"))
     }
 
     @Test
-    fun `an item not as encode writes it reads as no cache`() {
+    fun itemNotAsEncodeWritesIt_noCache() {
         val good = "{\"id\":\"x\",\"title\":\"\",\"credit\":\"\",\"thumbUrl\":\"t\",\"fullUrl\":\"f\"}"
         assertEquals(CachedCatalog(5, listOf(Picture("x", "", "", "t", "f"))), CatalogCache.decode("{\"savedAt\": 5, \"items\": [$good]}"))
         assertNull(CatalogCache.decode("{\"savedAt\": 5, \"items\": [$good, {\"id\": \"y\", \"fullUrl\": \"f\"}]}"))
@@ -47,13 +47,13 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `an empty list reads as no cache`() {
+    fun emptyList_noCache() {
         assertNull(CatalogCache.decode("{\"savedAt\": 5, \"items\": []}"))
         assertNull(CatalogCache.decode(CatalogCache.encode(CachedCatalog(5, emptyList()))))
     }
 
     @Test
-    fun `write then read per source`() = runTest {
+    fun writeThenRead_perSource() = runTest {
         val cache = CatalogCache(File(tmp.root, "catalog")) // created on the first write
         assertNull(cache.read("cma"))
         cache.write("cma", listOf(a, b), 100)
@@ -67,7 +67,7 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `an empty result does not replace a non-empty cache`() = runTest {
+    fun emptyResult_doesNotReplaceANonEmptyCache() = runTest {
         val cache = CatalogCache(tmp.root)
         cache.write("cma", listOf(a), 100)
         cache.write("cma", emptyList(), 200)
@@ -77,7 +77,7 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `a corrupt file reads as no cache and is replaced by the next good list`() = runTest {
+    fun corruptFile_noCache_replacedByTheNextGoodList() = runTest {
         val cache = CatalogCache(tmp.root)
         File(tmp.root, "cma.json").writeText("{garbage")
         assertNull(cache.read("cma"))
@@ -86,7 +86,7 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `a failed write keeps the saved list and leaves no temporary file`() = runTest {
+    fun failedWrite_keepsTheSavedList_noTemporaryFile() = runTest {
         val dir = File(tmp.root, "catalog")
         val cache = CatalogCache(dir)
         cache.write("cma", listOf(a), 100)
@@ -105,7 +105,7 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `a failed load shows the saved list with the reason, or the failure`() {
+    fun failedLoad_showsTheSavedListWithTheReason_orTheFailure() {
         val reason = Txt(R.string.catalog_err_timeout)
         assertEquals(
             CatalogState.Loaded(listOf(a), staleSince = 100, staleReason = reason),
@@ -115,7 +115,7 @@ class CatalogCacheTest {
     }
 
     @Test
-    fun `a retry keeps a stale list on screen, anything else shows loading`() {
+    fun retry_keepsAStaleList_otherwiseLoading() {
         val stale = CatalogState.Loaded(listOf(a), staleSince = 100, staleReason = Txt(R.string.catalog_err_offline))
         assertEquals(stale.copy(retrying = true), CatalogState.reloading(stale))
         assertEquals(CatalogState.Loading, CatalogState.reloading(null))

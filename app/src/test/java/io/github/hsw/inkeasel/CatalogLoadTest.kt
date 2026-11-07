@@ -33,14 +33,14 @@ class CatalogLoadTest {
     // --- loadCatalog ---
 
     @Test
-    fun `a remote success is shown and saved`() = runTest {
+    fun remoteSuccess_shownAndSaved() = runTest {
         val cache = CatalogCache(tmp.root)
         assertEquals(CatalogState.Loaded(pics(3)), loadCatalog(Fake { Listing(pics(3)) }, cache, { 100 }))
         assertEquals(CachedCatalog(100, pics(3)), cache.read("fake"))
     }
 
     @Test
-    fun `the local tab is never saved nor read`() = runTest {
+    fun localTab_neverSavedNorRead() = runTest {
         val cache = CatalogCache(tmp.root)
         cache.write("fake", pics(2), 50) // even if a file of that name were there
         assertEquals(CatalogState.Loaded(pics(1)), loadCatalog(Fake { Listing(pics(1)) }, null, { 100 }))
@@ -52,7 +52,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `an empty answer is shown but never replaces the saved list`() = runTest {
+    fun emptyAnswer_shown_neverReplacesTheSavedList() = runTest {
         val cache = CatalogCache(tmp.root)
         cache.write("fake", pics(2), 50)
         assertEquals(CatalogState.Loaded(emptyList()), loadCatalog(Fake { Listing(emptyList()) }, cache, { 100 }))
@@ -60,7 +60,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `a failure shows the saved list with the reason, or the failure`() = runTest {
+    fun failure_showsTheSavedListWithTheReason_orTheFailure() = runTest {
         val cache = CatalogCache(tmp.root)
         val down = Fake { throw UnknownHostException("example.org") }
         assertEquals(CatalogState.Failed(offline), loadCatalog(down, cache, { 100 }))
@@ -72,7 +72,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `a partial list never shrinks the saved one`() = runTest {
+    fun partialList_neverShrinksTheSavedOne() = runTest {
         val cache = CatalogCache(tmp.root)
         cache.write("fake", pics(5), 50)
         val partial = loadCatalog(Fake { Listing(pics(3), complete = false) }, cache, { 100 })
@@ -85,7 +85,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `a partial list is saved when nothing is`() = runTest {
+    fun partialList_savedWhenNothingIs() = runTest {
         val cache = CatalogCache(tmp.root)
         loadCatalog(Fake { Listing(pics(3), complete = false) }, cache, { 100 })
         assertEquals(CachedCatalog(100, pics(3)), cache.read("fake"))
@@ -94,7 +94,7 @@ class CatalogLoadTest {
     // --- needsLoad ---
 
     @Test
-    fun `a tab reloads on focus when never loaded, failed or stale, not while it retries`() {
+    fun needsLoad_neverLoadedFailedOrStale_notWhileRetrying() {
         val stale = CatalogState.Loaded(pics(1), staleSince = 50, staleReason = offline)
         assertTrue((null as CatalogState?).needsLoad())
         assertTrue(CatalogState.Failed(offline).needsLoad())
@@ -121,7 +121,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `pages until the source has no next one`() = runTest {
+    fun pages_untilNoNextOne() = runTest {
         val p = Pages(perPage = 10, last = 2)
         val got = collectPages(maxPages = 3, target = 120, deadlineMs = 30_000, fetch = p::fetch)
         assertEquals(20, got.items.size)
@@ -130,7 +130,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `stops at the page limit or the target`() = runTest {
+    fun pages_stopAtTheLimitOrTheTarget() = runTest {
         val byPages = Pages(perPage = 10)
         assertEquals(30, collectPages(3, 120, 30_000, fetch = byPages::fetch).items.size)
         assertEquals(3, byPages.asked.size)
@@ -142,7 +142,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `a failed later page keeps what came, marked partial`() = runTest {
+    fun failedLaterPage_keepsWhatCame_partial() = runTest {
         val logs = mutableListOf<String>()
         val got = collectPages(3, 120, 30_000, log = { logs += it }, fetch = Pages(perPage = 10, failOn = 2)::fetch)
         assertEquals(10, got.items.size)
@@ -151,7 +151,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `a failure with nothing collected is rethrown`() = runTest {
+    fun failureWithNothingCollected_rethrown() = runTest {
         try {
             collectPages(3, 120, 30_000, fetch = Pages(perPage = 10, failOn = 1)::fetch)
             fail("no exception")
@@ -167,7 +167,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `the deadline returns what came, marked partial`() = runTest {
+    fun deadline_returnsWhatCame_partial() = runTest {
         val got = collectPages(3, 120, 30_000, fetch = Pages(perPage = 10, delayMs = 12_000)::fetch)
         assertEquals(20, got.items.size) // two pages by 24 s, the third would end at 36 s
         assertFalse(got.complete)
@@ -175,7 +175,7 @@ class CatalogLoadTest {
     }
 
     @Test
-    fun `the deadline with nothing collected is a timeout`() = runTest {
+    fun deadlineWithNothingCollected_timeout() = runTest {
         try {
             collectPages(3, 120, 30_000, fetch = Pages(perPage = 10, delayMs = 31_000)::fetch)
             fail("no exception")

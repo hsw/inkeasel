@@ -23,7 +23,7 @@ class TxtTest {
     }
 
     @Test
-    fun `equal by id and args`() {
+    fun equal_byIdAndArgs() {
         assertEquals(Txt(R.string.retry), Txt(R.string.retry))
         assertEquals(Txt(R.string.header_frame, listOf("NM000001")), Txt(R.string.header_frame, "NM000001"))
         assertNotEquals(Txt(R.string.retry), Txt(R.string.close))
@@ -32,7 +32,7 @@ class TxtTest {
     }
 
     @Test
-    fun `equal with nested args`() {
+    fun equal_withNestedArgs() {
         val a = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
         val b = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
         assertEquals(a, b)
@@ -41,38 +41,38 @@ class TxtTest {
     }
 
     @Test
-    fun `vararg constructor equals the list one`() {
+    fun varargConstructor_equalsTheListOne() {
         assertEquals(Txt(R.string.retry, emptyList()), Txt(R.string.retry))
         assertEquals(Txt(R.string.frame_signal, listOf(-60)), Txt(R.string.frame_signal, -60))
     }
 
     @Test
-    fun `format without args`() {
+    fun format_withoutArgs() {
         assertEquals("Retry", Txt(R.string.retry).format(::lookup))
     }
 
     @Test
-    fun `format with string and int args`() {
+    fun format_withStringAndIntArgs() {
         assertEquals("Frame: NM000001", Txt(R.string.header_frame, "NM000001").format(::lookup))
         assertEquals("signal -60 dBm", Txt(R.string.frame_signal, -60).format(::lookup))
     }
 
     @Test
-    fun `nested args are resolved first`() {
+    fun nestedArgs_resolvedFirst() {
         val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
         assertEquals("Frame NM000001: not verified on hardware", t.format(::lookup))
         assertEquals(listOf(R.string.frame_unverified, R.string.frame_toast_unverified), calls)
     }
 
     @Test
-    fun `deeply nested args`() {
+    fun deeplyNestedArgs() {
         val inner = Txt(R.string.header_frame, "NM000001")
         val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_toast_unverified, "x", inner))
         assertEquals("Frame NM000001: Frame x: Frame: NM000001", t.format(::lookup))
     }
 
     @Test
-    fun `TxtException carries the text and the cause`() {
+    fun txtException_carriesTheTextAndTheCause() {
         val cause = RuntimeException("boom")
         val e = TxtException(Txt(R.string.header_frame, "NM000001"), cause)
         assertEquals(Txt(R.string.header_frame, "NM000001"), e.txt)

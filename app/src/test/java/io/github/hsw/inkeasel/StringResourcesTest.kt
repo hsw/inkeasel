@@ -43,21 +43,21 @@ class StringResourcesTest {
     private val ru = table("values-ru")
 
     @Test
-    fun `both locales have the same translatable keys`() {
+    fun bothLocales_haveTheSameTranslatableKeys() {
         val translatable = en.filterValues { it.translatable }.keys
         assertEquals(emptySet<String>(), translatable - ru.keys) // missing in Russian
         assertEquals(emptySet<String>(), ru.keys - translatable) // not in English, or not to be translated
     }
 
     @Test
-    fun `placeholders match per key`() {
+    fun placeholders_matchPerKey() {
         val mismatched = ru.keys.filter { signature(en.getValue(it).text) != signature(ru.getValue(it).text) }
             .map { "$it: ${signature(en.getValue(it).text)} vs ${signature(ru.getValue(it).text)}" }
         assertEquals(emptyList<String>(), mismatched)
     }
 
     @Test
-    fun `placeholders are numbered and formats are known`() {
+    fun placeholders_numbered_knownFormats() {
         for ((name, e) in en + ru.mapKeys { "ru/${it.key}" }) {
             for (m in placeholder.findAll(e.text)) {
                 val conv = m.groupValues[3]
@@ -69,7 +69,7 @@ class StringResourcesTest {
     }
 
     @Test
-    fun `the signature reader sees what it should`() {
+    fun signatureReader_seesWhatItShould() {
         assertEquals(listOf("1:s", "2:d"), signature("%2\$d of %1\$s, 100 %%"))
         assertEquals(listOf("1:x"), signature("code 0x%1\$02x"))
         assertEquals(emptyList<String>(), signature("battery 50 %%"))
