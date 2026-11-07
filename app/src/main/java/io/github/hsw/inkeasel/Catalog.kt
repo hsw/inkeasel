@@ -103,6 +103,9 @@ class PageBudget(private val maxPages: Int, private val target: Int) {
         hasNext && pagesDone < maxPages && collected < target
 }
 
+/** Source text as one line: line breaks and runs of whitespace (the Cleveland API sends titles ending in "\r\n") become one space. */
+fun oneLine(s: String): String = s.trim().replace(Regex("\\s+"), " ")
+
 /** Landscape orientation that survives the crop to a landscape frame (e.g. 1024×600, 800×480) without losing most of the picture. */
 private fun wide(w: Int, h: Int) = h > 0 && w.toFloat() / h in 1.25f..2.2f
 
@@ -130,12 +133,12 @@ object ClevelandPaintings : Source {
             val full = images.optJSONObject("print")?.optString("url")?.takeIf { it.isNotEmpty() } ?: web.getString("url")
             val creators = a.optJSONArray("creators")
             val author = if (creators != null && creators.length() > 0) {
-                creators.getJSONObject(0).optString("description").substringBefore(" (")
+                oneLine(creators.getJSONObject(0).optString("description").substringBefore(" ("))
             } else ""
-            val date = a.optString("creation_date")
+            val date = oneLine(a.optString("creation_date"))
             Picture(
                 id = "cma:${a.get("id")}",
-                title = a.optString("title"),
+                title = oneLine(a.optString("title")),
                 credit = listOf(author, date).filter { it.isNotBlank() }.joinToString(", "),
                 thumbUrl = web.getString("url"),
                 fullUrl = full,
@@ -194,7 +197,7 @@ object CommonsLandscapes : Source {
                 if (!wide(info.optInt("width"), info.optInt("height"))) continue
                 val full = info.optString("thumburl").ifEmpty { info.getString("url") }
                 val meta = info.optJSONObject("extmetadata")
-                fun m(k: String) = meta?.optJSONObject(k)?.optString("value").orEmpty().replace(Regex("<[^>]*>"), "").trim()
+                fun m(k: String) = meta?.optJSONObject(k)?.optString("value").orEmpty().replace(Regex("<[^>]*>"), "").let(::oneLine)
                 val title = m("ObjectName").ifEmpty { p.getString("title").removePrefix("File:").substringBeforeLast('.') }
                 out += Picture(
                     id = "commons:${p.optInt("pageid")}",
