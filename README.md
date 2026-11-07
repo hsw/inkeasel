@@ -302,8 +302,11 @@ How it works:
 - **Switched off** in the settings: what plays is still followed, but no poster is scheduled or uploaded
   (`poster off: not scheduled` in the log). Switching off cancels a pending start and reverts a poster on
   the frame at once; a poster whose upload was already under way is reverted at once when it lands, and
-  one still queued in `UploadService` is dropped. Reverts work as usual. Switching on acts on what plays
-  now: a film already playing gets its poster 60 s after the switch.
+  one still queued in `UploadService` is dropped. Reverts work as usual; if the process restarts before the
+  switch's revert ran, the poster is reverted once the listener has reported the sessions again, even while
+  the film plays. Switching on acts on what plays now: a film already playing gets its poster 60 s after
+  the switch; a revert still queued in `UploadService` while its poster is on the frame is dropped (as when
+  the film resumes before a queued revert), and one already uploading is followed by the poster 60 s later.
 - **Default picture = the last manual upload** (catalog tap or `UploadService` without `auto`). There is
   no separate setting. Until the first manual upload there is no default, so a poster stays on the frame
   after playback ends: do one manual upload (catalog tap or the adb command below) after installing.
@@ -366,8 +369,9 @@ Code:
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
-  manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`), or if a
-  poster's turn comes while the poster is switched off; it stops
+  manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`), if a
+  poster's turn comes while the poster is switched off, or if a revert's turn comes while the playing film's
+  poster is on the frame; it stops
   with `stopSelfResult`, so a start arriving as it finishes is not lost, and a request it never finishes
   is reported as failed; it waits for the frame to finish drawing before the next upload (`DrawGate.kt`).
   Without the Bluetooth permissions it is not started: an `auto` upload is reported as failed at once

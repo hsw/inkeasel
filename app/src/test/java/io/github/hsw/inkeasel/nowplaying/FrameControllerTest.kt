@@ -347,6 +347,102 @@ class FrameControllerTest {
     }
 
     @Test
+    fun switchedOnAgainWhileTheRevertIsQueued_revertDropped_posterStays() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.service = true
+        r.switchPoster(false) // the revert waits in the service's queue
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.switchPoster(true) // the film still plays and its poster is still on the frame
+        assertNull(r.startNext()) // the revert is dropped before upload
+        assertEquals(listOf(defaultKey), r.dropped)
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys()) // no default over the poster, no poster again
+        assertEquals(k1, r.c.onFrame)
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // nothing left pending
+    }
+
+    @Test
+    fun switchedOnAgainWhileTheRevertUploads_posterOnceAfterItLands() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.service = true
+        r.switchPoster(false)
+        assertEquals(defaultKey, r.startNext()) // the revert is already uploading: it cannot be stopped
+        r.switchPoster(true)
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys()) // the poster is still on the frame: nothing armed
+        r.complete() // the default lands over the playing film
+        assertEquals(defaultKey, r.c.onFrame)
+        r.advance(59)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.advance(1)
+        assertEquals(listOf(k1, defaultKey, k1), r.keys()) // its poster comes back once
+        assertEquals(k1, r.startNext())
+        r.complete()
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey, k1), r.keys())
+        assertEquals(k1, r.c.onFrame)
+    }
+
+    @Test
+    fun filmResumedWhileTheRevertIsQueued_revertDropped() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.service = true
+        r.stop()
+        r.advance(60) // the revert waits in the service's queue
+        r.play() // resumed: its poster is still on the frame
+        assertNull(r.startNext())
+        assertEquals(listOf(defaultKey), r.dropped)
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        assertEquals(k1, r.c.onFrame)
+    }
+
+    @Test
+    fun restartAfterASwitchOffRevertWasLost_syncedWhileItPlays_reverts() = runTest {
+        val r = Rig(this, onFrame = k1) // switched off, then the process died before the revert ran
+        r.poster = false
+        r.play() // the snapshot of the session comes before the sync call
+        r.c.onSessionsSynced(listOf(Playing(video, k1, "Film", Art.Url(k1), State.PLAYING)))
+        assertEquals(listOf(defaultKey), r.keys()) // at once, as the switch would have
+        assertEquals(defaultKey, r.c.onFrame)
+        r.advance(600)
+        assertEquals(listOf(defaultKey), r.keys())
+    }
+
+    @Test
+    fun posterOff_reconnectWhileARevertRetryIsPending_retryKept() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.result = false
+        r.switchPoster(false) // the revert fails: a retry is armed for 60 s later
+        r.c.onSessionsSynced(listOf(Playing(video, k1, "Film", Art.Url(k1), State.PLAYING)))
+        assertEquals(listOf(k1, defaultKey), r.keys()) // the retry timer stands; no extra request
+        r.result = true
+        r.advance(60)
+        assertEquals(listOf(k1, defaultKey, defaultKey), r.keys())
+        assertEquals(defaultKey, r.c.onFrame)
+    }
+
+    @Test
+    fun isStale_revertWhileThePlayingFilmsPosterIsOnTheFrame() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        val now = r.c.manualUploads
+        assertTrue(r.c.isStale(auto = true, stamp = now, key = defaultKey))
+        r.poster = false
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = defaultKey)) // switched off: the revert is due
+        r.poster = true
+        r.play(k2) // another film: its own start follows the default
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = defaultKey))
+        r.play(k1)
+        r.pause()
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = defaultKey)) // ended: the revert is due
+    }
+
+    @Test
     fun switchedOffAfterTheFilmStopped_replacesThePendingRevert() = runTest {
         val r = Rig(this)
         r.posterUp(k1)

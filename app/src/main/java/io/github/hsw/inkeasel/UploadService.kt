@@ -52,7 +52,8 @@ import java.io.File
  * request carries the controller's `stamp` ([FrameController.manualUploads] when it was decided); if a manual
  * upload succeeded since, it is dropped before upload and reported as failed, so a revert or a poster queued
  * behind a manual upload never covers the user's pick. A poster still queued when the poster is switched off
- * in the settings is dropped the same way.
+ * in the settings is dropped the same way, and so is a revert still queued when the film playing has its
+ * poster on the frame again (the switch went back on, or the film resumed).
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): every request is refused at
  * once, before Bluetooth is touched ([refuseNoFrame]). Without the Bluetooth permissions ([BlePermissions])
@@ -198,11 +199,12 @@ class UploadService : Service() {
     }
 
     /**
-     * The next request to upload; an automatic one decided before a later manual upload, or a poster while the
-     * poster is switched off, is dropped ([FrameController.isStale]).
+     * The next request to upload; an automatic one decided before a later manual upload, a poster while the
+     * poster is switched off, or a revert while the playing film's poster is on the frame, is dropped
+     * ([FrameController.isStale]).
      */
     private fun next(): Req? = queue.poll(stale = { controller.isStale(it.auto, it.stamp, it.key) }) { dropped ->
-        Log.i(TAG, "auto upload dropped (a manual upload came after it, or the poster is off): ${dropped.source.title} (key=${dropped.key})")
+        Log.i(TAG, "auto upload dropped (a manual upload came after it, the poster is off, or its poster plays again): ${dropped.source.title} (key=${dropped.key})")
         report(dropped, ok = false)
     }
 

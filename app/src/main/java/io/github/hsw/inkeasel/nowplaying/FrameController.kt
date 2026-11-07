@@ -56,9 +56,15 @@ fun interface Uploader {
  *   events are still tracked, so it always knows what plays. Switching it off ([onPosterSwitched]) cancels a
  *   pending start and reverts a poster on the frame at once; a poster that lands after that (its upload was
  *   already under way) is reverted at once too; an automatic poster still queued is dropped by the uploader
- *   ([isStale]). Reverts work as usual while it is off. Switching it on acts on what plays at once: a film
- *   already playing cancels a pending revert (as its PLAYING would) and, unless its poster is on the frame,
- *   gets it [START_DELAY] after the switch (its PLAYING is not reported again).
+ *   ([isStale]). Reverts work as usual while it is off. If the process restarts before that revert ran, the
+ *   restored poster is reverted at once when the listener has reported every session ([onSessionsSynced]).
+ *   Switching it on acts on what plays at once: a film already playing cancels a pending revert (as its
+ *   PLAYING would) and, unless its poster is on the frame, gets it [START_DELAY] after the switch (its PLAYING
+ *   is not reported again).
+ * - A revert still queued in the uploader is dropped ([isStale]) if, by its turn, the poster is on and the
+ *   film playing has its poster on the frame (the switch went back on, or the film resumed): it would only
+ *   cover that poster for a while. A revert already uploading cannot be stopped; when it lands, the film's
+ *   start timer brings the poster back ([reconcile]).
  *
  * Thread-safe: every entry point and every timer body runs under one lock.
  */
@@ -95,11 +101,21 @@ class FrameController(
 
     /**
      * True if the request is automatic ([auto]) and either a manual upload succeeded after it was decided
-     * ([stamp] = its [manualUploads] when requested) or it is a poster ([key], see [isAuto]) and the poster is
-     * switched off by now: the uploader must drop it and report it as failed. A manual request is never stale.
+     * ([stamp] = its [manualUploads] when requested), or it is a poster ([key], see [isAuto]) and the poster is
+     * switched off by now, or it is a revert (a [DEFAULT_PREFIX] key) and, with the poster switched on, the
+     * film playing now has its poster on the frame (the switch went back on or the film resumed while the
+     * revert waited: it would only cover that poster until the film's start timer brings it back). The
+     * uploader must drop it and report it as failed. A manual request is never stale.
      */
     fun isStale(auto: Boolean, stamp: Long, key: String?): Boolean = auto && synchronized(lock) {
-        stamp < manualCount || (isAuto(key) && !posterEnabled())
+        stamp < manualCount || (isAuto(key) && !posterEnabled()) ||
+            (key?.startsWith(DEFAULT_PREFIX) == true && playingPosterOnFrame())
+    }
+
+    /** The poster is switched on and the film playing now ([current]) has its poster on the frame. */
+    private fun playingPosterOnFrame(): Boolean {
+        val cur = current ?: return false
+        return posterEnabled() && cur.state == Playing.State.PLAYING && cur.key != null && cur.key == onFrame
     }
 
     /**
@@ -137,7 +153,9 @@ class FrameController(
      * that session's new identity, also when its snapshot was a seek or a rebuffer and reported nothing);
      * with none (it stopped or went away while the listener was disconnected, so no end was reported), it
      * counts as ended. If nothing plays and an auto poster is on the frame (restored after a process restart
-     * or a reboot that ended the film), revert it.
+     * or a reboot that ended the film), revert it. If the poster is switched off and an auto poster is still
+     * on the frame with no revert timer running (the switch's revert was lost with the process, and a film
+     * that still plays reports no end), revert it at once, as the switch would have.
      */
     fun onSessionsSynced(active: List<Playing>) = synchronized(lock) {
         val cur = current
@@ -146,10 +164,11 @@ class FrameController(
                 log("${cur.pkg} no longer plays after the listener reconnected")
             }
             ended(cur.pkg, cur.session, null, active)
-            return@synchronized
+        } else {
+            revertFailures = 0
+            scheduleRevert()
         }
-        revertFailures = 0
-        scheduleRevert()
+        if (!posterEnabled() && revertJob == null) revertNow("default (poster switched off, a poster still on the frame)")
     }
 
     /** The outcome of an [Uploader.upload] with [key]. */
