@@ -224,17 +224,21 @@ class MainActivity : ComponentActivity() {
      */
     private var blocked by mutableStateOf(false)
 
-    private val askPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        permitted = hasPermissions()
-        blocked = BlePermissions.blocked(permitted) { p -> shouldShowRequestPermissionRationale(p) }
-        Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
+    private val askPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        permitted = BlePermissions.granted(this)
+        if (result.isEmpty()) { // cancelled (another request was running): nothing was answered
+            Log.i(TAG, "BLE permission request cancelled: granted=$permitted")
+        } else {
+            val rationale = { p: String -> shouldShowRequestPermissionRationale(p) }
+            BlePermissions.noteDenial(this, rationale)
+            blocked = BlePermissions.blocked(BlePermissions.all.toList(), permitted, BlePermissions.deniedBefore(this), rationale)
+            Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
+        }
         sendPendingShare()
     }
 
     /** A shared picture that waits for the permissions and a frame ([ShareActivity]). */
     private val pendingShare by lazy { PendingShare(this) }
-
-    private fun hasPermissions() = BlePermissions.granted(this)
 
     /** Ask for the permissions, or open App info where the system no longer asks. */
     private fun requestPermissions() {
@@ -250,7 +254,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
-        permitted = hasPermissions()
+        permitted = BlePermissions.granted(this)
         if (!permitted) askPermissions.launch(BlePermissions.all)
         // a fresh start without a chosen frame opens the frame settings; cancelling them leaves the catalog
         if (savedInstanceState == null && vm.selected == null) {
@@ -272,7 +276,7 @@ class MainActivity : ComponentActivity() {
                             Log.i(TAG, "no frame selected: upload of ${p.title} refused")
                             Toast.makeText(this, R.string.no_frame, Toast.LENGTH_SHORT).show()
                         }
-                        hasPermissions() -> sendToFrame(p)
+                        BlePermissions.granted(this) -> sendToFrame(p)
                         else -> requestPermissions()
                     }
                 },
@@ -308,7 +312,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) || hasPermissions()) return
+        if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) || BlePermissions.granted(this)) return
         vm.openSettings()
         if (!blocked) askPermissions.launch(BlePermissions.all)
     }
@@ -317,7 +321,7 @@ class MainActivity : ComponentActivity() {
     // Permissions may also have been granted from the system settings meanwhile.
     override fun onResume() {
         super.onResume()
-        permitted = hasPermissions()
+        permitted = BlePermissions.granted(this)
         if (permitted) blocked = false
         vm.refreshLocal()
         sendPendingShare()

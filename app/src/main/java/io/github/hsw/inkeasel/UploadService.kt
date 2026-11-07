@@ -55,7 +55,9 @@ import java.io.File
  * in the settings is dropped the same way.
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): every request is refused at
- * once, before Bluetooth is touched ([refuseNoFrame]). A picture is rendered in the chosen frame's format
+ * once, before Bluetooth is touched ([refuseNoFrame]). Without the Bluetooth permissions ([BlePermissions])
+ * it is not started at all: the app asks for them before a manual upload, and [autoUploader] reports an
+ * automatic one as failed. A picture is rendered in the chosen frame's format
  * ([FrameFormats]: size, inks, packing).
  *
  * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]): the worker waits
@@ -287,9 +289,16 @@ class UploadService : Service() {
 
         /**
          * The production [Uploader] of the `FrameController`: starts this service with `auto=true`, `key` and
-         * `stamp` (called under the controller's lock, so the stamp matches the decision).
+         * `stamp` (called under the controller's lock, so the stamp matches the decision). Without the Bluetooth
+         * permissions it reports the upload as failed at once instead.
          */
         fun autoUploader(context: Context) = Uploader { art, title, key ->
+            // without them the service could not even go foreground (connectedDevice type, Android 14+)
+            if (!BlePermissions.granted(context)) {
+                Log.w(TAG, "no Bluetooth permission: auto upload not started: $key")
+                FrameControllers.get(context).onUploadResult(key, false)
+                return@Uploader
+            }
             val i = Intent(context, UploadService::class.java)
                 .putExtra(EXTRA_AUTO, true)
                 .putExtra(EXTRA_KEY, key)

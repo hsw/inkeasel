@@ -27,9 +27,25 @@ object BlePermissions {
     /**
      * After a request came back denied: whether the system will no longer show its dialog ("Don't ask again",
      * or a second denial on Android 11+), so asking again silently does nothing. [rationale] is
-     * `shouldShowRequestPermissionRationale` of each permission, which turns false in that state.
+     * `shouldShowRequestPermissionRationale` of each of [permissions], which turns false in that state, but
+     * is also false before the first denial: a dialog dismissed without an answer (Back, a tap outside) leaves
+     * it false. So it counts only once a denial has been seen ([deniedBefore]: some rationale was true after an
+     * earlier request, see [noteDenial]). Pure.
      */
-    fun blocked(granted: Boolean, rationale: (String) -> Boolean): Boolean = !granted && all.none(rationale)
+    fun blocked(permissions: List<String>, granted: Boolean, deniedBefore: Boolean, rationale: (String) -> Boolean): Boolean =
+        !granted && deniedBefore && permissions.none(rationale)
+
+    /** Whether a denial was ever seen ([noteDenial]); kept across starts, since the system remembers it too. */
+    fun deniedBefore(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_DENIED, false)
+
+    /** Remember a denial once some rationale is true after a request ([blocked] needs it later). */
+    fun noteDenial(ctx: Context, rationale: (String) -> Boolean) {
+        if (!deniedBefore(ctx) && all.any(rationale)) prefs(ctx).edit().putBoolean(KEY_DENIED, true).apply()
+    }
+
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences("permissions", Context.MODE_PRIVATE)
+
+    private const val KEY_DENIED = "bleDenied"
 }
 
 /** Open this app's App info screen (permissions, restricted settings); `false` if the device has none. */
