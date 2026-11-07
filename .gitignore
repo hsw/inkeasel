@@ -4,3 +4,6 @@ local.properties
 *.iml
 .idea/
 CLAUDE.local.md
+
+# implementation plans stay local
+docs/plans/
