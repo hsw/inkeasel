@@ -108,10 +108,6 @@ sealed interface CatalogState {
     }
 }
 
-/** A tab that loads again when it gets focus: never loaded, failed, or showing a saved list. */
-private fun CatalogState?.needsLoad(): Boolean =
-    this == null || this is CatalogState.Failed || (this is CatalogState.Loaded && staleSince != null && !retrying)
-
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val frames = FrameStore(app)
 
@@ -133,7 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val loads = mutableMapOf<Int, Job>()
 
     /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
-    private val localTab = sources.indexOfFirst { it is LocalImages }
+    val localTab = sources.indexOfFirst { it is LocalImages }
     private var localReload: Job? = null
     private val localWatcher: FileObserver? = (sources.getOrNull(localTab) as? LocalImages)?.let { src ->
         val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO or
@@ -173,7 +169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localReload = viewModelScope.launch {
             delay(300)
             val fresh = try {
-                CatalogState.Loaded(sources[localTab].load())
+                CatalogState.Loaded(sources[localTab].load().items)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -188,25 +184,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Load tab [i] (again). A remote source's good list is saved; when it fails, its saved list is shown with
-     * a note instead of the bare error. The local folder is not cached (it is read from disk anyway).
+     * Load tab [i] (again), unless it is loading already ([loadCatalog]: a remote source's good list is saved,
+     * and shown with a note when the source fails; the local folder is not cached).
      */
     fun load(i: Int) {
         if (loads[i]?.isActive == true) return
         val src = sources[i]
-        val cached = i != localTab
         catalogs[i] = CatalogState.reloading(catalogs[i])
         loads[i] = viewModelScope.launch {
-            catalogs[i] = try {
-                val items = src.load()
-                if (cached) cache.write(src.id, items, System.currentTimeMillis())
-                CatalogState.Loaded(items)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "catalog ${src.id} failed: $e")
-                CatalogState.failed(CatalogError.of(e), if (cached) cache.read(src.id) else null)
-            }
+            catalogs[i] = loadCatalog(src, cache.takeIf { i != localTab }, System::currentTimeMillis) { Log.w(TAG, it) }
         }
     }
 
@@ -360,7 +346,7 @@ fun App(
                         }
                         is CatalogState.Loaded -> Column {
                             if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
-                            CatalogGrid(st, aspect, layout, onSend)
+                            CatalogGrid(st, aspect, layout, local = vm.tab == vm.localTab, onRetry = { vm.load(vm.tab) }, onSend)
                         }
                     }
                 }
@@ -447,13 +433,26 @@ private fun StaleNote(st: CatalogState.Loaded, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun CatalogGrid(st: CatalogState.Loaded, aspect: Float, layout: CatalogLayout, onSend: (Picture) -> Unit) {
-    if (st.items.isEmpty()) {
+private fun CatalogGrid(
+    st: CatalogState.Loaded,
+    aspect: Float,
+    layout: CatalogLayout,
+    local: Boolean,
+    onRetry: () -> Unit,
+    onSend: (Picture) -> Unit,
+) {
+    if (st.items.isEmpty() && local) {
         Text(
             stringResource(R.string.local_empty, LocalImages.ADB_DIR),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    } else if (st.items.isEmpty()) { // a remote source answered with nothing usable
+        Column {
+            Text(stringResource(R.string.catalog_empty))
+            Spacer(Modifier.height(12.dp))
+            Button(onClick = onRetry, modifier = Modifier.onTap(onRetry)) { Text(stringResource(R.string.retry)) }
+        }
     } else LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns),
         contentPadding = PaddingValues(vertical = 12.dp),

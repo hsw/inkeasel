@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel
 
 import android.app.Application
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -38,13 +39,19 @@ data class Picture(
         if (local) withContext(Dispatchers.IO) { File(fullUrl).readBytes() } else Http.bytes(fullUrl)
 }
 
+/**
+ * What a source returned: its pictures, and whether that is its whole list ([complete] false: cut short by a
+ * deadline or a failed later page, see [collectPages]).
+ */
+data class Listing(val items: List<Picture>, val complete: Boolean = true)
+
 interface Source {
     /** Stable key of the source, e.g. the [CatalogCache] file name; never shown. */
     val id: String
 
     /** The tab title. */
     val name: Txt
-    suspend fun load(): List<Picture>
+    suspend fun load(): Listing
 }
 
 /** A non-2xx HTTP answer. [message] stays `HTTP <code>: <url>`: a URL upload toasts it as is. */
@@ -94,13 +101,48 @@ object Http {
     }
 }
 
+/** One page of a paged source: its pictures and the token of the next page (`null`: the last one). */
+class Page(val items: List<Picture>, val next: String?)
+
 /**
- * When a paged source stops asking for more: after [maxPages] pages, once [target] pictures are collected,
- * or when the source has no next page.
+ * Collect the pages of a paged source: [fetch] gets one (`null` token: the first) until there is no next page,
+ * [maxPages] are in or [target] pictures are collected, all within [deadlineMs]. A list cut short is still
+ * shown, marked incomplete ([Listing.complete]): by the deadline, or by a failure on a later page once some
+ * pictures came. With nothing collected, the deadline is a [SocketTimeoutException] and a failure is rethrown.
+ * Pure: [log] is injected.
  */
-class PageBudget(private val maxPages: Int, private val target: Int) {
-    fun more(pagesDone: Int, collected: Int, hasNext: Boolean): Boolean =
-        hasNext && pagesDone < maxPages && collected < target
+suspend fun collectPages(
+    maxPages: Int,
+    target: Int,
+    deadlineMs: Long,
+    log: (String) -> Unit = {},
+    fetch: suspend (String?) -> Page,
+): Listing {
+    val out = mutableListOf<Picture>()
+    val complete = withTimeoutOrNull(deadlineMs) {
+        var next: String? = null
+        var pages = 0
+        do {
+            val page = try {
+                fetch(next)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (out.isEmpty()) throw e
+                log("page ${pages + 1} failed, ${out.size} pictures so far: $e")
+                return@withTimeoutOrNull false
+            }
+            out += page.items
+            pages++
+            next = page.next
+        } while (next != null && pages < maxPages && out.size < target)
+        true
+    }
+    if (complete == null) {
+        log("no full answer in ${deadlineMs / 1000} s, ${out.size} pictures so far")
+        if (out.isEmpty()) throw SocketTimeoutException("no answer in ${deadlineMs / 1000} s")
+    }
+    return Listing(out, complete == true)
 }
 
 /** Source text as one line: line breaks and runs of whitespace (the Cleveland API sends titles ending in "\r\n") become one space. */
@@ -114,7 +156,7 @@ object ClevelandPaintings : Source {
     override val id = "cma"
     override val name = Txt(R.string.tab_paintings)
 
-    override suspend fun load(): List<Picture> {
+    override suspend fun load(): Listing {
         val url = "https://openaccess-api.clevelandart.org/api/artworks/".toHttpUrl().newBuilder()
             .addQueryParameter("q", "landscape")
             .addQueryParameter("type", "Painting")
@@ -124,7 +166,7 @@ object ClevelandPaintings : Source {
             .addQueryParameter("fields", "id,title,creators,creation_date,images")
             .build().toString()
         val data = Http.json(url).getJSONArray("data")
-        return (0 until data.length()).mapNotNull { i ->
+        return Listing((0 until data.length()).mapNotNull { i ->
             val a = data.getJSONObject(i)
             val images = a.optJSONObject("images") ?: return@mapNotNull null
             val web = images.optJSONObject("web") ?: return@mapNotNull null
@@ -143,7 +185,7 @@ object ClevelandPaintings : Source {
                 thumbUrl = web.getString("url"),
                 fullUrl = full,
             )
-        }
+        })
     }
 }
 
@@ -155,62 +197,52 @@ object CommonsLandscapes : Source {
     private const val TAG = "CommonsLandscapes"
 
     // most featured landscapes are wide, so one page of 100 usually gives ~60–80 pictures
-    private val budget = PageBudget(maxPages = 3, target = 120)
+    private const val MAX_PAGES = 3
+    private const val TARGET = 120
 
     /** The whole load, all pages together; what came in by then is shown. */
     private const val DEADLINE_MS = 30_000L
 
-    override suspend fun load(): List<Picture> {
-        val out = mutableListOf<Picture>()
-        val done = withTimeoutOrNull(DEADLINE_MS) { loadPages(out) }
-        if (done == null) {
-            Log.w(TAG, "no full answer in ${DEADLINE_MS / 1000} s, ${out.size} pictures so far")
-            if (out.isEmpty()) throw SocketTimeoutException("no answer in ${DEADLINE_MS / 1000} s")
-        }
-        return out
-    }
+    override suspend fun load(): Listing =
+        collectPages(MAX_PAGES, TARGET, DEADLINE_MS, log = { Log.w(TAG, it) }, fetch = ::page)
 
-    private suspend fun loadPages(out: MutableList<Picture>) {
-        var cont: String? = null
-        var fetched = 0
-        do {
-            val b = "https://commons.wikimedia.org/w/api.php".toHttpUrl().newBuilder()
-                .addQueryParameter("action", "query")
-                .addQueryParameter("generator", "categorymembers")
-                .addQueryParameter("gcmtitle", "Category:Featured_pictures_of_landscapes")
-                .addQueryParameter("gcmtype", "file")
-                .addQueryParameter("gcmlimit", "100")
-                .addQueryParameter("gcmsort", "timestamp")
-                .addQueryParameter("gcmdir", "desc")
-                .addQueryParameter("prop", "imageinfo")
-                .addQueryParameter("iiprop", "url|size|extmetadata")
-                .addQueryParameter("iiextmetadatafilter", "ObjectName|Artist|LicenseShortName")
-                .addQueryParameter("iiurlwidth", "1920")
-                .addQueryParameter("format", "json")
-                .addQueryParameter("formatversion", "2")
-            cont?.let { b.addQueryParameter("gcmcontinue", it).addQueryParameter("continue", "gcmcontinue||") }
-            val root = Http.json(b.build().toString())
-            val pages = root.optJSONObject("query")?.optJSONArray("pages")
-            if (pages != null) for (i in 0 until pages.length()) {
-                val p = pages.getJSONObject(i)
-                val info = p.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
-                if (!wide(info.optInt("width"), info.optInt("height"))) continue
-                val full = info.optString("thumburl").ifEmpty { info.getString("url") }
-                val meta = info.optJSONObject("extmetadata")
-                fun m(k: String) = meta?.optJSONObject(k)?.optString("value").orEmpty().replace(Regex("<[^>]*>"), "").let(::oneLine)
-                val title = m("ObjectName").ifEmpty { p.getString("title").removePrefix("File:").substringBeforeLast('.') }
-                out += Picture(
-                    id = "commons:${p.optInt("pageid")}",
-                    title = title,
-                    credit = listOf(m("Artist"), m("LicenseShortName")).filter { it.isNotBlank() }.joinToString(", "),
-                    // Commons serves standard thumbnail widths; 500 px is plenty for a grid card
-                    thumbUrl = full.replace("/1920px-", "/500px-"),
-                    fullUrl = full,
-                )
-            }
-            fetched++
-            cont = root.optJSONObject("continue")?.optString("gcmcontinue")?.takeIf { it.isNotEmpty() }
-        } while (budget.more(fetched, out.size, cont != null))
+    private suspend fun page(cont: String?): Page {
+        val b = "https://commons.wikimedia.org/w/api.php".toHttpUrl().newBuilder()
+            .addQueryParameter("action", "query")
+            .addQueryParameter("generator", "categorymembers")
+            .addQueryParameter("gcmtitle", "Category:Featured_pictures_of_landscapes")
+            .addQueryParameter("gcmtype", "file")
+            .addQueryParameter("gcmlimit", "100")
+            .addQueryParameter("gcmsort", "timestamp")
+            .addQueryParameter("gcmdir", "desc")
+            .addQueryParameter("prop", "imageinfo")
+            .addQueryParameter("iiprop", "url|size|extmetadata")
+            .addQueryParameter("iiextmetadatafilter", "ObjectName|Artist|LicenseShortName")
+            .addQueryParameter("iiurlwidth", "1920")
+            .addQueryParameter("format", "json")
+            .addQueryParameter("formatversion", "2")
+        cont?.let { b.addQueryParameter("gcmcontinue", it).addQueryParameter("continue", "gcmcontinue||") }
+        val root = Http.json(b.build().toString())
+        val out = mutableListOf<Picture>()
+        val pages = root.optJSONObject("query")?.optJSONArray("pages")
+        if (pages != null) for (i in 0 until pages.length()) {
+            val p = pages.getJSONObject(i)
+            val info = p.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
+            if (!wide(info.optInt("width"), info.optInt("height"))) continue
+            val full = info.optString("thumburl").ifEmpty { info.getString("url") }
+            val meta = info.optJSONObject("extmetadata")
+            fun m(k: String) = meta?.optJSONObject(k)?.optString("value").orEmpty().replace(Regex("<[^>]*>"), "").let(::oneLine)
+            val title = m("ObjectName").ifEmpty { p.getString("title").removePrefix("File:").substringBeforeLast('.') }
+            out += Picture(
+                id = "commons:${p.optInt("pageid")}",
+                title = title,
+                credit = listOf(m("Artist"), m("LicenseShortName")).filter { it.isNotBlank() }.joinToString(", "),
+                // Commons serves standard thumbnail widths; 500 px is plenty for a grid card
+                thumbUrl = full.replace("/1920px-", "/500px-"),
+                fullUrl = full,
+            )
+        }
+        return Page(out, root.optJSONObject("continue")?.optString("gcmcontinue")?.takeIf { it.isNotEmpty() })
     }
 }
 
@@ -235,8 +267,8 @@ class LocalImages(private val app: Application) : Source {
     /** The on-device folder; created on first access so `adb push` always has a target. */
     fun dir(): File = File(app.getExternalFilesDir(null), "pictures").apply { mkdirs() }
 
-    override suspend fun load(): List<Picture> = withContext(Dispatchers.IO) {
-        dir().listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }
+    override suspend fun load(): Listing = withContext(Dispatchers.IO) {
+        Listing(dir().listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }
             ?.sortedByDescending { it.lastModified() }
             ?.map { f ->
                 Picture(
@@ -247,7 +279,7 @@ class LocalImages(private val app: Application) : Source {
                     fullUrl = f.absolutePath,
                     local = true,
                 )
-            } ?: emptyList()
+            } ?: emptyList())
     }
 }
 

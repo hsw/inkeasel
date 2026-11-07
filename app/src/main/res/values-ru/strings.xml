@@ -16,6 +16,7 @@
     <string name="retry">Повторить</string>
     <string name="catalog_stale">Сохранённый список от %1$s. %2$s</string>
     <string name="catalog_retrying">Повторная загрузка…</string>
+    <string name="catalog_empty">Источник не вернул ни одной картинки.</string>
     <string name="local_empty">Папка пуста. Скопируйте сюда картинки:\n%1$s\n(с компьютера: adb push файл.jpg \"&lt;эта папка&gt;\")</string>
     <string name="sending">Отправка на рамку…</string>
 
