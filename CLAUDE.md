@@ -2,7 +2,7 @@
 
 Android app (Kotlin, Compose; `androidx.tv.material3`) that uploads pictures and now-playing posters to an
 e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets and phones (touch via
-`Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/`.
+`Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/` (local, git-ignored).
 
 ## Build and test
 - `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug`

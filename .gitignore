@@ -7,3 +7,5 @@ CLAUDE.local.md
 
 # implementation plans stay local
 docs/plans/
+# deferred-work notes stay local
+docs/backlog/
