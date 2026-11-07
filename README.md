@@ -1,23 +1,91 @@
 # InkEasel
 
+[![CI](https://github.com/hsw/inkeasel/actions/workflows/ci.yml/badge.svg)](https://github.com/hsw/inkeasel/actions/workflows/ci.yml)
+
 Android TV app that uploads pictures to an e-paper frame over BLE: free paintings and photos from a
 built-in catalog, your own pictures, and the poster of whatever is playing. When a film plays, its poster
 goes to the frame; when playback ends, the frame returns to the last manually uploaded picture.
-Supported frames: NowMean (BLE service `0xFFBB`). Developed and tested on an NVIDIA Shield TV Pro 2019
-(Android 11).
+Made for a TV and its remote (D-pad); it also runs on tablets and phones, by touch and in any orientation,
+where a picture can be shared to the frame from a gallery. Developed and tested on an NVIDIA Shield TV Pro
+2019 (Android 11), the Android TV 14 emulator and an Android 15 tablet emulator.
 
 License: [Apache-2.0](LICENSE).
 
-Build and install (JDK 21 from Homebrew, Android SDK in `local.properties`):
+| Android TV | Tablet |
+|---|---|
+| ![The catalog on Android TV: the "Paintings" tab with four columns of cards](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
 
-    JAVA_HOME=<JDK 21> ./gradlew assembleDebug
-    adb connect <tv-ip>:5555
-    adb install -r app/build/outputs/apk/debug/app-debug.apk
-    adb shell pm grant io.github.hsw.inkeasel android.permission.ACCESS_FINE_LOCATION   # BLE scan on Android 11
+![Settings: the frame search and the "Permissions and features" section](docs/screenshots/settings.png)
 
-Unit tests (JVM, JUnit 4 + `kotlinx-coroutines-test`; same `JAVA_HOME` as above):
+## Supported frames
 
-    ./gradlew testDebugUnitTest
+NowMean e-paper frames (BLE service `0xFFBB`). The app reads the frame's colour type, panel and resolution
+from its advertisement and renders each picture for that panel:
+
+- **E6 (Spectra 6)**: verified on a real frame (1024×600); most other E6 sizes use the same layout at
+  another size and count as verified.
+- **E6** 1360×480, 1440×600 and 1200×1600, **E4** and **BWR**: implemented from the vendor app's formats,
+  not yet seen on a real frame; the settings say "not verified on hardware", and they can still be chosen.
+- **BW, BP, E7, BWY**, a rotated panel or panel type A: listed with the reason and not selectable.
+
+Details per resolution: "Choosing the frame" below. Other e-paper protocols are not supported yet.
+
+## Install
+
+Requirements: Android 8.0 or newer with Bluetooth LE; Android TV, a tablet or a phone.
+
+- **APK**: tagged versions are published on the
+  [Releases](https://github.com/hsw/inkeasel/releases) page as `inkeasel-<tag>.apk`, signed with the
+  release key. On a phone or tablet open the file and allow installs from that app when asked. On Android TV
+  install it from a computer with adb (enable Developer options → USB/network debugging on the TV first):
+
+      adb connect <tv-ip>:5555
+      adb install -r inkeasel-<tag>.apk
+
+- **From source** (JDK 21, Android SDK path in `local.properties`):
+
+      JAVA_HOME=<JDK 21> ./gradlew assembleDebug
+      adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+  Unit tests (JVM, JUnit 4 + `kotlinx-coroutines-test`; same `JAVA_HOME`):
+
+      ./gradlew testDebugUnitTest
+
+On the first start the settings open by themselves: allow Bluetooth, wait for the frame to appear in the
+list and select it.
+
+## Permissions
+
+- **Bluetooth** ("Nearby devices" on Android 12+, location on Android 11 and older, where the system also
+  wants location turned on for a BLE scan): needed to find the frame and send pictures. The app asks on
+  start and from **Settings**; if the system no longer shows its dialog, the settings name the path in App
+  info.
+- **Notification access** (optional, only for the now-playing poster): it lets the app read the
+  media sessions of other apps (title and artwork of what plays). The app does not read notifications. Grant
+  it from **Settings → Permissions and features → Grant access**:
+  - phones and tablets open the system screen for InkEasel; on Android 13+ an APK installed outside a store
+    may first need App info → ⋮ → "Allow restricted settings", and the section says so;
+  - Android TV 14 opens the list of apps with notification access: select InkEasel there;
+  - older Android TV builds (e.g. Android TV 11 on the Shield) have no such screen; the section shows the adb
+    command instead:
+
+        adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
+
+  The poster can be switched off in the same section without revoking the access.
+- **Internet**: the catalogs and the posters (see Privacy).
+
+## Privacy
+
+InkEasel has no account, no analytics, no ads and no server of its own.
+
+- What plays is read from the media sessions **on the device** and used only to pick and time the poster;
+  it is not sent anywhere. The titles go to the device's own system log (logcat) for troubleshooting.
+- Network traffic is limited to the picture sources: the catalog lists and images from the
+  [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
+  [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service, and the
+  poster artwork, downloaded over https from the address the playing app publishes.
+- Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and your
+  pictures stay in the app's storage on the device (Android backup is off).
 
 ## Builds and releases
 
