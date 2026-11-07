@@ -106,7 +106,8 @@ InkEasel has no account, no analytics, no ads and no server of its own.
 ## Language
 
 The UI is in English, and in Russian when the device language (or the app's language in the system
-settings, Android 13+) is Russian. All texts are string resources: English in `res/values/strings.xml`,
+settings, Android 13+: Settings → Apps → InkEasel → Language, listed from the locale config the build
+generates from `res/`) is Russian. All texts are string resources: English in `res/values/strings.xml`,
 Russian in `res/values-ru/strings.xml`. Code that runs as JVM unit tests has no `Context`, so it returns a
 `Txt` (a string resource id and its format arguments, which may be `Txt` themselves) that the UI puts into
 words where it is shown; an upload failure meant for the user is a `TxtException` carrying one. Other

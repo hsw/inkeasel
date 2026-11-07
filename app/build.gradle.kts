@@ -67,6 +67,10 @@ android {
     buildFeatures {
         compose = true
     }
+    // lists the app under Settings → App languages (Android 13+) with the locales of res/ (default: res/resources.properties)
+    androidResources {
+        generateLocaleConfig = true
+    }
 }
 
 dependencies {
