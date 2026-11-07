@@ -120,13 +120,13 @@ class FrameFormatTest {
 
     @Test
     fun unsupportedTypes_giveTheirReasons() {
-        val untested = "формат не проверен (приложение производителя не рисует его правильно)"
+        val untested = Txt(R.string.reason_untested_format)
         assertEquals(untested, reason(0x03, 0x13, 0x64)) // BW
         assertEquals(untested, reason(0x63, 0x13, 0x64)) // BP
         assertEquals(untested, reason(0x53, 0x13, 0x64)) // E7
         assertEquals(untested, reason(0x53, 0x14, 0x64)) // E7 split
-        assertEquals("приложение производителя не умеет отправлять на такие рамки", reason(0x23, 0x13, 0x64)) // BWY
-        assertEquals("приложение производителя не умеет отправлять на такие рамки", reason(0x23, 0x11, 0x64))
+        assertEquals(Txt(R.string.reason_vendor_cannot), reason(0x23, 0x13, 0x64)) // BWY
+        assertEquals(Txt(R.string.reason_vendor_cannot), reason(0x23, 0x11, 0x64))
         for (b0 in listOf(0x03, 0x23, 0x53, 0x63)) for (code in FrameAdvert.SIZES.keys) {
             assertTrue("b0 $b0 code $code", FrameAdvert.lookup(advert(b0, code, 0x64)) is FormatLookup.Unsupported)
         }
@@ -134,10 +134,10 @@ class FrameFormatTest {
 
     @Test
     fun otherReasons() {
-        assertEquals("рамка не сообщает свои параметры", FrameAdvert.lookup(null).reasonOrNull)
-        assertEquals("панель A (не фоторамка)", reason(0x41, 0x13, 0x64))
-        assertEquals("поворот 90° пока не поддерживается", reason(0x43, 0x33, 0x64))
-        assertEquals("неизвестное разрешение (код 0x1f)", reason(0x43, 0x1F, 0x64))
+        assertEquals(Txt(R.string.reason_no_caps), FrameAdvert.lookup(null).reasonOrNull)
+        assertEquals(Txt(R.string.reason_panel_a), reason(0x41, 0x13, 0x64))
+        assertEquals(txt(R.string.reason_rotation, txt(R.string.degrees, 90)), reason(0x43, 0x33, 0x64))
+        assertEquals(txt(R.string.reason_unknown_size_code, txt(R.string.advert_size_code, 0x1F)), reason(0x43, 0x1F, 0x64))
         assertNull(FrameAdvert.lookup(advert(0x43, 0x13, 0x64)).reasonOrNull)
     }
 
@@ -146,14 +146,15 @@ class FrameFormatTest {
         val f = FrameFormats.find(FrameCaps(800, 480, ColourScheme.E6, 0)).formatOrNull!!
         assertEquals(192_000, f.payloadSize)
         assertEquals(FrameFormats.DEFAULT, FrameFormats.find(FrameCaps(1024, 600, ColourScheme.E6, 0)).formatOrNull)
-        assertEquals("рамка не сообщает свои параметры", FrameFormats.find(null).reasonOrNull)
-        assertEquals("неизвестное разрешение", FrameFormats.find(FrameCaps(null, null, ColourScheme.E6, 0)).reasonOrNull)
-        assertEquals("E6 640×384 пока не поддерживается", FrameFormats.find(FrameCaps(640, 384, ColourScheme.E6, 0)).reasonOrNull)
+        assertEquals(Txt(R.string.reason_no_caps), FrameFormats.find(null).reasonOrNull)
+        assertEquals(Txt(R.string.reason_unknown_size), FrameFormats.find(FrameCaps(null, null, ColourScheme.E6, 0)).reasonOrNull)
+        assertEquals(txt(R.string.reason_colours_size, "E6", 640, 384), FrameFormats.find(FrameCaps(640, 384, ColourScheme.E6, 0)).reasonOrNull)
         assertEquals(
-            "приложение производителя не умеет отправлять на такие рамки",
+            Txt(R.string.reason_vendor_cannot),
             FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWY, 0)).reasonOrNull,
         )
-        assertEquals("поворот 180° пока не поддерживается", FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, 180)).reasonOrNull)
+        assertEquals(txt(R.string.reason_rotation, txt(R.string.degrees, 180)), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, 180)).reasonOrNull)
+        assertEquals(txt(R.string.reason_rotation, "?"), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, null)).reasonOrNull)
     }
 
     @Test

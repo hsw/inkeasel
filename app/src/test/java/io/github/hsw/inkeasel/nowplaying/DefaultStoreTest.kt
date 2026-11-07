@@ -160,7 +160,7 @@ class DefaultStoreTest {
 
     @Test
     fun unresolvedPhotoFallsThroughToUrl() {
-        assertEquals(Source(Type.URL, "https://e/p.jpg", "картинка"), extras(photo = "gone", url = "https://e/p.jpg"))
+        assertEquals(Source(Type.URL, "https://e/p.jpg", ""), extras(photo = "gone", url = "https://e/p.jpg"))
     }
 
     @Test
@@ -168,7 +168,7 @@ class DefaultStoreTest {
         assertEquals(Source(Type.URL, "https://e/p.jpg", "Дюна"), extras(url = "https://e/p.jpg", title = "Дюна"))
         assertEquals(Source(Type.PATH, "/data/local/tmp/a.png", "Дюна"), extras(path = "/data/local/tmp/a.png", title = "Дюна"))
         assertEquals(Source(Type.PHOTO, "sea", "Дюна"), extras(photo = "sea", title = "Дюна"))
-        assertEquals(Source(Type.URL, "https://e/p.jpg", "картинка"), extras(url = "https://e/p.jpg", title = " "))
+        assertEquals(Source(Type.URL, "https://e/p.jpg", ""), extras(url = "https://e/p.jpg", title = " "))
     }
 
     @Test

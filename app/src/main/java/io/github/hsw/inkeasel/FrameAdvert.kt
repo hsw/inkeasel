@@ -32,31 +32,37 @@ class FrameAdvert private constructor(
      * Why this frame is out regardless of its caps, or `null`: facts of this protocol that [FrameCaps] does
      * not carry.
      */
-    val rejection: String?
+    val rejection: Txt?
         get() = when {
             // the vendor album app drops panel type A as well (§2): not a photo frame
-            panel == Panel.A -> "панель A (не фоторамка)"
-            width == null || height == null -> "неизвестное разрешение ($size)"
+            panel == Panel.A -> Txt(R.string.reason_panel_a)
+            width == null || height == null -> txt(R.string.reason_unknown_size_code, size)
             else -> null
         }
 
     val hex: String get() = hex(raw)
 
-    /** "1024×600", or the code if it is unknown. */
-    val size: String get() = if (width != null && height != null) "$width×$height" else "код 0x%02x".format(resolutionCode)
+    /** "1024×600", or the code if it is unknown ("code 0x1f"). */
+    val size: Txt
+        get() = if (width != null && height != null) txt(R.string.advert_size, width, height)
+        else txt(R.string.advert_size_code, resolutionCode)
 
-    /** One line for the frame list, e.g. "E6, панель TA · 1024×600, 0° · батарея 100 % · прошивка 21". */
-    fun describe(): String = listOfNotNull(
-        "${colour.name}, панель ${panel.name}",
-        "$size, " + (rotation?.let { "$it°" } ?: "поворот ?"),
-        "батарея $battery %",
-        firmware?.let { "прошивка $it" },
-        "безопасный режим".takeIf { safeMode },
-    ).joinToString(" · ")
+    /**
+     * The parts of one line for the frame list, joined with " · " where shown, e.g. "E6, panel TA · 1024×600, 0° ·
+     * battery 100 % · firmware 21".
+     */
+    fun describe(): List<Txt> = listOfNotNull(
+        txt(R.string.advert_colour_panel, colour.name, panel.name),
+        txt(R.string.advert_size_rotation, size, rotation?.let { txt(R.string.degrees, it) } ?: Txt(R.string.advert_rotation_unknown)),
+        txt(R.string.advert_battery, battery),
+        firmware?.let { txt(R.string.advert_firmware, it) },
+        Txt(R.string.advert_safe_mode).takeIf { safeMode },
+    )
 
     override fun equals(other: Any?) = other is FrameAdvert && raw.contentEquals(other.raw)
     override fun hashCode() = raw.contentHashCode()
-    override fun toString() = "FrameAdvert($hex: ${describe()})"
+    override fun toString() =
+        "FrameAdvert($hex: $colour $panel ${width}x$height rotation=$rotation battery=$battery firmware=$firmware safeMode=$safeMode)"
 
     companion object {
         const val COMPANY_ID = 0xABC8

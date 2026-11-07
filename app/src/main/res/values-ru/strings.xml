@@ -34,4 +34,35 @@
     <string name="frame_unsupported">не поддерживается: %1$s</string>
     <string name="frame_unavailable">недоступна</string>
     <string name="cancel">Отмена</string>
+
+    <!-- frame advertisement (FrameAdvert.describe) -->
+    <string name="advert_colour_panel">%1$s, панель %2$s</string>
+    <string name="advert_size_code">код 0x%1$02x</string>
+    <string name="advert_rotation_unknown">поворот ?</string>
+    <string name="advert_battery">батарея %1$d %%</string>
+    <string name="advert_firmware">прошивка %1$d</string>
+    <string name="advert_safe_mode">безопасный режим</string>
+
+    <!-- why a frame cannot be chosen (FrameAdvert.rejection, FrameFormats.find) -->
+    <string name="reason_panel_a">панель A (не фоторамка)</string>
+    <string name="reason_unknown_size_code">неизвестное разрешение (%1$s)</string>
+    <string name="reason_unknown_size">неизвестное разрешение</string>
+    <string name="reason_no_caps">рамка не сообщает свои параметры</string>
+    <string name="reason_rotation">поворот %1$s пока не поддерживается</string>
+    <string name="reason_colours">цвета %1$s пока не поддерживаются</string>
+    <string name="reason_colours_size">%1$s %2$d×%3$d пока не поддерживается</string>
+    <string name="reason_untested_format">формат не проверен (приложение производителя не рисует его правильно)</string>
+    <string name="reason_vendor_cannot">приложение производителя не умеет отправлять на такие рамки</string>
+
+    <!-- Bluetooth (FrameScanner) -->
+    <string name="bt_missing">на устройстве нет Bluetooth</string>
+    <string name="bt_off">Bluetooth выключен</string>
+    <string name="scan_error">ошибка сканирования BLE (%1$d)</string>
+
+    <!-- upload results (UploadOutcome) -->
+    <string name="upload_sent">Фото отправлено</string>
+    <string name="upload_failed">Ошибка отправки: %1$s</string>
+    <string name="upload_error_unknown">неизвестная ошибка</string>
+    <string name="upload_picture">картинка</string>
+    <string name="upload_default_picture">фото по умолчанию</string>
 </resources>

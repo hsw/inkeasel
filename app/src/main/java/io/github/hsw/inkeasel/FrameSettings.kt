@@ -90,7 +90,7 @@ private fun FrameSettings(
     val ctx = LocalContext.current
     val scanner = remember { FrameScanner(ctx) }
     var frames by remember { mutableStateOf(emptyList<SeenFrame>()) }
-    var scanError by remember { mutableStateOf<String?>(null) }
+    var scanError by remember { mutableStateOf<Txt?>(null) }
     var btProblem by remember { mutableStateOf(scanner.unavailable()) }
     var scanRun by remember { mutableIntStateOf(0) } // bumped by "Retry" to restart the scan
 
@@ -157,14 +157,14 @@ private fun FrameSettings(
                 !permitted -> Problem(
                     stringResource(R.string.ble_permission_needed), stringResource(R.string.allow), onRequestPermissions,
                 )
-                btProblem != null -> Problem("${btProblem!!.replaceFirstChar { it.uppercase() }}.", stringResource(R.string.bt_settings)) {
+                btProblem != null -> Problem("${btProblem!!.text().replaceFirstChar { it.uppercase() }}.", stringResource(R.string.bt_settings)) {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
                         Log.w(TAG, "no Bluetooth settings screen", e)
                     }
                 }
-                scanError != null -> Problem(stringResource(R.string.scan_failed, scanError!!), stringResource(R.string.retry)) {
+                scanError != null -> Problem(txt(R.string.scan_failed, scanError!!).text(), stringResource(R.string.retry)) {
                     scanError = null
                     scanRun++
                 }
@@ -213,7 +213,7 @@ private fun FrameSettings(
  * supported one in an unverified format says so under its properties and can still be chosen.
  */
 @Composable
-private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onClick: (String?) -> Unit) {
+private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onClick: (Txt?) -> Unit) {
     val reason = f.lookup.reasonOrNull
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     ListItem(
@@ -225,11 +225,11 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
             Column {
                 Text(
                     listOf(
-                        f.address, f.advert?.describe() ?: stringResource(R.string.frame_no_advert),
+                        f.address, f.advert?.describe()?.map { it.text() }?.joinToString(" · ") ?: stringResource(R.string.frame_no_advert),
                         stringResource(R.string.frame_signal, f.rssi),
                     ).joinToString(" · ")
                 )
-                reason?.let { Text(stringResource(R.string.frame_unsupported, it), color = MaterialTheme.colorScheme.error) }
+                reason?.let { Text(txt(R.string.frame_unsupported, it).text(), color = MaterialTheme.colorScheme.error) }
                 // a supported format never seen working on a real panel ([FrameFormat.verified])
                 if (f.lookup.formatOrNull?.verified == false) {
                     Text(stringResource(R.string.frame_unverified), color = MaterialTheme.colorScheme.tertiary)

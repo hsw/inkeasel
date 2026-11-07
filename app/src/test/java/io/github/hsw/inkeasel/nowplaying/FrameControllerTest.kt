@@ -253,6 +253,7 @@ class FrameControllerTest {
         r.advance(1)
         assertEquals(listOf(k1, defaultKey), r.keys())
         assertEquals(Art.File(photo), r.uploads.last().art)
+        assertEquals("", r.uploads.last().title) // no translated text from here: the notification names it
         assertEquals(120_000L, r.uploads.last().at)
         assertEquals(defaultKey, r.c.onFrame)
     }

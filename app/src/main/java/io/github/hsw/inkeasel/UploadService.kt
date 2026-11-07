@@ -96,7 +96,8 @@ class UploadService : Service() {
         val key = intent?.getStringExtra(EXTRA_KEY)
         val stamp = intent?.getLongExtra(EXTRA_STAMP, -1L)?.takeIf { it >= 0 } ?: controller.manualUploads
         val req = intent?.let { parse(it, auto, key, stamp) }
-        startForeground(NOTIF_ID, notification(req?.source?.title)) // must be called within 5 s of start
+        // must be called within 5 s of start; a picture without a title is named by UploadOutcome.untitled
+        startForeground(NOTIF_ID, notification(req?.let { it.source.title.ifBlank { UploadOutcome.untitled(key).resolve(this) } }))
         if (frames.selected() == null) {
             refuseNoFrame(auto, key, req?.source?.title)
             stopIfIdle()
@@ -170,7 +171,7 @@ class UploadService : Service() {
                         throw e // onDestroy reported it (UploadQueue.takeAll)
                     } catch (e: Exception) {
                         Log.w(TAG, "upload failed", e)
-                        finish(req, ok = false, error = e.message ?: e.toString())
+                        finish(req, ok = false, error = (e as? TxtException)?.txt?.resolve(this@UploadService) ?: e.message ?: e.toString())
                     }
                 }
             } finally {
@@ -209,7 +210,7 @@ class UploadService : Service() {
         val sel = frames.selected() ?: throw IOException("рамка не выбрана")
         val format = when (val l = sel.lookup) {
             is FormatLookup.Supported -> l.format
-            is FormatLookup.Unsupported -> throw IOException("рамка ${sel.name} не поддерживается: ${l.reason}")
+            is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, sel.name, l.reason))
         }
         val packed = withContext(Dispatchers.Default) { EpdImage.render(bytes, format) }
         frame.upload(format, packed, status = {}, progress = {})
@@ -224,7 +225,7 @@ class UploadService : Service() {
     private fun done(req: Req, ok: Boolean, error: String?) {
         val out = UploadOutcome.of(req.auto, ok, error)
         Log.i(TAG, "${if (req.auto) "auto" else "manual"} upload ${if (ok) "done" else "failed"}: ${req.source.title} (key=${req.key})")
-        out.toast?.let(::toast)
+        out.toast?.let { toast(it.resolve(this)) }
         if (out.report) report(req, ok)
         if (out.remember) controller.onManualUpload(req.source)
     }

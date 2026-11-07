@@ -113,7 +113,7 @@ class FrameClient(private val ctx: Context) {
         val found = CompletableDeferred<SeenFrame>()
         val stop = scanner.start(
             onSeen = { if (it.name == name) found.complete(it) },
-            onFailed = { found.completeExceptionally(IOException(it)) },
+            onFailed = { found.completeExceptionally(TxtException(it)) },
         )
         val seen = try {
             withTimeoutOrNull(15_000) { found.await() }
@@ -128,7 +128,7 @@ class FrameClient(private val ctx: Context) {
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout
         if (seen.advert != null) when (val l = seen.lookup) {
-            is FormatLookup.Unsupported -> throw IOException("рамка $name не поддерживается: ${l.reason}")
+            is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, name, l.reason))
             is FormatLookup.Supported -> if (l.format != format) throw IOException("параметры рамки $name изменились, отправьте снова")
         }
         return bt.getRemoteDevice(seen.address)

@@ -143,7 +143,7 @@ data class BitPlanes(val planes: Int, val split: Boolean = false) : Packing {
 /**
  * Everything the renderer and the uploader need for one frame: its size, its inks, how pixels are packed,
  * the content marker (MK) of the start frame, and whether this exact layout was seen working on a real
- * panel ([verified]; the picker says "не проверено на железе" otherwise). Chosen from the frame's
+ * panel ([verified]; the picker says "not verified on hardware" otherwise). Chosen from the frame's
  * [FrameCaps] by [FrameFormats.find]. Free of Android types.
  */
 data class FrameFormat(
@@ -224,10 +224,10 @@ data class FrameFormat(
 /** The format for an advertisement, or why there is none. */
 sealed interface FormatLookup {
     data class Supported(val format: FrameFormat) : FormatLookup
-    data class Unsupported(val reason: String) : FormatLookup
+    data class Unsupported(val reason: Txt) : FormatLookup
 
     val formatOrNull: FrameFormat? get() = (this as? Supported)?.format
-    val reasonOrNull: String? get() = (this as? Unsupported)?.reason
+    val reasonOrNull: Txt? get() = (this as? Unsupported)?.reason
 }
 
 /**
@@ -289,15 +289,15 @@ object FrameFormats {
         val sizes: Set<Pair<Int, Int>>,
         val marker: Int = 0,
         val verified: Boolean = false,
-        val refused: String? = null,
+        val refused: Txt? = null,
     )
 
     private val ALL = FrameAdvert.SIZES.values.toSet()
     private val E6_SPLIT = setOf(1200 to 1600) // width 1200 or 1600; only 1200×1600 has a size code (§5.4.5)
     private val BWR_SPLIT = setOf(1360 to 480, 1440 to 600) // width 1360 or 1440 (§5.4.5)
 
-    private const val UNTESTED_FORMAT = "формат не проверен (приложение производителя не рисует его правильно)"
-    private const val VENDOR_CANNOT = "приложение производителя не умеет отправлять на такие рамки"
+    private val UNTESTED_FORMAT = Txt(R.string.reason_untested_format)
+    private val VENDOR_CANNOT = Txt(R.string.reason_vendor_cannot)
 
     private val ENTRIES = listOf(
         // verified at 1024×600 (§14); at the other unsplit sizes only W and H differ, and these bytes are what
@@ -322,15 +322,17 @@ object FrameFormats {
 
     /** The format for [caps] (`null`: the frame reported none). */
     fun find(caps: FrameCaps?): FormatLookup {
-        if (caps == null) return FormatLookup.Unsupported("рамка не сообщает свои параметры")
-        if (caps.rotation != 0) return FormatLookup.Unsupported("поворот ${caps.rotation?.let { "$it°" } ?: "?"} пока не поддерживается")
+        if (caps == null) return FormatLookup.Unsupported(Txt(R.string.reason_no_caps))
+        if (caps.rotation != 0) return FormatLookup.Unsupported(
+            txt(R.string.reason_rotation, caps.rotation?.let { txt(R.string.degrees, it) } ?: "?")
+        )
         val w = caps.width
         val h = caps.height
-        if (w == null || h == null) return FormatLookup.Unsupported("неизвестное разрешение")
+        if (w == null || h == null) return FormatLookup.Unsupported(Txt(R.string.reason_unknown_size))
         val entries = ENTRIES.filter { it.colours == caps.colours }
-        if (entries.isEmpty()) return FormatLookup.Unsupported("цвета ${caps.colours.name} пока не поддерживаются")
+        if (entries.isEmpty()) return FormatLookup.Unsupported(txt(R.string.reason_colours, caps.colours.name))
         val entry = entries.firstOrNull { (w to h) in it.sizes }
-            ?: return FormatLookup.Unsupported("${caps.colours.name} ${w}×$h пока не поддерживается")
+            ?: return FormatLookup.Unsupported(txt(R.string.reason_colours_size, caps.colours.name, w, h))
         entry.refused?.let { return FormatLookup.Unsupported(it) }
         return FormatLookup.Supported(FrameFormat(w, h, entry.palette, entry.packing, entry.marker, entry.verified))
     }

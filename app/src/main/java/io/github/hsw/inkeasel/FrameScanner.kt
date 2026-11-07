@@ -20,9 +20,9 @@ class FrameScanner(ctx: Context) {
     private val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter
 
     /** Why a scan cannot run now (no Bluetooth, or it is off), or `null`. */
-    fun unavailable(): String? = when {
-        adapter == null -> "на устройстве нет Bluetooth"
-        !adapter.isEnabled -> "Bluetooth выключен"
+    fun unavailable(): Txt? = when {
+        adapter == null -> Txt(R.string.bt_missing)
+        !adapter.isEnabled -> Txt(R.string.bt_off)
         else -> null
     }
 
@@ -30,10 +30,10 @@ class FrameScanner(ctx: Context) {
      * Start scanning; [onSeen] gets each frame heard, [onFailed] a scan error (callbacks on the main thread).
      * Returns the function that stops the scan; call it exactly when done.
      */
-    fun start(onSeen: (SeenFrame) -> Unit, onFailed: (String) -> Unit): () -> Unit {
+    fun start(onSeen: (SeenFrame) -> Unit, onFailed: (Txt) -> Unit): () -> Unit {
         val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
         if (scanner == null) {
-            onFailed(unavailable() ?: "Bluetooth выключен")
+            onFailed(unavailable() ?: Txt(R.string.bt_off))
             return {}
         }
         val cb = object : ScanCallback() {
@@ -47,7 +47,7 @@ class FrameScanner(ctx: Context) {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.w(TAG, "scan failed: $errorCode")
-                onFailed("ошибка сканирования BLE ($errorCode)")
+                onFailed(txt(R.string.scan_error, errorCode))
             }
         }
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(FrameClient.SVC_ADV)).build()

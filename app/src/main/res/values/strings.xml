@@ -36,4 +36,38 @@
     <string name="frame_unsupported">not supported: %1$s</string>
     <string name="frame_unavailable">unavailable</string>
     <string name="cancel">Cancel</string>
+
+    <!-- frame advertisement (FrameAdvert.describe) -->
+    <string name="advert_colour_panel">%1$s, panel %2$s</string>
+    <string name="advert_size" translatable="false">%1$d×%2$d</string>
+    <string name="advert_size_code">code 0x%1$02x</string>
+    <string name="advert_size_rotation" translatable="false">%1$s, %2$s</string>
+    <string name="degrees" translatable="false">%1$d°</string>
+    <string name="advert_rotation_unknown">rotation ?</string>
+    <string name="advert_battery">battery %1$d %%</string>
+    <string name="advert_firmware">firmware %1$d</string>
+    <string name="advert_safe_mode">safe mode</string>
+
+    <!-- why a frame cannot be chosen (FrameAdvert.rejection, FrameFormats.find) -->
+    <string name="reason_panel_a">panel A (not a photo frame)</string>
+    <string name="reason_unknown_size_code">unknown resolution (%1$s)</string>
+    <string name="reason_unknown_size">unknown resolution</string>
+    <string name="reason_no_caps">the frame does not report its parameters</string>
+    <string name="reason_rotation">rotation %1$s is not supported yet</string>
+    <string name="reason_colours">%1$s colours are not supported yet</string>
+    <string name="reason_colours_size">%1$s %2$d×%3$d is not supported yet</string>
+    <string name="reason_untested_format">format not verified (the vendor app does not draw it correctly)</string>
+    <string name="reason_vendor_cannot">the vendor app cannot send to such frames</string>
+
+    <!-- Bluetooth (FrameScanner) -->
+    <string name="bt_missing">this device has no Bluetooth</string>
+    <string name="bt_off">Bluetooth is off</string>
+    <string name="scan_error">BLE scan error (%1$d)</string>
+
+    <!-- upload results (UploadOutcome) -->
+    <string name="upload_sent">Picture sent</string>
+    <string name="upload_failed">Upload failed: %1$s</string>
+    <string name="upload_error_unknown">unknown error</string>
+    <string name="upload_picture">picture</string>
+    <string name="upload_default_picture">default picture</string>
 </resources>

@@ -10,7 +10,10 @@ import kotlin.time.Duration.Companion.seconds
 
 /** Sends a picture to the frame (in production: starts `UploadService` with `auto=true`). */
 fun interface Uploader {
-    /** Upload [art]; the outcome comes back through [FrameController.onUploadResult] with the same [key]. */
+    /**
+     * Upload [art] ([title]: the film's, or empty for the default picture); the outcome comes back through
+     * [FrameController.onUploadResult] with the same [key].
+     */
     fun upload(art: Art, title: String, key: String)
 }
 
@@ -279,7 +282,7 @@ class FrameController(
                     log("no default picture; $onFrame stays")
                     return@launch
                 }
-                request(art, DEFAULT_TITLE, defaultKey(art), "default")
+                request(art, "", defaultKey(art), "default") // no title: UploadOutcome.untitled names it
             }
         }
     }
@@ -332,7 +335,6 @@ class FrameController(
 
         const val DEFAULT_PREFIX = "default:"
         const val MANUAL_PREFIX = "manual:"
-        const val DEFAULT_TITLE = "фото по умолчанию"
 
         /** An auto poster key: anything on the frame except the default, a manual upload, or unknown. */
         fun isAuto(key: String?): Boolean =
