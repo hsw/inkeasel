@@ -242,13 +242,13 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                     Spacer(Modifier.width(32.dp))
                     TabRow(selectedTabIndex = vm.tab) {
                         vm.sources.forEachIndexed { i, s ->
-                            Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }) {
+                            Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }, modifier = Modifier.onTap { vm.selectTab(i) }) {
                                 Text(s.name, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                             }
                         }
                     }
                     Spacer(Modifier.weight(1f))
-                    Button(onClick = vm::openSettings) {
+                    Button(onClick = vm::openSettings, modifier = Modifier.onTap(vm::openSettings)) {
                         Text(vm.selected?.let { "Рамка: ${it.name}" } ?: "Рамка не выбрана")
                     }
                 }
@@ -259,7 +259,7 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                     is CatalogState.Failed -> Column {
                         Text("Не удалось загрузить каталог: ${st.message}")
                         Spacer(Modifier.height(12.dp))
-                        Button(onClick = { vm.load(vm.tab) }) { Text("Повторить") }
+                        Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text("Повторить") }
                     }
                     is CatalogState.Loaded -> if (st.items.isEmpty()) {
                         Text(
@@ -294,7 +294,7 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
 
 @Composable
 fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick)) {
         Box(Modifier.fillMaxSize()) {
             AsyncImage(
                 model = p.thumbModel(),

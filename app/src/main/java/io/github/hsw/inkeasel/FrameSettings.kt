@@ -198,7 +198,7 @@ private fun FrameSettings(
         }
         Spacer(Modifier.height(16.dp))
         Row {
-            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus)) { Text("Отмена") }
+            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text("Отмена") }
         }
     }
 }
@@ -218,7 +218,7 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
     ListItem(
         selected = isSelected,
         onClick = { onClick(reason) },
-        modifier = modifier,
+        modifier = modifier.onTap { onClick(reason) },
         headlineContent = { Text(if (isSelected) "${f.name} — выбрана" else f.name) },
         supportingContent = {
             Column {
@@ -238,7 +238,7 @@ private fun Problem(message: String, action: String, onAction: () -> Unit) {
     Column {
         Text(message, style = MaterialTheme.typography.bodyLarge)
         Spacer(Modifier.height(12.dp))
-        Button(onClick = onAction) { Text(action) }
+        Button(onClick = onAction, modifier = Modifier.onTap(onAction)) { Text(action) }
     }
 }
 
