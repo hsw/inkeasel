@@ -21,10 +21,12 @@ import java.nio.ByteBuffer
 /**
  * Reads the standard MediaSession metadata (title + artwork) and playback state of every app and feeds
  * them to [FrameController] as [Playing] events. A NotificationListener is used only because it is what
- * grants `MediaSessionManager.getActiveSessions`; notifications themselves are ignored. Granted with
+ * grants `MediaSessionManager.getActiveSessions`; notifications themselves are ignored. Granted on the system
+ * screen the settings open ("Permissions and features", `ListenerAccess`), or where there is none with
  * `adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener`;
  * the system rebinds it (verified after a force-stop, expected after boot), which also keeps the process (and
- * the controller's timers) alive.
+ * the controller's timers) alive. Sessions are followed also while the poster is switched off
+ * ([FeatureStore]); the [FrameController] then only schedules nothing.
  *
  * Threading: the session map and the callbacks live on the main thread. Everything else (reading the
  * metadata, hashing a bitmap, writing its PNG, mapping, calling the controller) runs on one serial

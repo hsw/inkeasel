@@ -52,6 +52,13 @@ fun interface Uploader {
  * - While no frame is chosen in the settings ([frameSelected]), nothing is scheduled or requested: no start
  *   timer, no revert, no upload. The uploader would only refuse it, and a refused revert would count as a
  *   failure. Events are still tracked, so the next transition after a frame is chosen works as usual.
+ * - While the poster is switched off in the settings ([posterEnabled]), no poster is scheduled or requested;
+ *   events are still tracked, so it always knows what plays. Switching it off ([onPosterSwitched]) cancels a
+ *   pending start and reverts a poster on the frame at once; a poster that lands after that (its upload was
+ *   already under way) is reverted at once too; an automatic poster still queued is dropped by the uploader
+ *   ([isStale]). Reverts work as usual while it is off. Switching it on acts on what plays at once: a film
+ *   already playing cancels a pending revert (as its PLAYING would) and, unless its poster is on the frame,
+ *   gets it [START_DELAY] after the switch (its PLAYING is not reported again).
  *
  * Thread-safe: every entry point and every timer body runs under one lock.
  */
@@ -64,6 +71,7 @@ class FrameController(
     private val startDelay: Duration = START_DELAY,
     private val revertDelay: Duration = REVERT_DELAY,
     private val frameSelected: () -> Boolean = { true },
+    private val posterEnabled: () -> Boolean = { true },
 ) {
     private val lock = Any()
 
@@ -86,11 +94,13 @@ class FrameController(
         get() = synchronized(lock) { manualCount }
 
     /**
-     * True if the request is automatic ([auto]) and a manual upload succeeded after it was decided ([stamp] =
-     * its [manualUploads] when requested): the uploader must drop it and report it as failed. A manual
-     * request is never stale.
+     * True if the request is automatic ([auto]) and either a manual upload succeeded after it was decided
+     * ([stamp] = its [manualUploads] when requested) or it is a poster ([key], see [isAuto]) and the poster is
+     * switched off by now: the uploader must drop it and report it as failed. A manual request is never stale.
      */
-    fun isStale(auto: Boolean, stamp: Long): Boolean = auto && synchronized(lock) { stamp < manualCount }
+    fun isStale(auto: Boolean, stamp: Long, key: String?): Boolean = auto && synchronized(lock) {
+        stamp < manualCount || (isAuto(key) && !posterEnabled())
+    }
 
     /**
      * The art keys a later upload may still read: what plays ([current]), a pending start, and every request
@@ -157,6 +167,31 @@ class FrameController(
         reconcile(key, ok, retry)
     }
 
+    /**
+     * The poster switch in the settings changed ([posterEnabled] tells to what). Off: cancel a pending start
+     * and revert a poster on the frame at once. On: if a film plays, cancel a pending revert and, if its
+     * poster is not on the frame, arm its start now (its PLAYING is not reported again while it keeps playing).
+     */
+    fun onPosterSwitched() = synchronized(lock) {
+        retryPoster = null
+        if (!posterEnabled()) {
+            log("poster switched off")
+            cancelStart()
+            revertNow("default (poster switched off)")
+            return@synchronized
+        }
+        log("poster switched on")
+        val cur = current ?: return@synchronized
+        val key = cur.key ?: return@synchronized
+        if (cur.state != Playing.State.PLAYING) return@synchronized
+        // a film plays: a revert still pending (e.g. a retry of one that failed while the switch was off)
+        // would cover its poster, as in [playing]
+        cancelRevert()
+        revertFailures = 0
+        if (key == onFrame || startJob != null) return@synchronized
+        armStart(key, cur.pkg)
+    }
+
     /** A manual upload succeeded: it wins over pending timers and becomes the default. */
     fun onManualUpload(source: Source) = synchronized(lock) {
         manualCount++
@@ -176,6 +211,11 @@ class FrameController(
         val prev = current
         val transition = prev == null || prev.state != Playing.State.PLAYING || prev.pkg != p.pkg || prev.key != key
         current = p
+        if (!posterEnabled()) { // tracked only; a pending revert (of a poster from before the switch) stays
+            cancelStart()
+            log("poster off: not scheduled: $key (${p.pkg})")
+            return
+        }
         cancelRevert()
         revertFailures = 0
         if (startJob != null && startKey == key) return
@@ -186,7 +226,7 @@ class FrameController(
     }
 
     /** Upload [key] after [startDelay] if it still plays then. */
-    private fun armStart(key: String, pkg: String) {
+    private fun armStart(key: String, pkg: String) { // callers check posterEnabled first
         if (!frameSelected()) {
             log("no frame selected: poster not scheduled: $key ($pkg)")
             return
@@ -244,10 +284,15 @@ class FrameController(
      * start is pending (a revert's default landed after the film resumed), arm its start; if the poster that
      * plays failed and a start for it was skipped while it was outstanding ([retry]), request it again; if
      * nothing plays, revert an auto poster (a poster that landed after playback ended, or a failed revert).
+     * While the poster is switched off, a poster that has just landed is reverted at once, and anything else
+     * is handled as if nothing played.
      */
     private fun reconcile(key: String, ok: Boolean, retry: Boolean) {
         val cur = current
-        if (cur?.state == Playing.State.PLAYING) {
+        if (!posterEnabled()) {
+            if (ok && isAuto(key)) revertNow("default (a poster landed after the poster was switched off)")
+            else scheduleRevert()
+        } else if (cur?.state == Playing.State.PLAYING) {
             val playingKey = cur.key ?: return
             if (ok && key != playingKey && playingKey != onFrame && startJob == null) armStart(playingKey, cur.pkg)
             if (!ok && retry && key == playingKey && key != onFrame && startJob == null) {
@@ -276,15 +321,27 @@ class FrameController(
             synchronized(lock) {
                 ensureActive()
                 revertJob = null
-                if (!isAuto(onFrame)) return@launch
-                val art = defaults.load()
-                if (art == null) {
-                    log("no default picture; $onFrame stays")
-                    return@launch
-                }
-                request(art, "", defaultKey(art), "default") // no title: UploadOutcome.untitled names it
+                if (isAuto(onFrame)) requestDefault("default")
             }
         }
+    }
+
+    /** Revert an auto poster to the default now ([what] is for the log), replacing a scheduled revert. */
+    private fun revertNow(what: String) {
+        if (!isAuto(onFrame)) return
+        cancelRevert()
+        revertFailures = 0
+        requestDefault(what)
+    }
+
+    /** Request the default picture ([what] is for the log), if there is one. */
+    private fun requestDefault(what: String) {
+        val art = defaults.load()
+        if (art == null) {
+            log("no default picture; $onFrame stays")
+            return
+        }
+        request(art, "", defaultKey(art), what) // no title: UploadOutcome.untitled names it
     }
 
     /**

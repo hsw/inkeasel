@@ -1,11 +1,8 @@
 package io.github.hsw.inkeasel
 
-import android.Manifest
 import android.app.Application
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.os.Build
 import android.os.Bundle
 import android.os.FileObserver
 import android.util.Log
@@ -218,18 +215,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
-    private val permissions =
-        if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
-        else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-
-    /** Whether [permissions] are granted; the frame settings scan only then. */
+    /** Whether [BlePermissions] are granted; the frame settings scan only then. */
     private var permitted by mutableStateOf(false)
+
+    /**
+     * The last request came back denied and the system will not show its dialog again ([BlePermissions.blocked]):
+     * asking would silently do nothing, so "Allow" opens App info instead.
+     */
+    private var blocked by mutableStateOf(false)
 
     private val askPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         permitted = hasPermissions()
+        blocked = BlePermissions.blocked(permitted) { p -> shouldShowRequestPermissionRationale(p) }
+        Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
     }
 
-    private fun hasPermissions() = permissions.all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+    private fun hasPermissions() = BlePermissions.granted(this)
+
+    /** Ask for the permissions, or open App info where the system no longer asks. */
+    private fun requestPermissions() {
+        if (blocked) openAppInfo(this) else askPermissions.launch(BlePermissions.all)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // drawn behind the system bars (Android 15 enforces it for targetSdk 35); the UI pads itself with the
@@ -241,7 +247,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
         permitted = hasPermissions()
-        if (!permitted) askPermissions.launch(permissions)
+        if (!permitted) askPermissions.launch(BlePermissions.all)
         // a fresh start without a chosen frame opens the frame settings; cancelling them leaves the catalog
         if (savedInstanceState == null && vm.selected == null) {
             Log.i(TAG, "no frame selected: opening the frame settings")
@@ -251,7 +257,8 @@ class MainActivity : ComponentActivity() {
             App(
                 vm,
                 permitted = permitted,
-                onRequestPermissions = { askPermissions.launch(permissions) },
+                permissionBlocked = blocked,
+                onRequestPermissions = ::requestPermissions,
                 onSend = { p ->
                     when {
                         vm.selected == null -> {
@@ -259,7 +266,7 @@ class MainActivity : ComponentActivity() {
                             Toast.makeText(this, R.string.no_frame, Toast.LENGTH_SHORT).show()
                         }
                         hasPermissions() -> sendToFrame(p)
-                        else -> askPermissions.launch(permissions)
+                        else -> requestPermissions()
                     }
                 },
             )
@@ -281,12 +288,19 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         permitted = hasPermissions()
+        if (permitted) blocked = false
         vm.refreshLocal()
     }
 }
 
 @Composable
-fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit, onSend: (Picture) -> Unit) {
+fun App(
+    vm: MainViewModel,
+    permitted: Boolean,
+    permissionBlocked: Boolean,
+    onRequestPermissions: () -> Unit,
+    onSend: (Picture) -> Unit,
+) {
     // the cards take the chosen frame's shape; the frame this app was built with while none is chosen
     val aspect = (vm.selected?.lookup?.formatOrNull ?: FrameFormats.DEFAULT).aspect
     MaterialTheme(colorScheme = darkColorScheme()) {
@@ -316,6 +330,7 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                 FrameSettingsDialog(
                     selected = vm.selected,
                     permitted = permitted,
+                    permissionBlocked = permissionBlocked,
                     onRequestPermissions = onRequestPermissions,
                     onSelect = vm::select,
                     onCancel = vm::closeSettings,

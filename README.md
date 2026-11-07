@@ -68,13 +68,14 @@ asking for fewer results than `limit=200` would be the next step then.
 ## Choosing the frame
 
 Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
-or "No frame selected"); a fresh start with no frame chosen opens it by itself.
+or "No frame selected"); a fresh start with no frame chosen opens it by itself. The settings scroll as one
+column (a phone in landscape is short); **Close** sits next to the title and has the first focus.
 
 - While it is open, the app scans for BLE service `0xFFBB` and lists every frame heard, one entry per name
   (the name is the frame's identity; its MAC may change), updated live: name, MAC, colour and panel type,
   resolution and rotation, battery, firmware, signal (RSSI) and safe mode if set. The chosen frame is marked.
   The scan stops when the screen closes or the app goes to the background.
-- Selecting a frame saves it and closes the screen. **Cancel** or Back closes it without changes.
+- Selecting a frame saves it and closes the screen. **Close** or Back closes it with the frame unchanged.
 - Frames the app cannot draw on are listed but greyed out with the reason ("not supported: …") and
   cannot be chosen. A supported frame whose format was never seen working on a real panel says
   "not verified on hardware" under its properties (and in a toast when chosen); it can be chosen.
@@ -97,7 +98,31 @@ or "No frame selected"); a fresh start with no frame chosen opens it by itself.
   `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (taken from the
   advertisement here); a new panel type is one more entry there.
 - Without Bluetooth permission the screen asks for it ("Allow"); with Bluetooth off it says so and
-  offers the system Bluetooth settings. On Android 11 the scan also needs location on.
+  offers the system Bluetooth settings. On Android 11 the scan also needs location on. Once the system no
+  longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
+  so the button becomes "App info" and the text names the path: Settings → Apps → InkEasel → Permissions →
+  Nearby devices (Location on Android 11 and older). The grant is picked up when the app comes back.
+
+## Permissions and features
+
+Below the frame list, **Settings → Permissions and features** collects what the app needs:
+
+- **Bluetooth**: whether the permission is granted, with "Allow" (or "App info", as above) when it is not.
+  One permission set everywhere (`BlePermissions`): Nearby devices (`BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`)
+  on Android 12+, fine location before.
+- **Now-playing poster**: an on/off switch (on by default, prefs `features`, key `poster`) and the state of
+  the notification access it needs. With the access missing:
+  - phones and tablets: "Grant access" (and switching the poster on) opens the system screen: the app's
+    own page (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not
+    from a store) may find the switch there greyed out ("Restricted setting"): the section says so and
+    offers App info, where ⋮ → "Allow restricted settings" unlocks it;
+  - Android TV 14 has only the list (InkEasel is in it, one D-pad press grants it), and the button opens it;
+  - older Android TV builds (the Shield, Android TV 11) have no such screen: the section shows the adb
+    command instead (see "Now playing → poster").
+- The states are read again whenever the app comes back to the front, e.g. from a system screen.
+
+Switching the poster off stops new posters at once and puts the default picture back if a poster is on
+the frame; see "Now playing → poster".
 
 Stored in prefs `frame` (next to the upload spacing `endedAt` and the `onFrame` key):
 `selected.kind` (the frame's protocol, `nowmean`), `selected.name`, `selected.address`, `selected.advert` (the raw manufacturer data as hex, the source of
@@ -119,7 +144,9 @@ frame now advertises other properties, the upload fails and the next one uses th
 
 ## Now playing → poster
 
-One-time grant, so the system binds the MediaSession reader. The system rebinds a granted listener after a
+Needs notification access, granted once, so the system binds the MediaSession reader: on a phone, a tablet
+or Android TV 14 from **Settings → Permissions and features** (see there); on older Android TV builds
+without a screen for it (the Shield) with adb, as below. The system rebinds a granted listener after a
 force-stop (verified on the Shield) and is expected to do the same after a reboot (platform behaviour, not
 yet tested here); the binding keeps the process alive, also through HDMI-CEC standby, so no
 `BOOT_COMPLETED` receiver is needed:
@@ -153,6 +180,11 @@ How it works:
     manual upload succeeds (it would cover the user's pick); if the manual upload fails, it runs as usual;
   - after a process restart or a reboot, a poster left on the frame is reverted once the listener finds
     nothing playing; likewise when the listener reconnects and the app that was playing no longer plays.
+- **Switched off** in the settings: what plays is still followed, but no poster is scheduled or uploaded
+  (`poster off: not scheduled` in the log). Switching off cancels a pending start and reverts a poster on
+  the frame at once; a poster whose upload was already under way is reverted at once when it lands, and
+  one still queued in `UploadService` is dropped. Reverts work as usual. Switching on acts on what plays
+  now: a film already playing gets its poster 60 s after the switch.
 - **Default picture = the last manual upload** (catalog tap or `UploadService` without `auto`). There is
   no separate setting. Until the first manual upload there is no default, so a poster stays on the frame
   after playback ends: do one manual upload (catalog tap or the adb command below) after installing.
@@ -193,7 +225,10 @@ Code:
 - `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
   Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
-- `FrameSettings.kt`: the "Settings → Frame" dialog (live frame list, select, cancel)
+- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
+- `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked, and App info
+- `ListenerAccess.kt`: notification access for the poster (granted?, the system screen, the adb command);
+  `ListenerAccessUi.kt` decides what the section shows (pure)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
@@ -204,7 +239,8 @@ Code:
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
-  manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`); it stops
+  manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`), or if a
+  poster's turn comes while the poster is switched off; it stops
   with `stopSelfResult`, so a start arriving as it finishes is not lost, and a request it never finishes
   is reported as failed; it waits for the frame to finish drawing before the next upload (`DrawGate.kt`)
 - `nowplaying/`:
@@ -217,8 +253,9 @@ Code:
   - `ArtCache.kt`: artwork bitmaps keyed by the SHA-1 of their pixels, stored as `cacheDir/nowplaying/<sha1>.png`
     (the 20 most recent are kept; pruning never deletes the artwork of a tracked session or a key the
     controller may still upload: what plays, a pending start, an upload without a result yet)
-  - `FrameController.kt`: the state machine (debounce, dedup by key, revert); `FrameControllers.kt` wires
-    the process-wide instance
+  - `FrameController.kt`: the state machine (debounce, dedup by key, revert, poster switch);
+    `FrameControllers.kt` wires the process-wide instance
+  - `FeatureStore.kt`: the poster switch (prefs `features`)
   - `DefaultStore.kt`: the default picture (prefs `default`) and the key on the frame (prefs `frame`)
   - `UploadOutcome.kt`: what `UploadService` does after an upload (toast, report to the controller,
     remember as the default)

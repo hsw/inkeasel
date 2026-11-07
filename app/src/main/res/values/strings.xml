@@ -43,7 +43,24 @@
     <string name="frame_signal">signal %1$d dBm</string>
     <string name="frame_unsupported">not supported: %1$s</string>
     <string name="frame_unavailable">unavailable</string>
-    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+
+    <!-- settings: permissions and features -->
+    <string name="settings_features">Permissions and features</string>
+    <string name="perm_bt">Bluetooth</string>
+    <string name="perm_bt_granted">Allowed: the app can search for frames and send pictures.</string>
+    <string name="perm_bt_missing">Not allowed: the app cannot search for frames or send pictures.</string>
+    <!-- %1$s the app name, %2$s the permission's name in the system settings (perm_name_*) -->
+    <string name="perm_bt_blocked">Denied. Allow it in Settings → Apps → %1$s → Permissions → %2$s.</string>
+    <string name="perm_name_nearby">Nearby devices</string>
+    <string name="perm_name_location">Location</string>
+    <string name="app_info">App info</string>
+    <string name="poster">Now-playing poster</string>
+    <string name="access_granted">Notification access is granted: the app sees what plays.</string>
+    <string name="access_missing">Needs notification access to see what plays.</string>
+    <string name="access_open">Grant access</string>
+    <string name="access_adb">This device has no settings screen for it. Grant it from a computer:\n%1$s</string>
+    <string name="access_restricted">If the switch there is greyed out (\"Restricted setting\"), first open App info → ⋮ → \"Allow restricted settings\".</string>
 
     <!-- frame advertisement (FrameAdvert.describe) -->
     <string name="advert_colour_panel">%1$s, panel %2$s</string>

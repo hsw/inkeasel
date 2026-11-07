@@ -51,7 +51,8 @@ import java.io.File
  * as failed), an automatic request never replaces a manual one, and a manual one goes first. An automatic
  * request carries the controller's `stamp` ([FrameController.manualUploads] when it was decided); if a manual
  * upload succeeded since, it is dropped before upload and reported as failed, so a revert or a poster queued
- * behind a manual upload never covers the user's pick.
+ * behind a manual upload never covers the user's pick. A poster still queued when the poster is switched off
+ * in the settings is dropped the same way.
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): every request is refused at
  * once, before Bluetooth is touched ([refuseNoFrame]). A picture is rendered in the chosen frame's format
@@ -194,9 +195,12 @@ class UploadService : Service() {
         else Log.i(TAG, "a newer start is pending; staying")
     }
 
-    /** The next request to upload; an automatic one decided before a later manual upload is dropped. */
-    private fun next(): Req? = queue.poll(stale = { controller.isStale(it.auto, it.stamp) }) { dropped ->
-        Log.i(TAG, "auto upload dropped, a manual upload came after it: ${dropped.source.title} (key=${dropped.key})")
+    /**
+     * The next request to upload; an automatic one decided before a later manual upload, or a poster while the
+     * poster is switched off, is dropped ([FrameController.isStale]).
+     */
+    private fun next(): Req? = queue.poll(stale = { controller.isStale(it.auto, it.stamp, it.key) }) { dropped ->
+        Log.i(TAG, "auto upload dropped (a manual upload came after it, or the poster is off): ${dropped.source.title} (key=${dropped.key})")
         report(dropped, ok = false)
     }
 

@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -48,21 +51,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.tv.material3.Button
 import androidx.tv.material3.ListItem
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
+import io.github.hsw.inkeasel.nowplaying.FeatureStore
+import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import kotlinx.coroutines.delay
 
 private const val TAG = "FrameSettings"
 
 /**
- * "Settings", section "Frame": a full-screen dialog over the catalog. While it is open it scans for frames
- * and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves it and
- * closes the dialog. "Cancel" and Back call [onCancel] and change nothing. The scan stops when the dialog
- * closes and while the app is in the background.
+ * "Settings": a full-screen dialog over the catalog. Section "Frame": while the dialog is open it scans for
+ * frames and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves
+ * it and closes the dialog. Section "Permissions and features" ([FeaturesSection]): the Bluetooth permission
+ * and the now-playing poster switch with its notification access; a change there applies at once. "Close"
+ * and Back call [onCancel] and leave the frame as it was. The scan stops when the dialog closes and while
+ * the app is in the background.
+ *
+ * The whole content scrolls as one column (a phone in landscape is about 380 dp tall), and "Close" sits at
+ * the top next to the title, so the first focus needs no scrolling.
  *
  * A dialog rather than a separate screen: the catalog stays composed below it, so on close the D-pad focus
  * returns to where it was (the header button that opened it).
@@ -74,6 +86,7 @@ private const val TAG = "FrameSettings"
 fun FrameSettingsDialog(
     selected: SelectedFrame?,
     permitted: Boolean,
+    permissionBlocked: Boolean,
     onRequestPermissions: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
@@ -86,7 +99,7 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, permitted, sidePadding, onRequestPermissions, onSelect, onCancel)
+                FrameSettings(selected, permitted, permissionBlocked, sidePadding, onRequestPermissions, onSelect, onCancel)
             }
         }
     }
@@ -116,6 +129,7 @@ private fun EdgeToEdgeDialogWindow() {
 private fun FrameSettings(
     selected: SelectedFrame?,
     permitted: Boolean,
+    permissionBlocked: Boolean,
     sidePadding: Int,
     onRequestPermissions: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
@@ -150,7 +164,7 @@ private fun FrameSettings(
         }
     }
 
-    // Focus: "Cancel" at first, so OK/Back work at once even before any frame shows up; then, once, the
+    // Focus: "Close" at first, so OK/Back work at once even before any frame shows up; then, once, the
     // chosen frame (given a moment to show up) or else the first one that can be chosen, unless the user
     // has already moved onto the list.
     val cancelFocus = remember { FocusRequester() }
@@ -169,8 +183,14 @@ private fun FrameSettings(
         if (!listTouched) runCatching { targetFocus.requestFocus() }
     }
 
-    Column(Modifier.fillMaxSize().padding(horizontal = sidePadding.dp, vertical = 32.dp)) {
-        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = sidePadding.dp, vertical = 32.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
+            Spacer(Modifier.width(16.dp))
+            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text(stringResource(R.string.close)) }
+        }
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.settings_frame), style = MaterialTheme.typography.titleLarge)
         Text(
@@ -186,10 +206,12 @@ private fun FrameSettings(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(16.dp))
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth()) {
             when {
                 !permitted -> Problem(
-                    stringResource(R.string.ble_permission_needed), stringResource(R.string.allow), onRequestPermissions,
+                    if (permissionBlocked) blockedText() else stringResource(R.string.ble_permission_needed),
+                    stringResource(if (permissionBlocked) R.string.app_info else R.string.allow),
+                    onRequestPermissions,
                 )
                 btProblem != null -> Problem("${btProblem!!.text().replaceFirstChar { it.uppercase() }}.", stringResource(R.string.bt_settings)) {
                     try {
@@ -211,7 +233,7 @@ private fun FrameSettings(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (f in frames) key(f.name) {
                         FrameItem(
                             f,
@@ -234,12 +256,99 @@ private fun FrameSettings(
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Row {
-            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text(stringResource(R.string.cancel)) }
+        Spacer(Modifier.height(32.dp))
+        FeaturesSection(permitted, permissionBlocked, onRequestPermissions)
+    }
+}
+
+/**
+ * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
+ * asks, "App info"; the frame list above names the path to it then), and the now-playing poster: a switch ([FeatureStore]) with the
+ * notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
+ * system screen, or shows the adb command where there is none. The access and the screen are read again
+ * whenever the app comes back (e.g. from that screen).
+ *
+ * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
+ */
+@Composable
+private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRequestPermissions: () -> Unit) {
+    val ctx = LocalContext.current
+    val features = remember { FeatureStore(ctx) }
+    var posterOn by remember { mutableStateOf(features.posterEnabled) }
+    var access by remember { mutableStateOf(ListenerAccess.enabled(ctx)) }
+    var hasScreen by remember { mutableStateOf(ListenerAccess.canOpen(ctx)) }
+    var openFailed by remember { mutableStateOf(false) } // the screen resolved but did not start
+    LifecycleResumeEffect(Unit) {
+        access = ListenerAccess.enabled(ctx)
+        hasScreen = ListenerAccess.canOpen(ctx)
+        onPauseOrDispose {}
+    }
+    val tv = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
+    val ui = ListenerAccessUi.of(access, hasScreen && !openFailed, Build.VERSION.SDK_INT, tv, ListenerAccess.adbCommand(ctx))
+    val openAccess = {
+        if (!ListenerAccess.open(ctx)) openFailed = true
+    }
+    val togglePoster = {
+        val on = !posterOn
+        posterOn = on
+        features.posterEnabled = on
+        FrameControllers.get(ctx).onPosterSwitched()
+        if (on && !access && hasScreen && !openFailed) openAccess()
+    }
+    val dim = MaterialTheme.colorScheme.onSurfaceVariant
+
+    Text(stringResource(R.string.settings_features), style = MaterialTheme.typography.titleLarge)
+    Spacer(Modifier.height(8.dp))
+    SectionRow(
+        title = stringResource(R.string.perm_bt),
+        // the frame list above already says how to allow it (and where, once the system no longer asks)
+        text = stringResource(if (permitted) R.string.perm_bt_granted else R.string.perm_bt_missing),
+        action = if (permitted) null else stringResource(if (permissionBlocked) R.string.app_info else R.string.allow),
+        onAction = onRequestPermissions,
+    )
+    Spacer(Modifier.height(8.dp))
+    ListItem(
+        selected = false,
+        onClick = togglePoster,
+        modifier = Modifier.onTap(togglePoster),
+        headlineContent = { Text(stringResource(R.string.poster)) },
+        supportingContent = {
+            Column {
+                Text(ui.status.text())
+                ui.adbHint?.let { Text(it.text(), color = dim) }
+            }
+        },
+        trailingContent = { Switch(checked = posterOn, onCheckedChange = null) },
+    )
+    if (ui.openButton) {
+        Spacer(Modifier.height(8.dp))
+        Button(onClick = openAccess, modifier = Modifier.onTap(openAccess)) { Text(stringResource(R.string.access_open)) }
+    }
+    ui.restrictedHint?.let { hint ->
+        Spacer(Modifier.height(8.dp))
+        SectionRow(title = null, text = hint.text(), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
+    }
+}
+
+/** A compact row: an optional [title] over a dim [text] on the left, an optional button on the right. */
+@Composable
+private fun SectionRow(title: String?, text: String?, action: String?, onAction: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            title?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+            text?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
+        if (action != null) {
+            Spacer(Modifier.width(16.dp))
+            Button(onClick = onAction, modifier = Modifier.onTap(onAction)) { Text(action, maxLines = 1) }
         }
     }
 }
+
+/** The Bluetooth permission is denied for good: where to allow it in the system settings. */
+@Composable
+private fun blockedText(): String =
+    stringResource(R.string.perm_bt_blocked, stringResource(R.string.app_name), stringResource(BlePermissions.settingsName))
 
 /**
  * One frame of the scan. An unsupported one stays focusable, so the D-pad can reach it and its reason is

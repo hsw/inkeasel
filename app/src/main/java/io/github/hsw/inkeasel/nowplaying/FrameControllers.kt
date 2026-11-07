@@ -11,8 +11,8 @@ import io.github.hsw.inkeasel.UploadService
 /**
  * The process-wide [FrameController], wired for production: uploads go through `UploadService` with
  * `auto=true`, the default picture and the frame key live in shared preferences, nothing is uploaded while
- * no frame is chosen ([FrameStore]), and the log goes to logcat under [FrameController.TAG]. Created on
- * first use with the application context.
+ * no frame is chosen ([FrameStore]), no poster while it is switched off ([FeatureStore]), and the log goes to
+ * logcat under [FrameController.TAG]. Created on first use with the application context.
  */
 object FrameControllers {
     @Volatile
@@ -28,5 +28,6 @@ object FrameControllers {
         state = PrefsFrameState(app),
         log = { Log.i(FrameController.TAG, it) },
         frameSelected = FrameStore(app).let { store -> { store.selected() != null } },
+        posterEnabled = FeatureStore(app).let { store -> { store.posterEnabled } },
     )
 }

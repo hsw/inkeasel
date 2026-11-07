@@ -28,7 +28,7 @@ class TxtTest {
     fun `equal by id and args`() {
         assertEquals(Txt(R.string.retry), Txt(R.string.retry))
         assertEquals(Txt(R.string.header_frame, listOf("NM000001")), txt(R.string.header_frame, "NM000001"))
-        assertNotEquals(Txt(R.string.retry), Txt(R.string.cancel))
+        assertNotEquals(Txt(R.string.retry), Txt(R.string.close))
         assertNotEquals(txt(R.string.header_frame, "NM000001"), txt(R.string.header_frame, "NM000002"))
         assertNotEquals(txt(R.string.frame_signal, -60), txt(R.string.frame_signal, "-60"))
     }

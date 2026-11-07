@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,6 +70,7 @@ class FrameControllerTest {
         var inFlight: Req? = null
         val dropped = mutableListOf<String>()
         var frame = true // a frame is chosen in the settings
+        var poster = true // the poster switch in the settings
         val c: FrameController = FrameController(scope.backgroundScope, { art, title, key ->
             uploads += Upload(scope.testScheduler.currentTime, art, title, key)
             if (service) {
@@ -76,7 +78,7 @@ class FrameControllerTest {
             } else {
                 result?.let { ok -> c.onUploadResult(key, ok) }
             }
-        }, defaults, state, { logs += it }, frameSelected = { frame })
+        }, defaults, state, { logs += it }, frameSelected = { frame }, posterEnabled = { poster })
 
         /** The user taps a picture: a manual request joins the service's queue. */
         fun manual(src: Source) = assertNull(queue.offer(Req(src.manualKey(), auto = false, stamp = 0, source = src)))
@@ -84,7 +86,7 @@ class FrameControllerTest {
         /** The service takes the next request into flight (dropping superseded automatic ones); its key. */
         fun startNext(): String? {
             check(inFlight == null)
-            inFlight = queue.poll(stale = { c.isStale(it.auto, it.stamp) }) {
+            inFlight = queue.poll(stale = { c.isStale(it.auto, it.stamp, it.key) }) {
                 dropped += it.key
                 c.onUploadResult(it.key, false)
             }
@@ -125,6 +127,12 @@ class FrameControllerTest {
         }
 
         fun keys() = uploads.map { it.key }
+
+        /** The user flips the poster switch in the settings. */
+        fun switchPoster(on: Boolean) {
+            poster = on
+            c.onPosterSwitched()
+        }
     }
 
     private val defaultKey = FrameController.DEFAULT_PREFIX + photo
@@ -187,6 +195,210 @@ class FrameControllerTest {
         r.stop()
         r.advance(60 * 20)
         assertEquals(FrameController.MAX_REVERT_ATTEMPTS, r.keys().count { it == defaultKey })
+    }
+
+    // --- poster switched off in the settings ---
+
+    @Test
+    fun posterOff_noPoster_butEventsTracked() = runTest {
+        val r = Rig(this)
+        r.poster = false
+        r.play()
+        r.advance(300)
+        assertTrue(r.uploads.isEmpty())
+        assertTrue(r.logs.any { it.startsWith("poster off: not scheduled: $k1") })
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // it still knows what plays
+        r.stop()
+        r.advance(300)
+        assertTrue(r.uploads.isEmpty()) // nothing to revert: the default was never covered
+    }
+
+    @Test
+    fun switchedOffMidPoster_revertsOnceAtOnce() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.switchPoster(false)
+        assertEquals(listOf(k1, defaultKey), r.keys()) // at once, not after the revert delay
+        assertEquals(defaultKey, r.c.onFrame)
+        r.advance(600)
+        r.pause()
+        r.play()
+        r.advance(600)
+        r.stop()
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys()) // once: no poster and no second revert later
+    }
+
+    @Test
+    fun switchedOffDuringTheStartTimer_noPoster() = runTest {
+        val r = Rig(this)
+        r.play()
+        r.advance(30)
+        r.switchPoster(false)
+        r.advance(600)
+        assertTrue(r.uploads.isEmpty())
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // no start pending any more
+    }
+
+    @Test
+    fun switchedOnDuringPlayback_posterAfterTheStartDelayFromTheSwitch() = runTest {
+        val r = Rig(this)
+        r.poster = false
+        r.play()
+        r.advance(300)
+        r.switchPoster(true) // the film keeps playing: no new PLAYING event comes
+        r.advance(59)
+        assertTrue(r.uploads.isEmpty())
+        r.advance(1)
+        assertEquals(listOf(Upload(360_000, Art.Url(k1), "Film", k1)), r.uploads)
+        assertEquals(k1, r.c.onFrame)
+    }
+
+    @Test
+    fun switchedOnAgainAfterARevert_posterReturns() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.switchPoster(false)
+        r.switchPoster(true) // the film still plays: the key was the last attempt, but the switch counts
+        r.advance(60)
+        assertEquals(listOf(k1, defaultKey, k1), r.keys())
+    }
+
+    @Test
+    fun switchedOnWhileNothingPlays_nothingHappens() = runTest {
+        val r = Rig(this)
+        r.poster = false
+        r.play()
+        r.stop()
+        r.switchPoster(true)
+        r.advance(600)
+        assertTrue(r.uploads.isEmpty())
+    }
+
+    @Test
+    fun posterLandsAfterTheSwitchWentOff_revertedAtOnce() = runTest {
+        val r = Rig(this)
+        r.service = true
+        r.play()
+        r.advance(60)
+        assertEquals(k1, r.startNext()) // the poster's upload is under way
+        r.switchPoster(false) // the default is on the frame: nothing to revert yet
+        assertEquals(listOf(k1), r.keys())
+        r.complete() // the poster lands anyway
+        assertEquals(k1, r.c.onFrame)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        assertEquals(defaultKey, r.startNext())
+        r.complete()
+        assertEquals(defaultKey, r.c.onFrame)
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+    }
+
+    @Test
+    fun posterQueuedWhenSwitchedOff_droppedAtTakeTime() = runTest {
+        val r = Rig(this)
+        r.service = true
+        r.play()
+        r.advance(60) // requested, still queued in the service
+        r.switchPoster(false)
+        assertNull(r.startNext()) // dropped before upload, reported as failed
+        assertEquals(listOf(k1), r.dropped)
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // only as what plays: nothing pending
+        assertEquals(null, r.c.onFrame)
+    }
+
+    @Test
+    fun posterOff_queuedRevertNotDropped() = runTest {
+        val r = Rig(this, onFrame = k1) // a poster from before the switch
+        r.service = true
+        r.switchPoster(false)
+        assertEquals(listOf(defaultKey), r.keys())
+        assertEquals(defaultKey, r.startNext()) // a revert is not a poster: it goes through
+        assertTrue(r.dropped.isEmpty())
+    }
+
+    @Test
+    fun posterOff_failedRevertRetried_evenWhileAFilmPlays() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.result = false
+        r.switchPoster(false)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.play(k1) // a PLAYING event while off must not cancel the retry
+        r.advance(60)
+        assertEquals(listOf(k1, defaultKey, defaultKey), r.keys())
+        r.result = true
+        r.advance(60)
+        assertEquals(defaultKey, r.c.onFrame)
+    }
+
+    @Test
+    fun switchedOnAgainWhileARevertRetryIsPending_noRevert() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.result = false
+        r.switchPoster(false) // the revert fails: a retry is armed for 60 s later
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.result = true
+        r.switchPoster(true) // the film still plays and its poster is still on the frame
+        r.advance(600)
+        assertEquals(listOf(k1, defaultKey), r.keys()) // no default over the poster, no poster again
+        assertEquals(k1, r.c.onFrame)
+    }
+
+    @Test
+    fun switchedOffAfterTheFilmStopped_replacesThePendingRevert() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.stop() // the revert is due 60 s later
+        r.advance(30)
+        r.result = false
+        r.switchPoster(false) // reverts at once and fails: its retry is 60 s from now, not the old timer
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.advance(59)
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        r.result = true
+        r.advance(1)
+        assertEquals(listOf(k1, defaultKey, defaultKey), r.keys())
+        assertEquals(defaultKey, r.c.onFrame)
+    }
+
+    @Test
+    fun switchedOffWithoutADefault_posterStays() = runTest {
+        val r = Rig(this, default = null)
+        r.posterUp(k1)
+        r.switchPoster(false)
+        r.advance(600)
+        assertEquals(listOf(k1), r.keys())
+        assertEquals(k1, r.c.onFrame)
+        assertTrue(r.logs.any { it.startsWith("no default picture") })
+    }
+
+    @Test
+    fun switchedOffWithoutAFrame_nothingRequestedOrCounted() = runTest {
+        val r = Rig(this)
+        r.posterUp(k1)
+        r.frame = false
+        r.switchPoster(false)
+        assertEquals(listOf(k1), r.keys())
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // the refused revert is not left pending
+        r.frame = true
+        r.stop()
+        r.advance(60) // the usual revert: nothing blocks it
+        assertEquals(listOf(k1, defaultKey), r.keys())
+        assertEquals(defaultKey, r.c.onFrame)
+    }
+
+    @Test
+    fun isStale_posterOff_onlyAutomaticPosters() = runTest {
+        val r = Rig(this)
+        val now = r.c.manualUploads
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = k1))
+        r.poster = false
+        assertTrue(r.c.isStale(auto = true, stamp = now, key = k1))
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = defaultKey))
+        assertFalse(r.c.isStale(auto = false, stamp = now, key = "manual:x"))
+        assertFalse(r.c.isStale(auto = true, stamp = now, key = null)) // no key: only the stamp counts
     }
 
     // --- main scenarios ---
@@ -877,10 +1089,10 @@ class FrameControllerTest {
     fun stamp_autoIsStaleOnlyAfterALaterManualUpload() = runTest {
         val r = Rig(this)
         val before = r.c.manualUploads
-        assertEquals(false, r.c.isStale(auto = true, stamp = before))
+        assertEquals(false, r.c.isStale(auto = true, stamp = before, key = defaultKey))
         r.c.onManualUpload(Source(Source.Type.PHOTO, "sea"))
-        assertTrue(r.c.isStale(auto = true, stamp = before))
-        assertEquals(false, r.c.isStale(auto = true, stamp = r.c.manualUploads))
+        assertTrue(r.c.isStale(auto = true, stamp = before, key = defaultKey))
+        assertEquals(false, r.c.isStale(auto = true, stamp = r.c.manualUploads, key = defaultKey))
     }
 
     @Test
@@ -888,7 +1100,7 @@ class FrameControllerTest {
         val r = Rig(this)
         val before = r.c.manualUploads
         r.c.onManualUpload(Source(Source.Type.PHOTO, "sea"))
-        assertEquals(false, r.c.isStale(auto = false, stamp = before))
+        assertEquals(false, r.c.isStale(auto = false, stamp = before, key = "manual:x"))
     }
 
     @Test
