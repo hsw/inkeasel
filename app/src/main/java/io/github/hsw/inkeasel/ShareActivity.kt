@@ -28,7 +28,8 @@ import java.io.IOException
  *
  * Without the Bluetooth permissions ([BlePermissions]) it still copies the picture, remembers it as the
  * pending share ([PendingShare]) and opens [MainActivity], which asks for them and sends the picture once
- * they are granted and a frame is chosen.
+ * they are granted and a frame is chosen. With the permissions but no chosen frame it keeps the picture in
+ * "My pictures" and says so ([ShareRules.step]).
  */
 class ShareActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,7 +50,15 @@ class ShareActivity : ComponentActivity() {
             try {
                 val file = copy(uri)
                 Log.i(TAG, "shared picture saved: ${file.name} (${file.length()} B)")
-                if (BlePermissions.granted(this@ShareActivity)) send(file) else waitForPermissions(file)
+                val frameSelected = FrameStore(this@ShareActivity).selected() != null
+                when (ShareRules.step(BlePermissions.granted(this@ShareActivity), frameSelected)) {
+                    ShareRules.Step.SEND -> send(file)
+                    ShareRules.Step.WAIT_IN_APP -> waitForPermissions(file)
+                    ShareRules.Step.NO_FRAME -> {
+                        Log.i(TAG, "no frame selected: ${file.name} stays in the pictures folder")
+                        toast(Txt(R.string.share_no_frame))
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

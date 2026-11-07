@@ -156,4 +156,13 @@ class ShareRulesTest {
         assertFalse(ShareRules.sendPending(savedAtMs = now, nowMs = now, fileExists = false))
         assertFalse(ShareRules.sendPending(savedAtMs = now + 60_000, nowMs = now, fileExists = true)) // clock set back
     }
+
+    @Test
+    fun step_permissionsFirst_thenFrame() {
+        assertEquals(ShareRules.Step.SEND, ShareRules.step(permitted = true, frameSelected = true))
+        assertEquals(ShareRules.Step.NO_FRAME, ShareRules.step(permitted = true, frameSelected = false))
+        // the in-app path waits for a frame as well
+        assertEquals(ShareRules.Step.WAIT_IN_APP, ShareRules.step(permitted = false, frameSelected = false))
+        assertEquals(ShareRules.Step.WAIT_IN_APP, ShareRules.step(permitted = false, frameSelected = true))
+    }
 }

@@ -8,8 +8,8 @@ import java.time.format.DateTimeFormatter
 
 /**
  * The rules of "Share → InkEasel" ([ShareActivity]), free of Android types: which shared URIs are taken, the
- * file name a shared picture gets in the pictures folder, the size cap of the copy, and when a share that
- * waited for the Bluetooth permission is still sent.
+ * file name a shared picture gets in the pictures folder, the size cap of the copy, what happens to the saved
+ * picture ([step]), and when a share that waited for the Bluetooth permission is still sent.
  */
 object ShareRules {
     /** The largest shared picture copied; a bigger stream is cut off and the copy dropped. */
@@ -99,4 +99,27 @@ object ShareRules {
      */
     fun sendPending(savedAtMs: Long, nowMs: Long, fileExists: Boolean): Boolean =
         fileExists && nowMs - savedAtMs in 0..PENDING_MAX_AGE_MS
+
+    /** What [ShareActivity] does with a picture it has saved. */
+    enum class Step {
+        /** Hand it to the upload service. */
+        SEND,
+
+        /** Remember it as the pending share and open the app, which asks for the permissions. */
+        WAIT_IN_APP,
+
+        /**
+         * Keep it in "My pictures" and say that no frame is chosen. Said by the share itself, while it is in
+         * the foreground: the upload service's own refusal toast comes after the share has finished, when
+         * Android 13+ suppresses toasts of an app without notification permission.
+         */
+        NO_FRAME,
+    }
+
+    /** The [Step] for a saved share: the permissions first (that path also waits for a frame), then a frame. */
+    fun step(permitted: Boolean, frameSelected: Boolean): Step = when {
+        !permitted -> Step.WAIT_IN_APP
+        !frameSelected -> Step.NO_FRAME
+        else -> Step.SEND
+    }
 }

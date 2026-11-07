@@ -156,7 +156,8 @@ copied into "My pictures" (the sender's file name, made safe, with the extension
 when the name is taken; `shared-<date>-<time>` when the sender gives none; at most 50 MB, written to a
 `.part` file and renamed when complete) and sent to the frame as a manual upload, so it becomes the default
 picture. The gallery stays on screen; a toast says "Sending to the frame…", and the upload toasts its result
-as usual (with no frame chosen: "No frame selected").
+as usual. With no frame chosen the picture is only saved, and the share itself says so ("No frame selected:
+choose one in the settings, then send it from there").
 
 Only a `content://` picture of another app is taken (no `file://` paths, nothing of the app's own). Types:
 JPEG, PNG, WebP, GIF, BMP and HEIC/HEIF (decoded by the system, Android 9+).
@@ -339,8 +340,8 @@ Code:
   sends a waiting shared picture once the permission is granted and a frame chosen
 - `CatalogLayout.kt`: columns, side padding and header shape for the window width (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
-  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, the size cap and the
-  pending-share rule (pure)
+  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, the size cap, the
+  next step (send, wait in the app, or no frame) and the pending-share rule (pure)
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
