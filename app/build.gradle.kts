@@ -6,7 +6,8 @@ plugins {
 
 // Release signing comes from the environment (CI secrets, or a local shell for a hand-made release):
 // all four variables set → the release key; none set → the debug key, with a warning on release builds;
-// only some set → a release build fails rather than quietly falling back to the debug key.
+// only some set → a release build fails rather than quietly falling back to the debug key. Only the tasks
+// that package and sign a release count: release unit tests and lint run without the variables.
 val releaseKey: Map<String, String?> = listOf(
     "INKEASEL_KEYSTORE",
     "INKEASEL_KEYSTORE_PASSWORD",
@@ -14,9 +15,10 @@ val releaseKey: Map<String, String?> = listOf(
     "INKEASEL_KEY_PASSWORD",
 ).associateWith { providers.environmentVariable(it).orNull?.takeIf(String::isNotEmpty) }
 val releaseKeySet = releaseKey.values.all { it != null }
+val releasePackaging = setOf("assembleRelease", "bundleRelease", "packageRelease", "packageReleaseBundle", "signReleaseBundle")
 
 gradle.taskGraph.whenReady {
-    if (releaseKeySet || allTasks.none { it.project == project && it.name.contains("Release") }) {
+    if (releaseKeySet || allTasks.none { it.project == project && it.name in releasePackaging }) {
         return@whenReady
     }
     val missing = releaseKey.filterValues { it == null }.keys

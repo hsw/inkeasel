@@ -4,15 +4,17 @@ on:
   push:
     tags: ["v*"]
 
+# the build job runs Gradle (third-party plugins and dependencies) with a read-only token; only the job that
+# publishes the release, which runs no build code, may write
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -33,6 +35,8 @@ jobs:
           fi
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v4
         with:
@@ -63,11 +67,31 @@ jobs:
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks"
 
+      - name: Keep the APK for the release job
+        uses: actions/upload-artifact@v4
+        with:
+          name: inkeasel-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: inkeasel-release-apk
+          path: ${{ runner.temp }}/apk
+
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           apk="$RUNNER_TEMP/inkeasel-$TAG.apk"
-          cp app/build/outputs/apk/release/app-release.apk "$apk"
-          gh release create "$TAG" "$apk" --verify-tag --title "InkEasel $TAG" --generate-notes
+          mv "$RUNNER_TEMP/apk/app-release.apk" "$apk"
+          gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --verify-tag --title "InkEasel $TAG" --generate-notes
