@@ -72,15 +72,42 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 private const val TAG = "MainActivity"
 
 sealed interface CatalogState {
     data object Loading : CatalogState
-    data class Loaded(val items: List<Picture>) : CatalogState
+
+    /**
+     * A list to show. [staleSince] is set when the source failed and this is its saved list ([CatalogCache],
+     * saved then), with [staleReason] why the fresh one did not come; [retrying] while a retry runs (the
+     * stale list stays on screen meanwhile).
+     */
+    data class Loaded(
+        val items: List<Picture>,
+        val staleSince: Long? = null,
+        val staleReason: Txt? = null,
+        val retrying: Boolean = false,
+    ) : CatalogState
+
     /** [reason] is a whole sentence ([CatalogError]), shown as is. */
     data class Failed(val reason: Txt) : CatalogState
+
+    companion object {
+        /** What a tab shows while it (re)loads after [previous]: a stale list stays, marked as retrying. */
+        fun reloading(previous: CatalogState?): CatalogState =
+            if (previous is Loaded && previous.staleSince != null) previous.copy(retrying = true) else Loading
+
+        /** After a failed load: the saved list with the [reason] as a note, or the failure itself. */
+        fun failed(reason: Txt, cached: CachedCatalog?): CatalogState =
+            if (cached != null) Loaded(cached.items, staleSince = cached.savedAt, staleReason = reason) else Failed(reason)
+    }
 }
+
+/** A tab that loads again when it gets focus: never loaded, failed, or showing a saved list. */
+private fun CatalogState?.needsLoad(): Boolean =
+    this == null || this is CatalogState.Failed || (this is CatalogState.Loaded && staleSince != null && !retrying)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val frames = FrameStore(app)
@@ -97,6 +124,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var tab by mutableIntStateOf(0)
         private set
     val catalogs = mutableStateMapOf<Int, CatalogState>()
+
+    /** The last good list of each remote source, shown when it fails. */
+    private val cache = CatalogCache(File(app.filesDir, "catalog"))
+    private val loads = mutableMapOf<Int, Job>()
 
     /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
     private val localTab = sources.indexOfFirst { it is LocalImages }
@@ -129,7 +160,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectTab(i: Int) {
         tab = i
-        if (catalogs[i] == null || catalogs[i] is CatalogState.Failed) load(i)
+        if (catalogs[i].needsLoad()) load(i)
     }
 
     /** Re-scan the local folder (debounced — a single file push fires several events). */
@@ -153,15 +184,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localWatcher?.stopWatching()
     }
 
+    /**
+     * Load tab [i] (again). A remote source's good list is saved; when it fails, its saved list is shown with
+     * a note instead of the bare error. The local folder is not cached (it is read from disk anyway).
+     */
     fun load(i: Int) {
-        catalogs[i] = CatalogState.Loading
-        viewModelScope.launch {
+        if (loads[i]?.isActive == true) return
+        val src = sources[i]
+        val cached = i != localTab
+        catalogs[i] = CatalogState.reloading(catalogs[i])
+        loads[i] = viewModelScope.launch {
             catalogs[i] = try {
-                CatalogState.Loaded(sources[i].load())
+                val items = src.load()
+                if (cached) cache.write(src.id, items, System.currentTimeMillis())
+                CatalogState.Loaded(items)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                CatalogState.Failed(CatalogError.of(e))
+                Log.w(TAG, "catalog ${src.id} failed: $e")
+                CatalogState.failed(CatalogError.of(e), if (cached) cache.read(src.id) else null)
             }
         }
     }
@@ -263,19 +304,9 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
                     }
-                    is CatalogState.Loaded -> if (st.items.isEmpty()) {
-                        Text(
-                            stringResource(R.string.local_empty, LocalImages.ADB_DIR),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else LazyVerticalGrid(
-                        columns = GridCells.Fixed(4),
-                        contentPadding = PaddingValues(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(20.dp),
-                    ) {
-                        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect) { onSend(p) } }
+                    is CatalogState.Loaded -> Column {
+                        if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
+                        CatalogGrid(st, aspect, onSend)
                     }
                 }
             }
@@ -289,6 +320,43 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                 )
             }
         }
+    }
+}
+
+/** Above a saved list shown because its source failed: from when, why, and a retry. */
+@Composable
+private fun StaleNote(st: CatalogState.Loaded, onRetry: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            stringResource(R.string.catalog_stale, dateTimeText(st.staleSince ?: 0L), st.staleReason?.text().orEmpty()),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(16.dp))
+        if (st.retrying) {
+            Text(stringResource(R.string.catalog_retrying), style = MaterialTheme.typography.bodyMedium)
+        } else {
+            Button(onClick = onRetry, modifier = Modifier.onTap(onRetry)) { Text(stringResource(R.string.retry)) }
+        }
+    }
+}
+
+@Composable
+private fun CatalogGrid(st: CatalogState.Loaded, aspect: Float, onSend: (Picture) -> Unit) {
+    if (st.items.isEmpty()) {
+        Text(
+            stringResource(R.string.local_empty, LocalImages.ADB_DIR),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    } else LazyVerticalGrid(
+        columns = GridCells.Fixed(4),
+        contentPadding = PaddingValues(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect) { onSend(p) } }
     }
 }
 

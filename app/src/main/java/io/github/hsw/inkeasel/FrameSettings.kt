@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.provider.Settings
-import android.text.format.DateFormat
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +36,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -50,8 +48,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
 
 private const val TAG = "FrameSettings"
 
@@ -252,6 +248,5 @@ private fun Problem(message: String, action: String, onAction: () -> Unit) {
 @Composable
 private fun seenAt(ms: Long): String {
     if (ms <= 0) return stringResource(R.string.frame_seen_long_ago)
-    val locale = LocalConfiguration.current.locales[0]
-    return SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, "dMMMjjmm"), locale).format(Date(ms))
+    return dateTimeText(ms)
 }

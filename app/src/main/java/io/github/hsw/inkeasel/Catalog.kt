@@ -39,6 +39,9 @@ data class Picture(
 }
 
 interface Source {
+    /** Stable key of the source, e.g. the [CatalogCache] file name; never shown. */
+    val id: String
+
     /** The tab title. */
     val name: Txt
     suspend fun load(): List<Picture>
@@ -105,6 +108,7 @@ private fun wide(w: Int, h: Int) = h > 0 && w.toFloat() / h in 1.25f..2.2f
 
 /** Cleveland Museum of Art Open Access: CC0 paintings, no API key. */
 object ClevelandPaintings : Source {
+    override val id = "cma"
     override val name = Txt(R.string.tab_paintings)
 
     override suspend fun load(): List<Picture> {
@@ -142,6 +146,7 @@ object ClevelandPaintings : Source {
 
 /** Wikimedia Commons "Featured pictures of landscapes": photos under CC BY-SA and similar. */
 object CommonsLandscapes : Source {
+    override val id = "commons"
     override val name = Txt(R.string.tab_landscapes)
 
     private const val TAG = "CommonsLandscapes"
@@ -213,6 +218,7 @@ object CommonsLandscapes : Source {
  * Any JPEG/PNG/WebP/BMP/GIF dropped there shows up, newest first.
  */
 class LocalImages(private val app: Application) : Source {
+    override val id = "local"
     override val name = Txt(R.string.tab_local)
 
     companion object {

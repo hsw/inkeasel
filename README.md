@@ -31,6 +31,23 @@ device:
 
     adb shell cmd locale set-app-locales io.github.hsw.inkeasel --locales ru-RU   # or en-US
 
+## Catalog
+
+Tabs: "My pictures" (the app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and
+"Landscapes" (Wikimedia Commons featured pictures). A list request gives up after 20 s; Commons reads at
+most 3 pages within 30 s and shows what came in by then. A failure reads as a sentence (no connection, the
+source is not responding, HTTP code, unreadable answer) with **Retry**.
+
+The last good, non-empty list of each online tab is saved in the app's files (`files/catalog/<source>.json`).
+When the source fails later, that list is shown with a note above it ("Saved list from <date>. <reason>")
+and **Retry**; the list stays on screen while a retry runs, and the note goes once a fresh list arrives.
+An empty answer never replaces a saved list. Thumbnails of a saved list come from the image cache, so
+offline some may be missing; sending a picture still needs the network.
+
+Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
+than 20 s every time, "Paintings" fails each time and its saved list fills only after a fast answer;
+asking for fewer results than `limit=200` would be the next step then.
+
 ## Choosing the frame
 
 Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
@@ -144,6 +161,7 @@ Code:
 - `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
   list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`PageBudget`)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
+- `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
   verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally

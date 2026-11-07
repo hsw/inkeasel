@@ -16,6 +16,9 @@
     <string name="catalog_err_http">The source answered HTTP %1$d.</string>
     <string name="catalog_err_unreadable">The source sent an answer that could not be read.</string>
     <string name="retry">Retry</string>
+    <!-- a saved list shown because its source failed: %1$s when it was saved, %2$s why (a catalog_err_* sentence) -->
+    <string name="catalog_stale">Saved list from %1$s. %2$s</string>
+    <string name="catalog_retrying">Retrying…</string>
     <string name="local_empty">The folder is empty. Copy pictures here:\n%1$s\n(from a computer: adb push picture.jpg \"&lt;this folder&gt;\")</string>
     <string name="sending">Sending to the frame…</string>
 
