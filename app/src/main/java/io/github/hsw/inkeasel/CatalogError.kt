@@ -15,8 +15,8 @@ object CatalogError {
         // a socket timeout, or OkHttp's call timeout ("timeout"), or the whole-load deadline
         is InterruptedIOException -> Txt(R.string.catalog_err_timeout)
         is HttpStatusException ->
-            if (e.code >= 500) txt(R.string.catalog_err_http_server, e.code) else txt(R.string.catalog_err_http, e.code)
+            if (e.code >= 500) Txt(R.string.catalog_err_http_server, e.code) else Txt(R.string.catalog_err_http, e.code)
         is JSONException -> Txt(R.string.catalog_err_unreadable)
-        else -> txt(R.string.catalog_failed, e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
+        else -> Txt(R.string.catalog_failed, e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName)
     }
 }

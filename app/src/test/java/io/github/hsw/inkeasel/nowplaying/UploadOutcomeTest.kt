@@ -3,7 +3,6 @@ package io.github.hsw.inkeasel.nowplaying
 import io.github.hsw.inkeasel.R
 import io.github.hsw.inkeasel.Txt
 import io.github.hsw.inkeasel.TxtException
-import io.github.hsw.inkeasel.txt
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,38 +39,38 @@ class UploadOutcomeTest {
 
     @Test
     fun manualFailureToastsTheErrorAndDoesNotRemember() {
-        val o = UploadOutcome.of(auto = false, ok = false, error = TxtException(txt(R.string.frame_err_kind, "NM000001")))
-        assertEquals(txt(R.string.upload_failed, txt(R.string.frame_err_kind, "NM000001")), o.toast)
+        val o = UploadOutcome.of(auto = false, ok = false, error = TxtException(Txt(R.string.frame_err_kind, "NM000001")))
+        assertEquals(Txt(R.string.upload_failed, Txt(R.string.frame_err_kind, "NM000001")), o.toast)
         assertFalse(o.report)
         assertFalse(o.remember)
     }
 
     @Test
     fun manualFailureWithoutMessageStillToasts() {
-        assertEquals(txt(R.string.upload_failed, Txt(R.string.upload_error_unknown)), UploadOutcome.of(auto = false, ok = false).toast)
+        assertEquals(Txt(R.string.upload_failed, Txt(R.string.upload_error_unknown)), UploadOutcome.of(auto = false, ok = false).toast)
     }
 
     @Test
     fun aTxtExceptionIsShownInTheUsersLanguage() {
-        val nested = txt(R.string.frame_err_not_found, "NM000001", Txt(R.string.scanning_hint))
+        val nested = Txt(R.string.frame_err_not_found, "NM000001", Txt(R.string.scanning_hint))
         assertEquals(nested, UploadOutcome.reason(TxtException(nested)))
         assertEquals(Txt(R.string.upload_stopped), UploadOutcome.reason(TxtException(Txt(R.string.upload_stopped), IOException("cause"))))
     }
 
     @Test
     fun anotherExceptionKeepsItsRawMessage() {
-        assertEquals(txt(R.string.upload_error_text, "HTTP 404: https://e/p.jpg"), UploadOutcome.reason(IOException("HTTP 404: https://e/p.jpg")))
-        assertEquals(txt(R.string.upload_error_text, "timeout"), UploadOutcome.reason(SocketTimeoutException("timeout")))
+        assertEquals(Txt(R.string.upload_error_text, "HTTP 404: https://e/p.jpg"), UploadOutcome.reason(IOException("HTTP 404: https://e/p.jpg")))
+        assertEquals(Txt(R.string.upload_error_text, "timeout"), UploadOutcome.reason(SocketTimeoutException("timeout")))
         assertEquals(
-            txt(R.string.upload_failed, txt(R.string.upload_error_text, "HTTP 500: https://e/p.jpg")),
+            Txt(R.string.upload_failed, Txt(R.string.upload_error_text, "HTTP 500: https://e/p.jpg")),
             UploadOutcome.of(auto = false, ok = false, error = IOException("HTTP 500: https://e/p.jpg")).toast,
         )
     }
 
     @Test
     fun anExceptionWithoutMessageIsNamedByItsClass() {
-        assertEquals(txt(R.string.upload_error_text, "java.lang.IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
-        assertEquals(txt(R.string.upload_error_text, "java.io.IOException"), UploadOutcome.reason(IOException(" ")))
+        assertEquals(Txt(R.string.upload_error_text, "java.lang.IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
+        assertEquals(Txt(R.string.upload_error_text, "java.io.IOException"), UploadOutcome.reason(IOException(" ")))
     }
 
     @Test

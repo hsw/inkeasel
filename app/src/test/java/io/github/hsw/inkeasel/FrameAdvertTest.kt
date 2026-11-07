@@ -28,10 +28,10 @@ class FrameAdvertTest {
         assertArrayEquals(bytes(0x43, 0x13, 0x64, 0x15), a.raw)
         assertEquals(
             listOf(
-                txt(R.string.advert_colour_panel, "E6", "TA"),
-                txt(R.string.advert_size_rotation, txt(R.string.advert_size, 1024, 600), txt(R.string.degrees, 0)),
-                txt(R.string.advert_battery, 100),
-                txt(R.string.advert_firmware, 21),
+                Txt(R.string.advert_colour_panel, "E6", "TA"),
+                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.degrees, 0)),
+                Txt(R.string.advert_battery, 100),
+                Txt(R.string.advert_firmware, 21),
             ),
             a.describe(),
         )
@@ -67,7 +67,7 @@ class FrameAdvertTest {
         assertEquals(1024, FrameAdvert.parse(bytes(0x43, 0x73, 0x64))!!.width)
         assertNull(FrameAdvert.parse(bytes(0x43, 0x93, 0x64))!!.rotation) // 100: not in the table
         assertEquals(
-            txt(R.string.advert_size_rotation, txt(R.string.advert_size, 1024, 600), Txt(R.string.advert_rotation_unknown)),
+            Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.advert_rotation_unknown)),
             FrameAdvert.parse(bytes(0x43, 0x93, 0x64))!!.describe()[1],
         )
     }
@@ -78,9 +78,9 @@ class FrameAdvertTest {
         assertNull(a.firmware)
         assertEquals(
             listOf(
-                txt(R.string.advert_colour_panel, "E6", "TA"),
-                txt(R.string.advert_size_rotation, txt(R.string.advert_size, 1024, 600), txt(R.string.degrees, 0)),
-                txt(R.string.advert_battery, 100),
+                Txt(R.string.advert_colour_panel, "E6", "TA"),
+                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.degrees, 0)),
+                Txt(R.string.advert_battery, 100),
             ),
             a.describe(),
         )
@@ -100,7 +100,7 @@ class FrameAdvertTest {
         assertEquals(17, a.battery)
         assertEquals(5, a.firmware) // bit 7 of b3 is not part of the version
         assertEquals(Txt(R.string.advert_safe_mode), a.describe().last())
-        assertEquals(txt(R.string.advert_battery, 17), a.describe()[2])
+        assertEquals(Txt(R.string.advert_battery, 17), a.describe()[2])
     }
 
     @Test
@@ -118,8 +118,8 @@ class FrameAdvertTest {
         assertEquals(0x1F, a.resolutionCode)
         assertNull(a.width)
         assertNull(a.height)
-        assertEquals(txt(R.string.advert_size_code, 0x1F), a.size)
-        assertEquals(txt(R.string.advert_size_rotation, txt(R.string.advert_size_code, 0x1F), txt(R.string.degrees, 0)), a.describe()[1])
+        assertEquals(Txt(R.string.advert_size_code, 0x1F), a.size)
+        assertEquals(Txt(R.string.advert_size_rotation, Txt(R.string.advert_size_code, 0x1F), Txt(R.string.degrees, 0)), a.describe()[1])
         assertEquals(Panel.AB, FrameAdvert.parse(bytes(0x4F, 0x13, 0x64))!!.panel)
     }
 

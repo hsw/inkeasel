@@ -2,58 +2,67 @@ package io.github.hsw.inkeasel
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ListenerAccessUiTest {
-    private val adb = "adb shell cmd notification allow_listener app/app.Listener"
+    private fun of(enabled: Boolean = false, canOpen: Boolean = true, sdk: Int = 35, tv: Boolean = false, sideloaded: Boolean = true) =
+        ListenerAccessUi.of(enabled, canOpen, sdk, tv, sideloaded)
 
     @Test
     fun enabled_statusOnly() {
         for (canOpen in listOf(true, false)) for (sdk in listOf(26, 30, 33, 35)) {
-            val ui = ListenerAccessUi.of(enabled = true, canOpen = canOpen, sdk = sdk, tv = false, adbCommand = adb)
-            assertEquals(ListenerAccessUi(Txt(R.string.access_granted), openButton = false, adbHint = null, restrictedHint = null), ui)
+            assertEquals(
+                ListenerAccessUi(Txt(R.string.access_granted), openButton = false, adbHint = false, restrictedHint = false),
+                of(enabled = true, canOpen = canOpen, sdk = sdk),
+            )
         }
     }
 
     @Test
     fun offWithAScreen_button_noAdbHint() {
-        val ui = ListenerAccessUi.of(enabled = false, canOpen = true, sdk = 30, tv = false, adbCommand = adb)
+        val ui = of(sdk = 30)
         assertEquals(Txt(R.string.access_missing), ui.status)
         assertTrue(ui.openButton)
-        assertNull(ui.adbHint)
-        assertNull(ui.restrictedHint) // Android 11-12: no restricted settings yet
+        assertFalse(ui.adbHint)
+        assertFalse(ui.restrictedHint) // Android 11-12: no restricted settings yet
     }
 
     @Test
     fun offWithoutAScreen_adbHint_noButton() {
         for (sdk in listOf(30, 34)) { // Android TV 11 (Shield), or a TV build without the screen
-            val ui = ListenerAccessUi.of(enabled = false, canOpen = false, sdk = sdk, tv = true, adbCommand = adb)
+            val ui = of(canOpen = false, sdk = sdk, tv = true)
             assertEquals(Txt(R.string.access_missing), ui.status)
             assertFalse(ui.openButton)
-            assertEquals(txt(R.string.access_adb, adb), ui.adbHint)
-            assertNull(ui.restrictedHint) // adb grants are not restricted
+            assertTrue(ui.adbHint)
+            assertFalse(ui.restrictedHint) // adb grants are not restricted
         }
-        assertNull(ListenerAccessUi.of(enabled = false, canOpen = false, sdk = 34, tv = false, adbCommand = adb).restrictedHint)
+        assertFalse(of(canOpen = false, sdk = 34).restrictedHint)
     }
 
     @Test
     fun restrictedHint_fromAndroid13_onlyWhileOffWithAScreen() {
-        assertNull(ListenerAccessUi.of(enabled = false, canOpen = true, sdk = 32, tv = false, adbCommand = adb).restrictedHint)
+        assertFalse(of(sdk = 32).restrictedHint)
         for (sdk in listOf(33, 34, 35)) {
-            val ui = ListenerAccessUi.of(enabled = false, canOpen = true, sdk = sdk, tv = false, adbCommand = adb)
-            assertEquals(Txt(R.string.access_restricted), ui.restrictedHint)
+            val ui = of(sdk = sdk)
+            assertTrue(ui.restrictedHint)
             assertTrue(ui.openButton)
         }
-        assertNull(ListenerAccessUi.of(enabled = true, canOpen = true, sdk = 35, tv = false, adbCommand = adb).restrictedHint)
+        assertFalse(of(enabled = true).restrictedHint)
+    }
+
+    @Test
+    fun restrictedHint_notForAStoreInstall() {
+        val ui = of(sideloaded = false)
+        assertFalse(ui.restrictedHint)
+        assertTrue(ui.openButton)
     }
 
     @Test
     fun androidTv_listScreen_buttonWithoutRestrictedHint() {
-        val ui = ListenerAccessUi.of(enabled = false, canOpen = true, sdk = 34, tv = true, adbCommand = adb) // Android TV 14
+        val ui = of(sdk = 34, tv = true) // Android TV 14
         assertTrue(ui.openButton)
-        assertNull(ui.adbHint)
-        assertNull(ui.restrictedHint)
+        assertFalse(ui.adbHint)
+        assertFalse(ui.restrictedHint)
     }
 }

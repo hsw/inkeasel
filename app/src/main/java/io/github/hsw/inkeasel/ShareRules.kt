@@ -124,7 +124,7 @@ object ShareRules {
             val n = input.read(buf)
             if (n < 0) return total
             total += n
-            if (total > cap) throw TxtException(txt(R.string.share_too_big, (cap / (1024 * 1024)).toInt()))
+            if (total > cap) throw TxtException(Txt(R.string.share_too_big, (cap / (1024 * 1024)).toInt()))
             output.write(buf, 0, n)
         }
     }

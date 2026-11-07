@@ -324,15 +324,15 @@ object FrameFormats {
     fun find(caps: FrameCaps?): FormatLookup {
         if (caps == null) return FormatLookup.Unsupported(Txt(R.string.reason_no_caps))
         if (caps.rotation != 0) return FormatLookup.Unsupported(
-            txt(R.string.reason_rotation, caps.rotation?.let { txt(R.string.degrees, it) } ?: "?")
+            Txt(R.string.reason_rotation, caps.rotation?.let { Txt(R.string.degrees, it) } ?: "?")
         )
         val w = caps.width
         val h = caps.height
         if (w == null || h == null) return FormatLookup.Unsupported(Txt(R.string.reason_unknown_size))
         val entries = ENTRIES.filter { it.colours == caps.colours }
-        if (entries.isEmpty()) return FormatLookup.Unsupported(txt(R.string.reason_colours, caps.colours.name))
+        if (entries.isEmpty()) return FormatLookup.Unsupported(Txt(R.string.reason_colours, caps.colours.name))
         val entry = entries.firstOrNull { (w to h) in it.sizes }
-            ?: return FormatLookup.Unsupported(txt(R.string.reason_colours_size, caps.colours.name, w, h))
+            ?: return FormatLookup.Unsupported(Txt(R.string.reason_colours_size, caps.colours.name, w, h))
         entry.refused?.let { return FormatLookup.Unsupported(it) }
         return FormatLookup.Supported(FrameFormat(w, h, entry.palette, entry.packing, entry.marker, entry.verified))
     }

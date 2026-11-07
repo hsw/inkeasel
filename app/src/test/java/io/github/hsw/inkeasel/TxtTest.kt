@@ -27,24 +27,25 @@ class TxtTest {
     @Test
     fun `equal by id and args`() {
         assertEquals(Txt(R.string.retry), Txt(R.string.retry))
-        assertEquals(Txt(R.string.header_frame, listOf("NM000001")), txt(R.string.header_frame, "NM000001"))
+        assertEquals(Txt(R.string.header_frame, listOf("NM000001")), Txt(R.string.header_frame, "NM000001"))
         assertNotEquals(Txt(R.string.retry), Txt(R.string.close))
-        assertNotEquals(txt(R.string.header_frame, "NM000001"), txt(R.string.header_frame, "NM000002"))
-        assertNotEquals(txt(R.string.frame_signal, -60), txt(R.string.frame_signal, "-60"))
+        assertNotEquals(Txt(R.string.header_frame, "NM000001"), Txt(R.string.header_frame, "NM000002"))
+        assertNotEquals(Txt(R.string.frame_signal, -60), Txt(R.string.frame_signal, "-60"))
     }
 
     @Test
     fun `equal with nested args`() {
-        val a = txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
-        val b = txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
+        val a = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
+        val b = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
         assertEquals(a, b)
         assertEquals(a.hashCode(), b.hashCode())
-        assertNotEquals(a, txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unavailable)))
+        assertNotEquals(a, Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unavailable)))
     }
 
     @Test
-    fun `txt shorthand without args`() {
-        assertEquals(Txt(R.string.retry, emptyList()), txt(R.string.retry))
+    fun `vararg constructor equals the list one`() {
+        assertEquals(Txt(R.string.retry, emptyList()), Txt(R.string.retry))
+        assertEquals(Txt(R.string.frame_signal, listOf(-60)), Txt(R.string.frame_signal, -60))
     }
 
     @Test
@@ -54,30 +55,30 @@ class TxtTest {
 
     @Test
     fun `format with string and int args`() {
-        assertEquals("Frame: NM000001", txt(R.string.header_frame, "NM000001").format(::lookup))
-        assertEquals("signal -60 dBm", txt(R.string.frame_signal, -60).format(::lookup))
+        assertEquals("Frame: NM000001", Txt(R.string.header_frame, "NM000001").format(::lookup))
+        assertEquals("signal -60 dBm", Txt(R.string.frame_signal, -60).format(::lookup))
     }
 
     @Test
     fun `nested args are resolved first`() {
-        val t = txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
+        val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
         assertEquals("Frame NM000001: not verified on hardware", t.format(::lookup))
         assertEquals(listOf(R.string.frame_unverified, R.string.frame_toast_unverified), calls)
     }
 
     @Test
     fun `deeply nested args`() {
-        val inner = txt(R.string.header_frame, "NM000001")
-        val t = txt(R.string.frame_toast_unverified, "NM000001", txt(R.string.frame_toast_unverified, "x", inner))
+        val inner = Txt(R.string.header_frame, "NM000001")
+        val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_toast_unverified, "x", inner))
         assertEquals("Frame NM000001: Frame x: Frame: NM000001", t.format(::lookup))
     }
 
     @Test
     fun `TxtException carries the text and is an IOException`() {
         val cause = RuntimeException("boom")
-        val e = TxtException(txt(R.string.header_frame, "NM000001"), cause)
+        val e = TxtException(Txt(R.string.header_frame, "NM000001"), cause)
         assertTrue((e as Any) is IOException)
-        assertEquals(txt(R.string.header_frame, "NM000001"), e.txt)
+        assertEquals(Txt(R.string.header_frame, "NM000001"), e.txt)
         assertEquals(cause, e.cause)
     }
 }

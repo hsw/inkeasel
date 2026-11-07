@@ -32,10 +32,10 @@ class CatalogErrorTest {
 
     @Test
     fun `server errors ask to try later, other HTTP codes are reported`() {
-        assertEquals(txt(R.string.catalog_err_http_server, 504), CatalogError.of(HttpStatusException(504, "https://example.org/a")))
-        assertEquals(txt(R.string.catalog_err_http_server, 500), CatalogError.of(HttpStatusException(500, "https://example.org/a")))
-        assertEquals(txt(R.string.catalog_err_http, 404), CatalogError.of(HttpStatusException(404, "https://example.org/a")))
-        assertEquals(txt(R.string.catalog_err_http, 429), CatalogError.of(HttpStatusException(429, "https://example.org/a")))
+        assertEquals(Txt(R.string.catalog_err_http_server, 504), CatalogError.of(HttpStatusException(504, "https://example.org/a")))
+        assertEquals(Txt(R.string.catalog_err_http_server, 500), CatalogError.of(HttpStatusException(500, "https://example.org/a")))
+        assertEquals(Txt(R.string.catalog_err_http, 404), CatalogError.of(HttpStatusException(404, "https://example.org/a")))
+        assertEquals(Txt(R.string.catalog_err_http, 429), CatalogError.of(HttpStatusException(429, "https://example.org/a")))
     }
 
     @Test
@@ -61,13 +61,13 @@ class CatalogErrorTest {
 
     @Test
     fun `anything else keeps its message`() {
-        assertEquals(txt(R.string.catalog_failed, "Chain validation failed"), CatalogError.of(SSLHandshakeException("Chain validation failed")))
-        assertEquals(txt(R.string.catalog_failed, "boom"), CatalogError.of(IllegalStateException("boom")))
+        assertEquals(Txt(R.string.catalog_failed, "Chain validation failed"), CatalogError.of(SSLHandshakeException("Chain validation failed")))
+        assertEquals(Txt(R.string.catalog_failed, "boom"), CatalogError.of(IllegalStateException("boom")))
     }
 
     @Test
     fun `a missing or blank message falls back to the class name`() {
-        assertEquals(txt(R.string.catalog_failed, "IllegalStateException"), CatalogError.of(IllegalStateException()))
-        assertEquals(txt(R.string.catalog_failed, "IOException"), CatalogError.of(IOException(" ")))
+        assertEquals(Txt(R.string.catalog_failed, "IllegalStateException"), CatalogError.of(IllegalStateException()))
+        assertEquals(Txt(R.string.catalog_failed, "IOException"), CatalogError.of(IOException(" ")))
     }
 }

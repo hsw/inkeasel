@@ -114,14 +114,13 @@ fun FrameSettingsDialog(
 @Composable
 private fun EdgeToEdgeDialogWindow() {
     val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
-    DisposableEffect(window) {
+    LaunchedEffect(window) {
         if (Build.VERSION.SDK_INT >= 30) {
             window.attributes = window.attributes.apply {
                 fitInsetsTypes = 0
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-        onDispose {}
     }
 }
 
@@ -220,7 +219,7 @@ private fun FrameSettings(
                         Log.w(TAG, "no Bluetooth settings screen", e)
                     }
                 }
-                scanError != null -> Problem(txt(R.string.scan_failed, scanError!!).text(), stringResource(R.string.retry)) {
+                scanError != null -> Problem(Txt(R.string.scan_failed, scanError!!).text(), stringResource(R.string.retry)) {
                     scanError = null
                     scanRun++
                 }
@@ -243,12 +242,12 @@ private fun FrameSettings(
                         ) { reason ->
                             if (reason == null) {
                                 if (f.lookup.formatOrNull?.verified == false) {
-                                    val msg = txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified))
+                                    val msg = Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified))
                                     Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_LONG).show()
                                 }
                                 onSelect(f)
                             } else {
-                                val msg = txt(R.string.frame_toast_unsupported, f.name, reason)
+                                val msg = Txt(R.string.frame_toast_unsupported, f.name, reason)
                                 Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_SHORT).show()
                             }
                         }
@@ -277,23 +276,21 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
     var posterOn by remember { mutableStateOf(features.posterEnabled) }
     var access by remember { mutableStateOf(ListenerAccess.enabled(ctx)) }
     var hasScreen by remember { mutableStateOf(ListenerAccess.canOpen(ctx)) }
-    var openFailed by remember { mutableStateOf(false) } // the screen resolved but did not start
     LifecycleResumeEffect(Unit) {
         access = ListenerAccess.enabled(ctx)
         hasScreen = ListenerAccess.canOpen(ctx)
         onPauseOrDispose {}
     }
     val tv = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
-    val ui = ListenerAccessUi.of(access, hasScreen && !openFailed, Build.VERSION.SDK_INT, tv, ListenerAccess.adbCommand(ctx))
-    val openAccess = {
-        if (!ListenerAccess.open(ctx)) openFailed = true
-    }
+    val sideloaded = remember { ListenerAccess.sideloaded(ctx) }
+    val ui = ListenerAccessUi.of(access, hasScreen, Build.VERSION.SDK_INT, tv, sideloaded)
+    val openAccess = { ListenerAccess.open(ctx) }
     val togglePoster = {
         val on = !posterOn
         posterOn = on
         features.posterEnabled = on
         FrameControllers.get(ctx).onPosterSwitched()
-        if (on && !access && hasScreen && !openFailed) openAccess()
+        if (on && !access && hasScreen) openAccess()
     }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
 
@@ -315,7 +312,7 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
         supportingContent = {
             Column {
                 Text(ui.status.text())
-                ui.adbHint?.let { Text(it.text(), color = dim) }
+                if (ui.adbHint) Text(stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)), color = dim)
             }
         },
         trailingContent = { Switch(checked = posterOn, onCheckedChange = null) },
@@ -324,19 +321,19 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
         Spacer(Modifier.height(8.dp))
         Button(onClick = openAccess, modifier = Modifier.onTap(openAccess)) { Text(stringResource(R.string.access_open)) }
     }
-    ui.restrictedHint?.let { hint ->
+    if (ui.restrictedHint) {
         Spacer(Modifier.height(8.dp))
-        SectionRow(title = null, text = hint.text(), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
+        SectionRow(title = null, text = stringResource(R.string.access_restricted), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
     }
 }
 
 /** A compact row: an optional [title] over a dim [text] on the left, an optional button on the right. */
 @Composable
-private fun SectionRow(title: String?, text: String?, action: String?, onAction: () -> Unit) {
+private fun SectionRow(title: String?, text: String, action: String?, onAction: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             title?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-            text?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (action != null) {
             Spacer(Modifier.width(16.dp))
@@ -372,7 +369,7 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
                         stringResource(R.string.frame_signal, f.rssi),
                     ).joinToString(" · ")
                 )
-                reason?.let { Text(txt(R.string.frame_unsupported, it).text(), color = MaterialTheme.colorScheme.error) }
+                reason?.let { Text(Txt(R.string.frame_unsupported, it).text(), color = MaterialTheme.colorScheme.error) }
                 // a supported format never seen working on a real panel ([FrameFormat.verified])
                 if (f.lookup.formatOrNull?.verified == false) {
                     Text(stringResource(R.string.frame_unverified), color = MaterialTheme.colorScheme.tertiary)

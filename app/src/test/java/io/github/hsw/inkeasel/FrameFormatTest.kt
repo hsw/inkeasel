@@ -136,8 +136,8 @@ class FrameFormatTest {
     fun otherReasons() {
         assertEquals(Txt(R.string.reason_no_caps), FrameAdvert.lookup(null).reasonOrNull)
         assertEquals(Txt(R.string.reason_panel_a), reason(0x41, 0x13, 0x64))
-        assertEquals(txt(R.string.reason_rotation, txt(R.string.degrees, 90)), reason(0x43, 0x33, 0x64))
-        assertEquals(txt(R.string.reason_unknown_size_code, txt(R.string.advert_size_code, 0x1F)), reason(0x43, 0x1F, 0x64))
+        assertEquals(Txt(R.string.reason_rotation, Txt(R.string.degrees, 90)), reason(0x43, 0x33, 0x64))
+        assertEquals(Txt(R.string.reason_unknown_size_code, Txt(R.string.advert_size_code, 0x1F)), reason(0x43, 0x1F, 0x64))
         assertNull(FrameAdvert.lookup(advert(0x43, 0x13, 0x64)).reasonOrNull)
     }
 
@@ -148,13 +148,13 @@ class FrameFormatTest {
         assertEquals(FrameFormats.DEFAULT, FrameFormats.find(FrameCaps(1024, 600, ColourScheme.E6, 0)).formatOrNull)
         assertEquals(Txt(R.string.reason_no_caps), FrameFormats.find(null).reasonOrNull)
         assertEquals(Txt(R.string.reason_unknown_size), FrameFormats.find(FrameCaps(null, null, ColourScheme.E6, 0)).reasonOrNull)
-        assertEquals(txt(R.string.reason_colours_size, "E6", 640, 384), FrameFormats.find(FrameCaps(640, 384, ColourScheme.E6, 0)).reasonOrNull)
+        assertEquals(Txt(R.string.reason_colours_size, "E6", 640, 384), FrameFormats.find(FrameCaps(640, 384, ColourScheme.E6, 0)).reasonOrNull)
         assertEquals(
             Txt(R.string.reason_vendor_cannot),
             FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWY, 0)).reasonOrNull,
         )
-        assertEquals(txt(R.string.reason_rotation, txt(R.string.degrees, 180)), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, 180)).reasonOrNull)
-        assertEquals(txt(R.string.reason_rotation, "?"), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, null)).reasonOrNull)
+        assertEquals(Txt(R.string.reason_rotation, Txt(R.string.degrees, 180)), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, 180)).reasonOrNull)
+        assertEquals(Txt(R.string.reason_rotation, "?"), FrameFormats.find(FrameCaps(1024, 600, ColourScheme.BWR, null)).reasonOrNull)
     }
 
     @Test

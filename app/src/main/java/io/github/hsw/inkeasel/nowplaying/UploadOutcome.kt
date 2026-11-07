@@ -3,7 +3,6 @@ package io.github.hsw.inkeasel.nowplaying
 import io.github.hsw.inkeasel.R
 import io.github.hsw.inkeasel.Txt
 import io.github.hsw.inkeasel.TxtException
-import io.github.hsw.inkeasel.txt
 
 /**
  * What `UploadService` does after one upload: [toast] to show (`null` = log only), whether to [report] the
@@ -20,7 +19,7 @@ data class UploadOutcome(val toast: Txt?, val report: Boolean, val remember: Boo
         fun of(auto: Boolean, ok: Boolean, error: Throwable? = null): UploadOutcome = when {
             auto -> UploadOutcome(toast = null, report = true, remember = false)
             ok -> UploadOutcome(toast = Txt(R.string.upload_sent), report = false, remember = true)
-            else -> UploadOutcome(toast = txt(R.string.upload_failed, reason(error)), report = false, remember = false)
+            else -> UploadOutcome(toast = Txt(R.string.upload_failed, reason(error)), report = false, remember = false)
         }
 
         /**
@@ -30,7 +29,7 @@ data class UploadOutcome(val toast: Txt?, val report: Boolean, val remember: Boo
         fun reason(error: Throwable?): Txt = when {
             error is TxtException -> error.txt
             error == null -> Txt(R.string.upload_error_unknown)
-            else -> txt(R.string.upload_error_text, error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.name)
+            else -> Txt(R.string.upload_error_text, error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.name)
         }
 
         /**

@@ -36,7 +36,7 @@ class FrameAdvert private constructor(
         get() = when {
             // the vendor album app drops panel type A as well (§2): not a photo frame
             panel == Panel.A -> Txt(R.string.reason_panel_a)
-            width == null || height == null -> txt(R.string.reason_unknown_size_code, size)
+            width == null || height == null -> Txt(R.string.reason_unknown_size_code, size)
             else -> null
         }
 
@@ -44,18 +44,18 @@ class FrameAdvert private constructor(
 
     /** "1024×600", or the code if it is unknown ("code 0x1f"). */
     val size: Txt
-        get() = if (width != null && height != null) txt(R.string.advert_size, width, height)
-        else txt(R.string.advert_size_code, resolutionCode)
+        get() = if (width != null && height != null) Txt(R.string.advert_size, width, height)
+        else Txt(R.string.advert_size_code, resolutionCode)
 
     /**
      * The parts of one line for the frame list, joined with " · " where shown, e.g. "E6, panel TA · 1024×600, 0° ·
      * battery 100 % · firmware 21".
      */
     fun describe(): List<Txt> = listOfNotNull(
-        txt(R.string.advert_colour_panel, colour.name, panel.name),
-        txt(R.string.advert_size_rotation, size, rotation?.let { txt(R.string.degrees, it) } ?: Txt(R.string.advert_rotation_unknown)),
-        txt(R.string.advert_battery, battery),
-        firmware?.let { txt(R.string.advert_firmware, it) },
+        Txt(R.string.advert_colour_panel, colour.name, panel.name),
+        Txt(R.string.advert_size_rotation, size, rotation?.let { Txt(R.string.degrees, it) } ?: Txt(R.string.advert_rotation_unknown)),
+        Txt(R.string.advert_battery, battery),
+        firmware?.let { Txt(R.string.advert_firmware, it) },
         Txt(R.string.advert_safe_mode).takeIf { safeMode },
     )
 

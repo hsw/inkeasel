@@ -4,6 +4,8 @@ import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -41,17 +43,30 @@ object ListenerAccess {
     /** Whether the device has one of those screens (the manifest's `<queries>` make them visible). */
     fun canOpen(ctx: Context): Boolean = intents(ctx).any { it.resolveActivity(ctx.packageManager) != null }
 
-    /** Open the first of those screens that starts; `false` if none does (then show [adbCommand]). */
-    fun open(ctx: Context): Boolean {
+    /** Open the first of those screens that starts ([canOpen] tells whether there is one). */
+    fun open(ctx: Context) {
         for (i in intents(ctx)) {
             if (i.resolveActivity(ctx.packageManager) == null) continue
             try {
                 ctx.startActivity(i)
-                return true
+                return
             } catch (e: ActivityNotFoundException) {
                 Log.w(TAG, "no screen for ${i.action}", e)
             }
         }
-        return false
+    }
+
+    /**
+     * Whether the app was not installed by a store (an APK file, adb, or unknown), which Android 13+ restricts
+     * ([ListenerAccessUi.restrictedHint]). Before Android 13 there is no such restriction to tell.
+     */
+    fun sideloaded(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return true
+        val source = try {
+            ctx.packageManager.getInstallSourceInfo(ctx.packageName).packageSource
+        } catch (e: PackageManager.NameNotFoundException) {
+            return true
+        }
+        return source != PackageInstaller.PACKAGE_SOURCE_STORE
     }
 }

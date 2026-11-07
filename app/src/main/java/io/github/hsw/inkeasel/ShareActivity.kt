@@ -69,7 +69,7 @@ class ShareActivity : ComponentActivity() {
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "shared picture not saved", e)
-                toast(txt(R.string.share_failed, UploadOutcome.reason(e)))
+                toast(Txt(R.string.share_failed, UploadOutcome.reason(e)))
             }
             finish()
         }

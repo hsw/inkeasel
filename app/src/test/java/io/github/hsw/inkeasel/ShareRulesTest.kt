@@ -137,7 +137,7 @@ class ShareRulesTest {
             ShareRules.copyCapped(ByteArrayInputStream(ByteArray(3 * 1024 * 1024 + 1)), ByteArrayOutputStream(), cap = 3L * 1024 * 1024)
             fail("no exception over the cap")
         } catch (e: TxtException) {
-            assertEquals(txt(R.string.share_too_big, 3), e.txt)
+            assertEquals(Txt(R.string.share_too_big, 3), e.txt)
         }
     }
 
@@ -147,7 +147,7 @@ class ShareRulesTest {
             ShareRules.copyCapped(zeros(ShareRules.MAX_BYTES + 1), OutputStream.nullOutputStream())
             fail("no exception over the default cap")
         } catch (e: TxtException) {
-            assertEquals(txt(R.string.share_too_big, 50), e.txt)
+            assertEquals(Txt(R.string.share_too_big, 50), e.txt)
         }
         assertEquals(ShareRules.MAX_BYTES, ShareRules.copyCapped(zeros(ShareRules.MAX_BYTES), OutputStream.nullOutputStream()))
     }
@@ -247,7 +247,7 @@ class ShareRulesTest {
             save(dir, data = ByteArray(3 * 1024 * 1024 + 1), cap = 3L * 1024 * 1024)
             fail("no exception over the cap")
         } catch (e: TxtException) {
-            assertEquals(txt(R.string.share_too_big, 3), e.txt)
+            assertEquals(Txt(R.string.share_too_big, 3), e.txt)
         }
         assertEquals(emptyList<String>(), dir.list()!!.toList())
     }

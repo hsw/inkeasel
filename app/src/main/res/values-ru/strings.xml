@@ -97,12 +97,7 @@
     <string name="no_frame_error">рамка не выбрана</string>
     <string name="image_decode_failed">не удалось декодировать изображение</string>
 
-    <!-- upload over Bluetooth (FrameClient): status lines and errors -->
-    <string name="frame_status_waiting">Рамка ещё рисует, отправка через %1$d с…</string>
-    <string name="frame_status_searching">Поиск рамки %1$s…</string>
-    <string name="frame_status_connecting">Подключение к %1$s…</string>
-    <string name="frame_status_sending">Отправка…</string>
-    <string name="frame_status_sending_reliable">Отправка (надёжный режим)…</string>
+    <!-- upload over Bluetooth (FrameClient): errors -->
     <string name="frame_err_kind">рамка %1$s: этот вид рамок пока не поддерживается</string>
     <string name="frame_err_format_changed">параметры рамки %1$s изменились, отправьте снова</string>
     <string name="frame_err_not_acked">рамка не подтвердила приём</string>

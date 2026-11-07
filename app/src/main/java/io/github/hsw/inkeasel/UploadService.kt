@@ -215,10 +215,10 @@ class UploadService : Service() {
         val sel = frames.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
         val format = when (val l = sel.lookup) {
             is FormatLookup.Supported -> l.format
-            is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, sel.name, l.reason))
+            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_toast_unsupported, sel.name, l.reason))
         }
         val packed = withContext(Dispatchers.Default) { EpdImage.render(bytes, format) }
-        frame.upload(format, packed, status = {}, progress = {})
+        frame.upload(format, packed)
     }
 
     /** The in-flight [req] finished; report it unless [onDestroy] already did. */

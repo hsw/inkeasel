@@ -105,12 +105,7 @@
     <string name="no_frame_error">no frame selected</string>
     <string name="image_decode_failed">could not decode the picture</string>
 
-    <!-- upload over Bluetooth (FrameClient): status lines and errors -->
-    <string name="frame_status_waiting">The frame is still drawing, sending in %1$d s…</string>
-    <string name="frame_status_searching">Searching for frame %1$s…</string>
-    <string name="frame_status_connecting">Connecting to %1$s…</string>
-    <string name="frame_status_sending">Sending…</string>
-    <string name="frame_status_sending_reliable">Sending (reliable mode)…</string>
+    <!-- upload over Bluetooth (FrameClient): errors -->
     <string name="frame_err_kind">frame %1$s: this kind of frame is not supported yet</string>
     <string name="frame_err_format_changed">the parameters of frame %1$s have changed, send again</string>
     <string name="frame_err_not_acked">the frame did not confirm the picture</string>

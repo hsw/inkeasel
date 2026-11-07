@@ -41,11 +41,10 @@ class FrameClient(private val ctx: Context) {
     })
 
     /** Waits while the frame still draws the previous picture ([DrawGate]); not an error. */
-    suspend fun awaitIdle(status: (Txt) -> Unit = {}) {
+    suspend fun awaitIdle() {
         val wait = gate.waitMs()
         if (wait <= 0) return
         Log.i(TAG, "frame still drawing the previous picture: waiting $wait ms")
-        status(txt(R.string.frame_status_waiting, ((wait + 999) / 1000).toInt()))
         delay(wait)
     }
 
@@ -58,10 +57,10 @@ class FrameClient(private val ctx: Context) {
      * selected frame's name only (the name is its identity, the MAC may change) and remembers where it was
      * found; it never falls back to another frame.
      */
-    suspend fun upload(format: FrameFormat, payload: ByteArray, status: (Txt) -> Unit, progress: (Float) -> Unit) {
+    suspend fun upload(format: FrameFormat, payload: ByteArray) {
         val sel = store.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
-        if (sel.kind != FrameKind.NOWMEAN) throw TxtException(txt(R.string.frame_err_kind, sel.name))
-        if (sel.lookup.formatOrNull != format) throw TxtException(txt(R.string.frame_err_format_changed, sel.name))
+        if (sel.kind != FrameKind.NOWMEAN) throw TxtException(Txt(R.string.frame_err_kind, sel.name))
+        if (sel.lookup.formatOrNull != format) throw TxtException(Txt(R.string.frame_err_format_changed, sel.name))
         require(payload.size == format.payloadSize) { "payload ${payload.size} B, the format needs ${format.payloadSize} B" }
         val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
         if (!bt.isEnabled) throw TxtException(Txt(R.string.bt_off))
@@ -72,12 +71,12 @@ class FrameClient(private val ctx: Context) {
         }
         var lastError: Exception? = null
         for (reliable in listOf(false, true)) {
-            awaitIdle(status)
+            awaitIdle()
             val dev = device ?: run {
-                status(txt(R.string.frame_status_searching, sel.name))
+                Log.i(TAG, "searching for ${sel.name}")
                 find(sel.name, format)
             }.also { device = it }
-            status(txt(R.string.frame_status_connecting, sel.name))
+            Log.i(TAG, "connecting to ${sel.name} (reliable=$reliable)")
             val session = GattSession(ctx, dev)
             try {
                 try {
@@ -89,8 +88,7 @@ class FrameClient(private val ctx: Context) {
                     continue
                 }
                 store.seen(sel.name, dev.address, null, System.currentTimeMillis())
-                status(Txt(if (reliable) R.string.frame_status_sending_reliable else R.string.frame_status_sending))
-                if (session.sendImage(format.marker, payload, reliable, progress)) return
+                if (session.sendImage(format.marker, payload, reliable)) return
                 lastError = TxtException(Txt(R.string.frame_err_not_acked))
             } catch (e: IOException) {
                 Log.w(TAG, "upload failed (reliable=$reliable)", e)
@@ -120,13 +118,13 @@ class FrameClient(private val ctx: Context) {
         } finally {
             stop()
         }
-            ?: throw TxtException(txt(R.string.frame_err_not_found, name, Txt(R.string.scanning_hint)))
+            ?: throw TxtException(Txt(R.string.frame_err_not_found, name, Txt(R.string.scanning_hint)))
         Log.i(TAG, "found $name at ${seen.address}: ${seen.advert}")
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout
         if (seen.advert != null) when (val l = seen.lookup) {
-            is FormatLookup.Unsupported -> throw TxtException(txt(R.string.frame_toast_unsupported, name, l.reason))
-            is FormatLookup.Supported -> if (l.format != format) throw TxtException(txt(R.string.frame_err_format_changed, name))
+            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_toast_unsupported, name, l.reason))
+            is FormatLookup.Supported -> if (l.format != format) throw TxtException(Txt(R.string.frame_err_format_changed, name))
         }
         return bt.getRemoteDevice(seen.address)
     }
@@ -208,7 +206,7 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
      * The end frame is acked within ~25 ms, before the panel draws; [endSent] is set once its write was
      * attempted, acked or not, since the frame may draw the image from then on.
      */
-    suspend fun sendImage(marker: Int, payload: ByteArray, reliable: Boolean, progress: (Float) -> Unit): Boolean {
+    suspend fun sendImage(marker: Int, payload: ByteArray, reliable: Boolean): Boolean {
         val chunk = mtu - 3 - 6 // ATT header; SOF LEN OP + 2-byte index + CA
         val n = (payload.size + chunk - 1) / chunk
         write(FrameClient.frame(0x01, FrameClient.startPayload(marker)), BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
@@ -222,7 +220,6 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
             write(FrameClient.frame(0x02, part + byteArrayOf((idx shr 8).toByte(), idx.toByte())), type)
             // the device has no flow control; the stock app runs at ~12 ms/frame, so never go much faster than that
             if (!reliable) (PACE_MS - (SystemClock.elapsedRealtime() - sent)).takeIf { it > 0 }?.let { delay(it) }
-            if (i % 10 == 0 || i == n - 1) progress((i + 1).toFloat() / n)
         }
         Log.i(TAG, "data: ${payload.size} B in $n frames of $chunk B, ${SystemClock.elapsedRealtime() - t0} ms, reliable=$reliable")
         val end = n + 2
@@ -247,12 +244,12 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
         var tries = 0
         while (!start()) {
             lost?.let { throw it }
-            if (++tries > 400) throw TxtException(txt(R.string.frame_err_busy, what))
+            if (++tries > 400) throw TxtException(Txt(R.string.frame_err_busy, what))
             delay(5)
         }
         val status = withTimeoutOrNull(timeoutMs) { d.await() }
         pending = null
-        return status ?: throw (lost ?: TxtException(txt(R.string.frame_err_timeout, what, timeoutMs.toInt())))
+        return status ?: throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, what, timeoutMs.toInt())))
     }
 
     fun close() {
@@ -267,7 +264,7 @@ private class GattSession(private val ctx: Context, private val device: Bluetoot
         if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
             connected.complete(Unit)
         } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-            val e = TxtException(txt(R.string.frame_err_lost, status))
+            val e = TxtException(Txt(R.string.frame_err_lost, status))
             lost = e
             connected.completeExceptionally(e)
             pending?.completeExceptionally(e)

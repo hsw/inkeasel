@@ -47,7 +47,7 @@ class FrameScanner(ctx: Context) {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.w(TAG, "scan failed: $errorCode")
-                onFailed(txt(R.string.scan_error, errorCode))
+                onFailed(Txt(R.string.scan_error, errorCode))
             }
         }
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(FrameClient.SVC_ADV)).build()
