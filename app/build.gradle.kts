@@ -4,6 +4,28 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing comes from the environment (CI secrets, or a local shell for a hand-made release):
+// all four variables set → the release key; none set → the debug key, with a warning on release builds;
+// only some set → a release build fails rather than quietly falling back to the debug key.
+val releaseKey: Map<String, String?> = listOf(
+    "INKEASEL_KEYSTORE",
+    "INKEASEL_KEYSTORE_PASSWORD",
+    "INKEASEL_KEY_ALIAS",
+    "INKEASEL_KEY_PASSWORD",
+).associateWith { providers.environmentVariable(it).orNull?.takeIf(String::isNotEmpty) }
+val releaseKeySet = releaseKey.values.all { it != null }
+
+gradle.taskGraph.whenReady {
+    if (releaseKeySet || allTasks.none { it.project == project && it.name.contains("Release") }) {
+        return@whenReady
+    }
+    val missing = releaseKey.filterValues { it == null }.keys
+    if (missing.size < releaseKey.size) {
+        throw GradleException("Release signing: set all of ${releaseKey.keys} or none; missing $missing")
+    }
+    logger.warn("WARNING: release build signed with the debug key (set ${releaseKey.keys} for the release key)")
+}
+
 android {
     namespace = "io.github.hsw.inkeasel"
     compileSdk = 35
@@ -16,10 +38,21 @@ android {
         versionName = "0.1"
     }
 
+    signingConfigs {
+        if (releaseKeySet) {
+            create("release") {
+                storeFile = file(releaseKey.getValue("INKEASEL_KEYSTORE")!!)
+                storePassword = releaseKey["INKEASEL_KEYSTORE_PASSWORD"]
+                keyAlias = releaseKey["INKEASEL_KEY_ALIAS"]
+                keyPassword = releaseKey["INKEASEL_KEY_PASSWORD"]
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeySet) "release" else "debug")
         }
     }
     compileOptions {

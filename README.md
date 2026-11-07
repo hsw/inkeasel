@@ -19,6 +19,22 @@ Unit tests (JVM, JUnit 4 + `kotlinx-coroutines-test`; same `JAVA_HOME` as above)
 
     ./gradlew testDebugUnitTest
 
+## Builds and releases
+
+- **CI** (`.github/workflows/ci.yml`): every push and pull request runs
+  `./gradlew testDebugUnitTest assembleDebug` on JDK 21; the debug APK is kept as the run's artifact.
+- **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
+  environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
+  `INKEASEL_KEY_ALIAS` and `INKEASEL_KEY_PASSWORD`. With none of them set, it is signed with the debug key
+  and the build prints a warning; with only some set, a release build fails. Check which key signed an APK
+  with `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk` (from the SDK
+  build-tools).
+- **Releases** (`.github/workflows/release.yml`): pushing a tag `v*` runs the unit tests, builds the release
+  APK signed with the release key and publishes it as a GitHub release `inkeasel-<tag>.apk` with generated
+  notes. It needs four repository secrets: `INKEASEL_KEYSTORE_BASE64` (the keystore file, base64-encoded),
+  `INKEASEL_KEYSTORE_PASSWORD`, `INKEASEL_KEY_ALIAS`, `INKEASEL_KEY_PASSWORD`; without them the workflow
+  stops before building and names the missing ones. Releases are never signed with the debug key.
+
 ## Language
 
 The UI is in English, and in Russian when the device language (or the app's language in the system
