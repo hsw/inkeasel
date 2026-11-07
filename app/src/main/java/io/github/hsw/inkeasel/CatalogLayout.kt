@@ -8,9 +8,9 @@ package io.github.hsw.inkeasel
  */
 data class CatalogLayout(val columns: Int, val sidePadding: Int, val gap: Int, val splitHeader: Boolean) {
     companion object {
-        const val MEDIUM = 600
-        const val SPLIT_BELOW = 720
-        const val WIDE = 840
+        private const val MEDIUM = 600
+        private const val SPLIT_BELOW = 720
+        private const val WIDE = 840
 
         fun forWidth(widthDp: Int): CatalogLayout = when {
             widthDp < MEDIUM -> CatalogLayout(columns = 2, sidePadding = 16, gap = 12, splitHeader = true)

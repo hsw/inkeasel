@@ -329,7 +329,8 @@ Code:
 - `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
   list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`collectPages`, pure; a list
   cut short is marked incomplete)
-- `CatalogLoad.kt`: one load of a tab and its cache rules (`loadCatalog`), and when a tab reloads (pure)
+- `CatalogLoad.kt`: what a tab shows (`CatalogState`), one load of a tab and its cache rules (`loadCatalog`),
+  and when a tab reloads (pure)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
 - `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`

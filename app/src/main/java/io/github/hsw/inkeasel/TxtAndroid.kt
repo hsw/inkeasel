@@ -24,8 +24,12 @@ fun Txt.text(): String {
     return resolve(LocalContext.current.resources)
 }
 
-/** A wall-clock time [ms] as a short day, month and time in the current locale (e.g. "7 Nov, 18:40"). */
+/**
+ * A wall-clock time [ms] as a short day, month and time in the current locale (e.g. "7 Nov, 18:40"): like
+ * [text], a value put into words for the current locale at the edge.
+ */
 @Composable
+@ReadOnlyComposable
 fun dateTimeText(ms: Long): String {
     val locale = LocalConfiguration.current.locales[0]
     return SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, "dMMMjjmm"), locale).format(Date(ms))

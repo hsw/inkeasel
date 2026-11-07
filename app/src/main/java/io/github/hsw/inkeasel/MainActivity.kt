@@ -2,7 +2,6 @@ package io.github.hsw.inkeasel
 
 import android.app.Application
 import android.content.Intent
-import android.graphics.Bitmap
 import android.os.Bundle
 import android.os.FileObserver
 import android.util.Log
@@ -13,7 +12,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,22 +38,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.tv.material3.Button
@@ -69,44 +62,12 @@ import androidx.tv.material3.darkColorScheme
 import coil.Coil
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val TAG = "MainActivity"
-
-sealed interface CatalogState {
-    data object Loading : CatalogState
-
-    /**
-     * A list to show. [staleSince] is set when the source failed and this is its saved list ([CatalogCache],
-     * saved then), with [staleReason] why the fresh one did not come; [retrying] while a retry runs (the
-     * stale list stays on screen meanwhile).
-     */
-    data class Loaded(
-        val items: List<Picture>,
-        val staleSince: Long? = null,
-        val staleReason: Txt? = null,
-        val retrying: Boolean = false,
-    ) : CatalogState
-
-    /** [reason] is a whole sentence ([CatalogError]), shown as is. */
-    data class Failed(val reason: Txt) : CatalogState
-
-    companion object {
-        /** What a tab shows while it (re)loads after [previous]: a stale list stays, marked as retrying. */
-        fun reloading(previous: CatalogState?): CatalogState =
-            if (previous is Loaded && previous.staleSince != null) previous.copy(retrying = true) else Loading
-
-        /** After a failed load: the saved list with the [reason] as a note, or the failure itself. */
-        fun failed(reason: Txt, cached: CachedCatalog?): CatalogState =
-            if (cached != null) Loaded(cached.items, staleSince = cached.savedAt, staleReason = reason) else Failed(reason)
-    }
-}
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val frames = FrameStore(app)
@@ -168,14 +129,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localReload?.cancel()
         localReload = viewModelScope.launch {
             delay(300)
-            val fresh = try {
-                CatalogState.Loaded(sources[localTab].load().items)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                CatalogState.Failed(CatalogError.of(e))
-            }
-            catalogs[localTab] = fresh
+            catalogs[localTab] = loadCatalog(sources[localTab], cache = null, System::currentTimeMillis) { Log.w(TAG, it) }
         }
     }
 
@@ -195,7 +149,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             catalogs[i] = loadCatalog(src, cache.takeIf { i != localTab }, System::currentTimeMillis) { Log.w(TAG, it) }
         }
     }
-
 }
 
 class MainActivity : ComponentActivity() {
@@ -443,7 +396,7 @@ private fun CatalogGrid(
 ) {
     if (st.items.isEmpty() && local) {
         Text(
-            stringResource(R.string.local_empty, LocalImages.ADB_DIR),
+            stringResource(R.string.local_empty, LocalImages.adbDir(LocalContext.current)),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

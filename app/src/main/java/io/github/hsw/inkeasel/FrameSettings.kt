@@ -262,8 +262,8 @@ private fun FrameSettings(
 
 /**
  * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
- * asks, "App info"; the frame list above names the path to it then), and the now-playing poster: a switch ([FeatureStore]) with the
- * notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
+ * asks, "App info"; the frame list above names the path to it then), and the now-playing poster: a switch
+ * ([FeatureStore]) with the notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
  * system screen, or shows the adb command where there is none. The access and the screen are read again
  * whenever the app comes back (e.g. from that screen).
  *

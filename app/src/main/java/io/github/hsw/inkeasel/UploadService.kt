@@ -288,7 +288,7 @@ class UploadService : Service() {
 
         /** Find a file in the pictures folder by name, with or without extension, case-insensitive. */
         fun resolvePhoto(context: Context, name: String): File? {
-            val dir = File(context.getExternalFilesDir(null), "pictures")
+            val dir = LocalImages.dir(context)
             File(dir, name).takeIf { it.isFile }?.let { return it }
             for (e in LocalImages.EXTENSIONS) {
                 File(dir, "$name.$e").takeIf { it.isFile }?.let { return it }

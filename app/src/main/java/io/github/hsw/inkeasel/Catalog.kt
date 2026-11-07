@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +63,7 @@ object Http {
     private const val UA = "InkEasel/0.1 (+https://github.com/hsw/inkeasel)"
 
     /** Longest wait for one catalog list request, from connect to the last byte. */
-    const val LIST_TIMEOUT_S = 20L
+    private const val LIST_TIMEOUT_S = 20L
 
     /** Shared by Coil and full-image downloads: big files on slow links may take long. */
     val client: OkHttpClient = OkHttpClient.Builder()
@@ -247,25 +248,28 @@ object CommonsLandscapes : Source {
 }
 
 /**
- * Pictures the user copied onto the device. Reads the app's own external files directory, which needs
- * no storage permission on Android 11 and which `adb push` can write to:
- *   /sdcard/Android/data/io.github.hsw.inkeasel/files/pictures/
- * Any JPEG/PNG/WebP/BMP/GIF dropped there shows up, newest first.
+ * Pictures the user copied onto the device. Reads the `pictures` folder in the app's own external files
+ * directory, which needs no storage permission on Android 11 and which `adb push` can write to ([adbDir]).
+ * Any JPEG/PNG/WebP/BMP/GIF/HEIC dropped there shows up, newest first.
  */
 class LocalImages(private val app: Application) : Source {
     override val id = "local"
     override val name = Txt(R.string.tab_local)
 
     companion object {
-        /** [dir] as `adb push` sees it, for the hint shown while the folder is empty. */
-        const val ADB_DIR = "/sdcard/Android/data/io.github.hsw.inkeasel/files/pictures/"
+        private const val DIR = "pictures"
 
         /** Extensions of the pictures the folder lists (and `UploadService` resolves `photo` names with). */
         val EXTENSIONS: List<String> = listOf("jpg", "jpeg", "png", "webp", "bmp", "gif", "heic")
+
+        /** The on-device folder; created on first access so `adb push` always has a target. */
+        fun dir(ctx: Context): File = File(ctx.getExternalFilesDir(null), DIR).apply { mkdirs() }
+
+        /** [dir] as `adb push` sees it, for the hint shown while the folder is empty. */
+        fun adbDir(ctx: Context): String = "/sdcard/Android/data/${ctx.packageName}/files/$DIR/"
     }
 
-    /** The on-device folder; created on first access so `adb push` always has a target. */
-    fun dir(): File = File(app.getExternalFilesDir(null), "pictures").apply { mkdirs() }
+    fun dir(): File = dir(app)
 
     override suspend fun load(): Listing = withContext(Dispatchers.IO) {
         Listing(dir().listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }

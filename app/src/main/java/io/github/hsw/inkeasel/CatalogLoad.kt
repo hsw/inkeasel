@@ -2,6 +2,36 @@ package io.github.hsw.inkeasel
 
 import kotlinx.coroutines.CancellationException
 
+/** What a catalog tab shows ([loadCatalog]); pure, like the load rules. */
+sealed interface CatalogState {
+    data object Loading : CatalogState
+
+    /**
+     * A list to show. [staleSince] is set when the source failed and this is its saved list ([CatalogCache],
+     * saved then), with [staleReason] why the fresh one did not come; [retrying] while a retry runs (the
+     * stale list stays on screen meanwhile).
+     */
+    data class Loaded(
+        val items: List<Picture>,
+        val staleSince: Long? = null,
+        val staleReason: Txt? = null,
+        val retrying: Boolean = false,
+    ) : CatalogState
+
+    /** [reason] is a whole sentence ([CatalogError]), shown as is. */
+    data class Failed(val reason: Txt) : CatalogState
+
+    companion object {
+        /** What a tab shows while it (re)loads after [previous]: a stale list stays, marked as retrying. */
+        fun reloading(previous: CatalogState?): CatalogState =
+            if (previous is Loaded && previous.staleSince != null) previous.copy(retrying = true) else Loading
+
+        /** After a failed load: the saved list with the [reason] as a note, or the failure itself. */
+        fun failed(reason: Txt, cached: CachedCatalog?): CatalogState =
+            if (cached != null) Loaded(cached.items, staleSince = cached.savedAt, staleReason = reason) else Failed(reason)
+    }
+}
+
 /**
  * One load of a catalog tab from [src]. With a [cache] (a remote source): a complete list is saved; a list cut
  * short ([Listing.complete] false) only when nothing is saved yet or it is not smaller than the saved one, so
