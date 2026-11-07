@@ -32,7 +32,8 @@ data class Picture(
 }
 
 interface Source {
-    val name: String
+    /** The tab title. */
+    val name: Txt
     suspend fun load(): List<Picture>
 }
 
@@ -61,7 +62,7 @@ private fun wide(w: Int, h: Int) = h > 0 && w.toFloat() / h in 1.25f..2.2f
 
 /** Cleveland Museum of Art Open Access: CC0 paintings, no API key. */
 object ClevelandPaintings : Source {
-    override val name = "Картины"
+    override val name = Txt(R.string.tab_paintings)
 
     override suspend fun load(): List<Picture> {
         val url = "https://openaccess-api.clevelandart.org/api/artworks/".toHttpUrl().newBuilder()
@@ -98,7 +99,7 @@ object ClevelandPaintings : Source {
 
 /** Wikimedia Commons "Featured pictures of landscapes": photos under CC BY-SA and similar. */
 object CommonsLandscapes : Source {
-    override val name = "Пейзажи"
+    override val name = Txt(R.string.tab_landscapes)
 
     override suspend fun load(): List<Picture> {
         val out = mutableListOf<Picture>()
@@ -151,7 +152,12 @@ object CommonsLandscapes : Source {
  * Any JPEG/PNG/WebP/BMP/GIF dropped there shows up, newest first.
  */
 class LocalImages(private val app: Application) : Source {
-    override val name = "Мои картинки"
+    override val name = Txt(R.string.tab_local)
+
+    companion object {
+        /** [dir] as `adb push` sees it, for the hint shown while the folder is empty. */
+        const val ADB_DIR = "/sdcard/Android/data/io.github.hsw.inkeasel/files/pictures/"
+    }
 
     /** The on-device folder; created on first access so `adb push` always has a target. */
     fun dir(): File = File(app.getExternalFilesDir(null), "pictures").apply { mkdirs() }

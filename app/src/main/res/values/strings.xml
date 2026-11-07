@@ -1,4 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">InkEasel</string>
+
+    <!-- catalog -->
+    <string name="tab_local">My pictures</string>
+    <string name="tab_paintings">Paintings</string>
+    <string name="tab_landscapes">Landscapes</string>
+    <string name="header_frame">Frame: %1$s</string>
+    <string name="header_no_frame">No frame selected</string>
+    <string name="catalog_loading">Loading the catalog…</string>
+    <string name="catalog_failed">Could not load the catalog: %1$s</string>
+    <string name="retry">Retry</string>
+    <string name="local_empty">The folder is empty. Copy pictures here:\n%1$s\n(from a computer: adb push picture.jpg \"&lt;this folder&gt;\")</string>
+    <string name="sending">Sending to the frame…</string>
+
+    <!-- settings: frame -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_frame">Frame</string>
+    <string name="frame_selected">Selected: %1$s</string>
+    <string name="frame_seen">seen %1$s</string>
+    <string name="frame_seen_long_ago">long ago</string>
+    <string name="frame_unverified">not verified on hardware</string>
+    <string name="frame_none_hint">No frame selected: choose one to send pictures.</string>
+    <string name="ble_permission_needed">The app needs permission to search for Bluetooth devices. If no request appears, grant it in the app settings.</string>
+    <string name="allow">Allow</string>
+    <string name="bt_settings">Bluetooth settings</string>
+    <string name="scan_failed">Frame search failed: %1$s</string>
+    <string name="scanning">Searching for frames…</string>
+    <string name="scanning_hint">The frame must be nearby and not connected to a phone. On Android 11 the search also needs location turned on.</string>
+    <string name="frame_toast_unverified">Frame %1$s: %2$s</string>
+    <string name="frame_toast_unsupported">Frame %1$s is not supported: %2$s</string>
+    <string name="frame_item_selected">%1$s — selected</string>
+    <string name="frame_no_advert">no frame data</string>
+    <string name="frame_signal">signal %1$d dBm</string>
+    <string name="frame_unsupported">not supported: %1$s</string>
+    <string name="frame_unavailable">unavailable</string>
+    <string name="cancel">Cancel</string>
 </resources>

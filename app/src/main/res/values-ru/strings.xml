@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- catalog -->
+    <string name="tab_local">Мои картинки</string>
+    <string name="tab_paintings">Картины</string>
+    <string name="tab_landscapes">Пейзажи</string>
+    <string name="header_frame">Рамка: %1$s</string>
+    <string name="header_no_frame">Рамка не выбрана</string>
+    <string name="catalog_loading">Загрузка каталога…</string>
+    <string name="catalog_failed">Не удалось загрузить каталог: %1$s</string>
+    <string name="retry">Повторить</string>
+    <string name="local_empty">Папка пуста. Скопируйте сюда картинки:\n%1$s\n(с компьютера: adb push файл.jpg \"&lt;эта папка&gt;\")</string>
+    <string name="sending">Отправка на рамку…</string>
+
+    <!-- settings: frame -->
+    <string name="settings_title">Настройки</string>
+    <string name="settings_frame">Рамка</string>
+    <string name="frame_selected">Выбрана: %1$s</string>
+    <string name="frame_seen">видели %1$s</string>
+    <string name="frame_seen_long_ago">давно</string>
+    <string name="frame_unverified">не проверено на железе</string>
+    <string name="frame_none_hint">Рамка не выбрана: выберите её, чтобы отправлять картинки.</string>
+    <string name="ble_permission_needed">Нужно разрешение на поиск устройств Bluetooth. Если запрос не появляется, выдайте его в настройках приложения.</string>
+    <string name="allow">Разрешить</string>
+    <string name="bt_settings">Настройки Bluetooth</string>
+    <string name="scan_failed">Поиск рамок не удался: %1$s</string>
+    <string name="scanning">Поиск рамок…</string>
+    <string name="scanning_hint">Рамка должна быть рядом и не подключена к телефону. На Android 11 для поиска также нужна включённая геолокация.</string>
+    <string name="frame_toast_unverified">Рамка %1$s: %2$s</string>
+    <string name="frame_toast_unsupported">Рамка %1$s не поддерживается: %2$s</string>
+    <string name="frame_item_selected">%1$s — выбрана</string>
+    <string name="frame_no_advert">нет данных о рамке</string>
+    <string name="frame_signal">сигнал %1$d дБм</string>
+    <string name="frame_unsupported">не поддерживается: %1$s</string>
+    <string name="frame_unavailable">недоступна</string>
+    <string name="cancel">Отмена</string>
+</resources>

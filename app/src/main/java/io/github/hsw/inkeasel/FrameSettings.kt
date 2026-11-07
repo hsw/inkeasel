@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.provider.Settings
+import android.text.format.DateFormat
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -36,7 +37,9 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -49,14 +52,13 @@ import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 private const val TAG = "FrameSettings"
 
 /**
- * "Настройки", section "Рамка": a full-screen dialog over the catalog. While it is open it scans for frames
+ * "Settings", section "Frame": a full-screen dialog over the catalog. While it is open it scans for frames
  * and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves it and
- * closes the dialog. "Отмена" and Back call [onCancel] and change nothing. The scan stops when the dialog
+ * closes the dialog. "Cancel" and Back call [onCancel] and change nothing. The scan stops when the dialog
  * closes and while the app is in the background.
  *
  * A dialog rather than a separate screen: the catalog stays composed below it, so on close the D-pad focus
@@ -90,7 +92,7 @@ private fun FrameSettings(
     var frames by remember { mutableStateOf(emptyList<SeenFrame>()) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var btProblem by remember { mutableStateOf(scanner.unavailable()) }
-    var scanRun by remember { mutableIntStateOf(0) } // bumped by "Повторить" to restart the scan
+    var scanRun by remember { mutableIntStateOf(0) } // bumped by "Retry" to restart the scan
 
     // Bluetooth switched on or off while the screen is open: start or drop the scan accordingly
     DisposableEffect(scanner) {
@@ -114,7 +116,7 @@ private fun FrameSettings(
         }
     }
 
-    // Focus: "Отмена" at first, so OK/Back work at once even before any frame shows up; then, once, the
+    // Focus: "Cancel" at first, so OK/Back work at once even before any frame shows up; then, once, the
     // chosen frame (given a moment to show up) or else the first one that can be chosen, unless the user
     // has already moved onto the list.
     val cancelFocus = remember { FocusRequester() }
@@ -134,17 +136,18 @@ private fun FrameSettings(
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium)
         Spacer(Modifier.height(16.dp))
-        Text("Рамка", style = MaterialTheme.typography.titleLarge)
+        Text(stringResource(R.string.settings_frame), style = MaterialTheme.typography.titleLarge)
         Text(
             selected?.let {
                 listOfNotNull(
-                    "Выбрана: ${it.name}", it.address, "видели ${seenAt(it.seenAt)}",
-                    if (it.lookup.formatOrNull?.verified == false) UNVERIFIED else null,
+                    stringResource(R.string.frame_selected, it.name), it.address,
+                    stringResource(R.string.frame_seen, seenAt(it.seenAt)),
+                    if (it.lookup.formatOrNull?.verified == false) stringResource(R.string.frame_unverified) else null,
                 ).joinToString(" · ")
             }
-                ?: "Рамка не выбрана: выберите её, чтобы отправлять картинки.",
+                ?: stringResource(R.string.frame_none_hint),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -152,27 +155,24 @@ private fun FrameSettings(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 !permitted -> Problem(
-                    "Нужно разрешение на поиск устройств Bluetooth. Если запрос не появляется, " +
-                        "выдайте его в настройках приложения.",
-                    "Разрешить", onRequestPermissions,
+                    stringResource(R.string.ble_permission_needed), stringResource(R.string.allow), onRequestPermissions,
                 )
-                btProblem != null -> Problem("${btProblem!!.replaceFirstChar { it.uppercase() }}.", "Настройки Bluetooth") {
+                btProblem != null -> Problem("${btProblem!!.replaceFirstChar { it.uppercase() }}.", stringResource(R.string.bt_settings)) {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
                         Log.w(TAG, "no Bluetooth settings screen", e)
                     }
                 }
-                scanError != null -> Problem("Поиск рамок не удался: $scanError", "Повторить") {
+                scanError != null -> Problem(stringResource(R.string.scan_failed, scanError!!), stringResource(R.string.retry)) {
                     scanError = null
                     scanRun++
                 }
                 frames.isEmpty() -> Column {
-                    Text("Поиск рамок…", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.scanning), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Рамка должна быть рядом и не подключена к телефону. " +
-                            "На Android 11 для поиска также нужна включённая геолокация.",
+                        stringResource(R.string.scanning_hint),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -187,10 +187,14 @@ private fun FrameSettings(
                         ) { reason ->
                             if (reason == null) {
                                 if (f.lookup.formatOrNull?.verified == false) {
-                                    Toast.makeText(ctx, "Рамка ${f.name}: $UNVERIFIED", Toast.LENGTH_LONG).show()
+                                    val msg = txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified))
+                                    Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_LONG).show()
                                 }
                                 onSelect(f)
-                            } else Toast.makeText(ctx, "Рамка ${f.name} не поддерживается: $reason", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val msg = txt(R.string.frame_toast_unsupported, f.name, reason)
+                                Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
@@ -198,13 +202,10 @@ private fun FrameSettings(
         }
         Spacer(Modifier.height(16.dp))
         Row {
-            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text("Отмена") }
+            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text(stringResource(R.string.cancel)) }
         }
     }
 }
-
-/** Shown for a frame whose format is supported but was never seen working on a real panel ([FrameFormat.verified]). */
-private const val UNVERIFIED = "не проверено на железе"
 
 /**
  * One frame of the scan. An unsupported one stays focusable, so the D-pad can reach it and its reason is
@@ -219,17 +220,23 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
         selected = isSelected,
         onClick = { onClick(reason) },
         modifier = modifier.onTap { onClick(reason) },
-        headlineContent = { Text(if (isSelected) "${f.name} — выбрана" else f.name) },
+        headlineContent = { Text(if (isSelected) stringResource(R.string.frame_item_selected, f.name) else f.name) },
         supportingContent = {
             Column {
                 Text(
-                    listOf(f.address, f.advert?.describe() ?: "нет данных о рамке", "сигнал ${f.rssi} дБм").joinToString(" · ")
+                    listOf(
+                        f.address, f.advert?.describe() ?: stringResource(R.string.frame_no_advert),
+                        stringResource(R.string.frame_signal, f.rssi),
+                    ).joinToString(" · ")
                 )
-                reason?.let { Text("не поддерживается: $it", color = MaterialTheme.colorScheme.error) }
-                if (f.lookup.formatOrNull?.verified == false) Text(UNVERIFIED, color = MaterialTheme.colorScheme.tertiary)
+                reason?.let { Text(stringResource(R.string.frame_unsupported, it), color = MaterialTheme.colorScheme.error) }
+                // a supported format never seen working on a real panel ([FrameFormat.verified])
+                if (f.lookup.formatOrNull?.verified == false) {
+                    Text(stringResource(R.string.frame_unverified), color = MaterialTheme.colorScheme.tertiary)
+                }
             }
         },
-        trailingContent = { if (reason != null) Text("недоступна", color = dim) },
+        trailingContent = { if (reason != null) Text(stringResource(R.string.frame_unavailable), color = dim) },
     )
 }
 
@@ -242,5 +249,9 @@ private fun Problem(message: String, action: String, onAction: () -> Unit) {
     }
 }
 
-private fun seenAt(ms: Long): String =
-    if (ms <= 0) "давно" else SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(ms))
+@Composable
+private fun seenAt(ms: Long): String {
+    if (ms <= 0) return stringResource(R.string.frame_seen_long_ago)
+    val locale = LocalConfiguration.current.locales[0]
+    return SimpleDateFormat(DateFormat.getBestDateTimePattern(locale, "dMMMjjmm"), locale).format(Date(ms))
+}

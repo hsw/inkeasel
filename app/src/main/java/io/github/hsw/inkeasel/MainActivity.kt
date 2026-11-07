@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -96,7 +97,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     val catalogs = mutableStateMapOf<Int, CatalogState>()
 
-    /** The "Мои картинки" tab, if present; it is re-scanned when its folder changes. */
+    /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
     private val localTab = sources.indexOfFirst { it is LocalImages }
     private var localReload: Job? = null
     private val localWatcher: FileObserver? = (sources.getOrNull(localTab) as? LocalImages)?.let { src ->
@@ -218,7 +219,7 @@ class MainActivity : ComponentActivity() {
         if (p.local) i.putExtra(UploadService.EXTRA_PATH, p.fullUrl)
         else i.putExtra(UploadService.EXTRA_URL, p.fullUrl).putExtra(UploadService.EXTRA_TITLE, p.title)
         startForegroundService(i)
-        Toast.makeText(this, "Отправка на рамку…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
     }
 
     // Returning to the app re-scans the local folder, in case files changed while it was away.
@@ -238,34 +239,32 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             Column(Modifier.padding(horizontal = 48.dp, vertical = 24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Рамка", style = MaterialTheme.typography.headlineMedium)
+                    Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.width(32.dp))
                     TabRow(selectedTabIndex = vm.tab) {
                         vm.sources.forEachIndexed { i, s ->
                             Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }, modifier = Modifier.onTap { vm.selectTab(i) }) {
-                                Text(s.name, Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                                Text(s.name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
                             }
                         }
                     }
                     Spacer(Modifier.weight(1f))
                     Button(onClick = vm::openSettings, modifier = Modifier.onTap(vm::openSettings)) {
-                        Text(vm.selected?.let { "Рамка: ${it.name}" } ?: "Рамка не выбрана")
+                        Text(vm.selected?.let { stringResource(R.string.header_frame, it.name) } ?: stringResource(R.string.header_no_frame))
                     }
                 }
                 Spacer(Modifier.height(16.dp))
                 LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
                 when (val st = vm.catalogs[vm.tab] ?: CatalogState.Loading) {
-                    CatalogState.Loading -> Text("Загрузка каталога…")
+                    CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
                     is CatalogState.Failed -> Column {
-                        Text("Не удалось загрузить каталог: ${st.message}")
+                        Text(stringResource(R.string.catalog_failed, st.message))
                         Spacer(Modifier.height(12.dp))
-                        Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text("Повторить") }
+                        Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
                     }
                     is CatalogState.Loaded -> if (st.items.isEmpty()) {
                         Text(
-                            "Папка пуста. Скопируйте сюда картинки:\n" +
-                                "/sdcard/Android/data/io.github.hsw.inkeasel/files/pictures/\n" +
-                                "(с компьютера: adb push файл.jpg \"<эта папка>\")",
+                            stringResource(R.string.local_empty, LocalImages.ADB_DIR),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
