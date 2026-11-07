@@ -15,16 +15,29 @@ implementation plans: `docs/plans/`. Both are local and git-ignored: never stage
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
   Emulator Bluetooth is virtual: uploads to a real frame need a real device.
 - The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
-- `lintDebug` reports two known manifest errors (backlog `lint-manifest-errors`); anything else is new.
-- CI (`.github/workflows/`): `ci.yml` runs the build above; `release.yml` builds a signed APK for a `v*` tag.
+- `lintDebug` reports two known manifest errors, `UnsupportedTvHardware` (`bluetooth_le` required) and
+  `CoarseFineLocation`; anything else is new. `StringResourcesTest` checks that both string tables have the
+  same keys and placeholders.
+- CI (`.github/workflows/`): `ci.yml` runs the build above plus `assembleRelease`; `release.yml` builds a
+  signed APK for a `v*` tag with a read-only token and publishes it from a separate job that runs no build.
   Release signing comes only from `INKEASEL_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`;
-  none set falls back to the debug key, a partial set fails the build. No keystore or secret in the repo.
+  none set falls back to the debug key, a partial set fails a release packaging task (not release unit tests
+  or lint). No keystore or secret in the repo.
+- Emulator techniques: to force an offline or slow catalog, airplane mode does not cut the TV emulator's
+  ethernet; set a dead global proxy (`adb shell settings put global http_proxy localhost:9`; undo with
+  `settings delete global http_proxy` and `settings put global http_proxy :0`). `adb exec-out screencap -p`
+  returns black frames on the TV emulator: use `adb shell screencap -p /sdcard/s.png`, `adb pull`, then
+  delete the file. README screenshots live in `docs/screenshots/` (English UI, nothing identifying, the
+  tablet's status bar in demo mode, compressed with pngquant).
 
 ## Conventions
 - Code, comments, commit messages, README and backlog items: English. UI strings live in resources:
   English in `res/values/strings.xml`, Russian in `res/values-ru/strings.xml`; every new string goes into
   both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin.
 - Pure logic stays free of Android types so it runs as JVM unit tests (see `nowplaying/`, `FrameFormat.kt`).
+  `org.json` counts as pure, since the JVM tests use the real library (`testImplementation org.json:json`;
+  it differs from Android's in corner cases such as `optString` on JSON null, so keep to plain values); any
+  other `android.*` class does not.
   It returns a `Txt` (`R.string` id + args; `Txt.kt`) instead of a string, and tests compare `Txt` values,
   not translations. Upload-path failures meant for the user throw `TxtException`; other exceptions keep their
   raw message inside a generic text (`UploadOutcome.reason`). `Txt` is put into words only at the edge

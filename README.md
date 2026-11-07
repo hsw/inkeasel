@@ -89,17 +89,22 @@ InkEasel has no account, no analytics, no ads and no server of its own.
 
 ## Builds and releases
 
-- **CI** (`.github/workflows/ci.yml`): every push and pull request runs
-  `./gradlew testDebugUnitTest assembleDebug` on JDK 21; the debug APK is kept as the run's artifact.
+- **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
+  `./gradlew testDebugUnitTest assembleDebug assembleRelease` on JDK 21 (the release build signed with the
+  debug key, only to see it builds); the debug APK is kept as the run's artifact. A `v*` tag runs the release
+  workflow instead.
 - **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
   environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
   `INKEASEL_KEY_ALIAS` and `INKEASEL_KEY_PASSWORD`. With none of them set, it is signed with the debug key
-  and the build prints a warning; with only some set, a release build fails. Check which key signed an APK
+  and the build prints a warning; with only some set, a release build fails. Only the tasks that package or
+  sign a release (`assembleRelease`, `bundleRelease`, …) check this, so `testReleaseUnitTest` and lint run
+  without the variables. Check which key signed an APK
   with `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk` (from the SDK
   build-tools).
 - **Releases** (`.github/workflows/release.yml`): pushing a tag `v*` runs the unit tests, builds the release
   APK signed with the release key and publishes it as a GitHub release `inkeasel-<tag>.apk` with generated
-  notes. It needs four repository secrets: `INKEASEL_KEYSTORE_BASE64` (the keystore file, base64-encoded),
+  notes. The build runs with a read-only token and no stored git credentials; a second job, which runs no
+  build code, gets write access only to create the release from the built APK. It needs four repository secrets: `INKEASEL_KEYSTORE_BASE64` (the keystore file, base64-encoded),
   `INKEASEL_KEYSTORE_PASSWORD`, `INKEASEL_KEY_ALIAS`, `INKEASEL_KEY_PASSWORD`; without them the workflow
   stops before building and names the missing ones. Releases are never signed with the debug key.
 
@@ -137,13 +142,15 @@ settings dialog does the same. A TV has no bars, so nothing changes there.
 
 Tabs: "My pictures" (the app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and
 "Landscapes" (Wikimedia Commons featured pictures). A list request gives up after 20 s; Commons reads at
-most 3 pages within 30 s and shows what came in by then. A failure reads as a sentence (no connection, the
+most 3 pages within 30 s and shows what came in by then, also when a later page fails. A source that
+answers with no usable picture says so ("The source returned no pictures.") with **Retry**. A failure reads as a sentence (no connection, the
 source is not responding, HTTP code, unreadable answer) with **Retry**.
 
 The last good, non-empty list of each online tab is saved in the app's files (`files/catalog/<source>.json`).
 When the source fails later, that list is shown with a note above it ("Saved list from <date>. <reason>")
 and **Retry**; the list stays on screen while a retry runs, and the note goes once a fresh list arrives.
-An empty answer never replaces a saved list. Thumbnails of a saved list come from the image cache, so
+An empty answer never replaces a saved list, and a list cut short (by the 30 s limit or a failed later page)
+replaces it only when it is not smaller. Thumbnails of a saved list come from the image cache, so
 offline some may be missing; sending a picture still needs the network.
 
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
@@ -155,12 +162,16 @@ asking for fewer results than `limit=200` would be the next step then.
 On a phone or a tablet, "Share" on a picture in a gallery or a file manager lists InkEasel. The picture is
 copied into "My pictures" (the sender's file name, made safe, with the extension of its type; `-2`, `-3`, …
 when the name is taken; `shared-<date>-<time>` when the sender gives none; at most 50 MB, written to a
-`.part` file and renamed when complete) and sent to the frame as a manual upload, so it becomes the default
-picture. The gallery stays on screen; a toast says "Sending to the frame…", and the upload toasts its result
-as usual. With no frame chosen the picture is only saved, and the share itself says so ("No frame selected:
+`.part` file, created first so two shares at once never pick the same name, and renamed when complete;
+an existing file is never overwritten) and sent to the frame as a manual upload, so it becomes the default
+picture. The gallery stays on screen; a toast says the picture is saved and on its way to the frame. On
+Android 13 and newer the app does not ask for the notification permission, so the result toast of an upload
+started from a share (the gallery is in front) may not appear; open InkEasel or look at the frame to see
+how it went. With no frame chosen the picture is only saved, and the share itself says so ("No frame selected:
 choose one in the settings, then send it from there").
 
-Only a `content://` picture of another app is taken (no `file://` paths, nothing of the app's own). Types:
+Only a `content://` picture of another app is taken (no `file://` paths, nothing of the app's own, also
+with a `<user>@` prefix on the authority). Types:
 JPEG, PNG, WebP, GIF, BMP and HEIC/HEIF (decoded by the system, Android 9+).
 
 Without the Bluetooth permission the picture is still copied and waits: the app opens with its settings and
@@ -172,7 +183,9 @@ and the picture stays in "My pictures" either way.
 
 Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
 or "No frame selected"); a fresh start with no frame chosen opens it by itself. The settings scroll as one
-column (a phone in landscape is short); **Close** sits next to the title and has the first focus.
+column (a phone in landscape is short); **Close** sits next to the title and has the first focus. Once
+frames show up, the focus moves once to the chosen frame (or, if it has not shown up within 1.5 s, the first
+one that can be chosen), unless the user has already moved onto the list.
 
 - While it is open, the app scans for BLE service `0xFFBB` and lists every frame heard, one entry per name
   (the name is the frame's identity; its MAC may change), updated live: name, MAC, colour and panel type,
@@ -205,6 +218,8 @@ column (a phone in landscape is short); **Close** sits next to the title and has
   longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
   so the button becomes "App info" and the text names the path: Settings → Apps → InkEasel → Permissions →
   Nearby devices (Location on Android 11 and older). The grant is picked up when the app comes back.
+  A dialog closed without an answer (Back, a tap outside) is not a denial: "Allow" asks again. Only after a
+  real denial has been seen once (remembered in prefs `permissions`) does a silent "no" count as blocked.
 
 ## Permissions and features
 
@@ -218,7 +233,8 @@ Below the frame list, **Settings → Permissions and features** collects what th
   - phones and tablets: "Grant access" (and switching the poster on) opens the system screen: the app's
     own page (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not
     from a store) may find the switch there greyed out ("Restricted setting"): the section says so and
-    offers App info, where ⋮ → "Allow restricted settings" unlocks it;
+    offers App info, where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed
+    the app);
   - Android TV 14 has only the list (InkEasel is in it, one D-pad press grants it), and the button opens it;
   - older Android TV builds (the Shield, Android TV 11) have no such screen: the section shows the adb
     command instead (see "Now playing → poster").
@@ -311,7 +327,9 @@ Logs (`NowPlayingListener` is also used by the system launcher, so filter by the
 
 Code:
 - `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
-  list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`PageBudget`)
+  list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`collectPages`, pure; a list
+  cut short is marked incomplete)
+- `CatalogLoad.kt`: one load of a tab and its cache rules (`loadCatalog`), and when a tab reloads (pure)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
 - `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`
@@ -329,7 +347,8 @@ Code:
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
   Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
-- `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked, and App info
+- `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
+  was seen: a dismissed dialog does not count), and App info
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screen, the adb command);
   `ListenerAccessUi.kt` decides what the section shows (pure)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
@@ -341,15 +360,16 @@ Code:
   sends a waiting shared picture once the permission is granted and a frame chosen
 - `CatalogLayout.kt`: columns, side padding and header shape for the window width (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
-  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, the size cap, the
-  next step (send, wait in the app, or no frame) and the pending-share rule (pure)
+  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
+  (`save`), the size cap and the pending-share rule (pure)
 - `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
   one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
   become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
   manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`), or if a
   poster's turn comes while the poster is switched off; it stops
   with `stopSelfResult`, so a start arriving as it finishes is not lost, and a request it never finishes
-  is reported as failed; it waits for the frame to finish drawing before the next upload (`DrawGate.kt`)
+  is reported as failed; it waits for the frame to finish drawing before the next upload (`DrawGate.kt`).
+  Without the Bluetooth permissions it is not started: an `auto` upload is reported as failed at once
 - `nowplaying/`:
   - `Playing.kt`: the `Playing`/`Art`/`State` model and pure mappers from metadata
     (art priority `ART_URI` → `ALBUM_ART_URI` → `DISPLAY_ICON_URI` → bitmap; only https URIs are used)
