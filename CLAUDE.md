@@ -33,7 +33,11 @@ implementation plans: `docs/plans/`. Both are local and git-ignored: never stage
 ## Conventions
 - Code, comments, commit messages, README and backlog items: English. UI strings live in resources:
   English in `res/values/strings.xml`, Russian in `res/values-ru/strings.xml`; every new string goes into
-  both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin.
+  both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin, nor
+  capitalisation, punctuation or separators added to a resolved text (`list_separator`, `*_sentence` forms).
+  Keys are `<area>_<what>` (`catalog_`, `settings_`, `frame_`, `perm_`, `access_`, `feature_`, `advert_`,
+  `reason_`, `bt_`, `scan_`, `upload_`, `share_`), in that area's block of the file; a lowercase fragment
+  nested in another text (an error's reason) is `<area>_err_<what>`, `<area>_toast_<what>` is only a toast.
 - Pure logic stays free of Android types so it runs as JVM unit tests (see `nowplaying/`, `FrameFormat.kt`).
   `org.json` counts as pure, since the JVM tests use the real library (`testImplementation org.json:json`;
   it differs from Android's in corner cases such as `optString` on JSON null, so keep to plain values); any

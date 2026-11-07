@@ -182,6 +182,7 @@ private fun FrameSettings(
         if (!listTouched) runCatching { targetFocus.requestFocus() }
     }
 
+    val sep = stringResource(R.string.list_separator)
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = sidePadding.dp, vertical = 32.dp)
     ) {
@@ -198,7 +199,7 @@ private fun FrameSettings(
                     stringResource(R.string.frame_selected, it.name), it.address,
                     stringResource(R.string.frame_seen, seenAt(it.seenAt)),
                     if (it.lookup.formatOrNull?.verified == false) stringResource(R.string.frame_unverified) else null,
-                ).joinToString(" · ")
+                ).joinToString(sep)
             }
                 ?: stringResource(R.string.frame_none_hint),
             style = MaterialTheme.typography.bodyMedium,
@@ -212,7 +213,7 @@ private fun FrameSettings(
                     stringResource(if (permissionBlocked) R.string.app_info else R.string.allow),
                     onRequestPermissions,
                 )
-                btProblem != null -> Problem("${btProblem!!.text().replaceFirstChar { it.uppercase() }}.", stringResource(R.string.bt_settings)) {
+                btProblem != null -> Problem(btProblem!!.sentence.text(), stringResource(R.string.bt_settings)) {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
@@ -308,7 +309,7 @@ private fun FeaturesSection(permitted: Boolean, permissionBlocked: Boolean, onRe
         selected = false,
         onClick = togglePoster,
         modifier = Modifier.onTap(togglePoster),
-        headlineContent = { Text(stringResource(R.string.poster)) },
+        headlineContent = { Text(stringResource(R.string.feature_poster)) },
         supportingContent = {
             Column {
                 Text(ui.status.text())
@@ -356,6 +357,7 @@ private fun blockedText(): String =
 private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onClick: (Txt?) -> Unit) {
     val reason = f.lookup.reasonOrNull
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+    val sep = stringResource(R.string.list_separator)
     ListItem(
         selected = isSelected,
         onClick = { onClick(reason) },
@@ -365,9 +367,9 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
             Column {
                 Text(
                     listOf(
-                        f.address, f.advert?.describe()?.map { it.text() }?.joinToString(" · ") ?: stringResource(R.string.frame_no_advert),
+                        f.address, f.advert?.describe()?.map { it.text() }?.joinToString(sep) ?: stringResource(R.string.frame_no_advert),
                         stringResource(R.string.frame_signal, f.rssi),
-                    ).joinToString(" · ")
+                    ).joinToString(sep)
                 )
                 reason?.let { Text(Txt(R.string.frame_unsupported, it).text(), color = MaterialTheme.colorScheme.error) }
                 // a supported format never seen working on a real panel ([FrameFormat.verified])

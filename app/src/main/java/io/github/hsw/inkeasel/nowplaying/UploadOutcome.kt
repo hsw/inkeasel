@@ -23,7 +23,7 @@ data class UploadOutcome(val toast: Txt?, val report: Boolean, val remember: Boo
         }
 
         /** The failure as the user reads it ([userText]); `null` is an unknown error. */
-        fun reason(error: Throwable?): Txt = error?.userText(R.string.upload_error_text) ?: Txt(R.string.upload_error_unknown)
+        fun reason(error: Throwable?): Txt = error?.userText(R.string.upload_err_text) ?: Txt(R.string.upload_err_unknown)
 
         /**
          * What the upload notification calls a picture that has no title of its own ([Source.title] blank):

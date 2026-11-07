@@ -47,35 +47,35 @@ class UploadOutcomeTest {
 
     @Test
     fun manualFailureWithoutMessageStillToasts() {
-        assertEquals(Txt(R.string.upload_failed, Txt(R.string.upload_error_unknown)), UploadOutcome.of(auto = false, ok = false).toast)
+        assertEquals(Txt(R.string.upload_failed, Txt(R.string.upload_err_unknown)), UploadOutcome.of(auto = false, ok = false).toast)
     }
 
     @Test
     fun aTxtExceptionIsShownInTheUsersLanguage() {
         val nested = Txt(R.string.frame_err_not_found, "NM000001", Txt(R.string.scanning_hint))
         assertEquals(nested, UploadOutcome.reason(TxtException(nested)))
-        assertEquals(Txt(R.string.upload_stopped), UploadOutcome.reason(TxtException(Txt(R.string.upload_stopped), IOException("cause"))))
+        assertEquals(Txt(R.string.upload_err_stopped), UploadOutcome.reason(TxtException(Txt(R.string.upload_err_stopped), IOException("cause"))))
     }
 
     @Test
     fun anotherExceptionKeepsItsRawMessage() {
-        assertEquals(Txt(R.string.upload_error_text, "HTTP 404: https://e/p.jpg"), UploadOutcome.reason(IOException("HTTP 404: https://e/p.jpg")))
-        assertEquals(Txt(R.string.upload_error_text, "timeout"), UploadOutcome.reason(SocketTimeoutException("timeout")))
+        assertEquals(Txt(R.string.upload_err_text, "HTTP 404: https://e/p.jpg"), UploadOutcome.reason(IOException("HTTP 404: https://e/p.jpg")))
+        assertEquals(Txt(R.string.upload_err_text, "timeout"), UploadOutcome.reason(SocketTimeoutException("timeout")))
         assertEquals(
-            Txt(R.string.upload_failed, Txt(R.string.upload_error_text, "HTTP 500: https://e/p.jpg")),
+            Txt(R.string.upload_failed, Txt(R.string.upload_err_text, "HTTP 500: https://e/p.jpg")),
             UploadOutcome.of(auto = false, ok = false, error = IOException("HTTP 500: https://e/p.jpg")).toast,
         )
     }
 
     @Test
     fun anExceptionWithoutMessageIsNamedByItsClass() {
-        assertEquals(Txt(R.string.upload_error_text, "IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
-        assertEquals(Txt(R.string.upload_error_text, "IOException"), UploadOutcome.reason(IOException(" ")))
+        assertEquals(Txt(R.string.upload_err_text, "IllegalStateException"), UploadOutcome.reason(IllegalStateException()))
+        assertEquals(Txt(R.string.upload_err_text, "IOException"), UploadOutcome.reason(IOException(" ")))
     }
 
     @Test
     fun noExceptionIsAnUnknownError() {
-        assertEquals(Txt(R.string.upload_error_unknown), UploadOutcome.reason(null))
+        assertEquals(Txt(R.string.upload_err_unknown), UploadOutcome.reason(null))
     }
 
     @Test

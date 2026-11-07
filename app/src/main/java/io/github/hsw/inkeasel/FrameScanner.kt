@@ -11,6 +11,18 @@ import android.os.ParcelUuid
 import android.util.Log
 
 /**
+ * Why Bluetooth cannot be used: as a [reason] inside a longer text (lowercase where the language allows), or
+ * as a [sentence] of its own.
+ */
+enum class BtProblem(private val reasonId: Int, private val sentenceId: Int) {
+    MISSING(R.string.bt_missing, R.string.bt_missing_sentence),
+    OFF(R.string.bt_off, R.string.bt_off_sentence);
+
+    val reason: Txt get() = Txt(reasonId)
+    val sentence: Txt get() = Txt(sentenceId)
+}
+
+/**
  * BLE scan for NowMean frames ([FrameKind.NOWMEAN]: service 0xFFBB), shared by the settings list (continuous, every frame) and
  * [FrameClient] (until the selected frame shows up). Every advertisement is reported, so signal and battery
  * stay current; nameless ones are skipped, since the name is the frame's identity.
@@ -20,9 +32,9 @@ class FrameScanner(ctx: Context) {
     private val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter
 
     /** Why a scan cannot run now (no Bluetooth, or it is off), or `null`. */
-    fun unavailable(): Txt? = when {
-        adapter == null -> Txt(R.string.bt_missing)
-        !adapter.isEnabled -> Txt(R.string.bt_off)
+    fun unavailable(): BtProblem? = when {
+        adapter == null -> BtProblem.MISSING
+        !adapter.isEnabled -> BtProblem.OFF
         else -> null
     }
 
@@ -33,7 +45,7 @@ class FrameScanner(ctx: Context) {
     fun start(onSeen: (SeenFrame) -> Unit, onFailed: (Txt) -> Unit): () -> Unit {
         val scanner = adapter?.takeIf { it.isEnabled }?.bluetoothLeScanner
         if (scanner == null) {
-            onFailed(unavailable() ?: Txt(R.string.bt_off))
+            onFailed((unavailable() ?: BtProblem.OFF).reason)
             return {}
         }
         val cb = object : ScanCallback() {
@@ -47,7 +59,7 @@ class FrameScanner(ctx: Context) {
 
             override fun onScanFailed(errorCode: Int) {
                 Log.w(TAG, "scan failed: $errorCode")
-                onFailed(Txt(R.string.scan_error, errorCode))
+                onFailed(Txt(R.string.scan_err_code, errorCode))
             }
         }
         val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(FrameClient.SVC_ADV)).build()

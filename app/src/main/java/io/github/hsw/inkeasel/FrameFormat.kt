@@ -324,7 +324,7 @@ object FrameFormats {
     fun find(caps: FrameCaps?): FormatLookup {
         if (caps == null) return FormatLookup.Unsupported(Txt(R.string.reason_no_caps))
         if (caps.rotation != 0) return FormatLookup.Unsupported(
-            Txt(R.string.reason_rotation, caps.rotation?.let { Txt(R.string.degrees, it) } ?: "?")
+            Txt(R.string.reason_rotation, caps.rotation?.let { Txt(R.string.advert_degrees, it) } ?: Txt(R.string.advert_degrees_unknown))
         )
         val w = caps.width
         val h = caps.height

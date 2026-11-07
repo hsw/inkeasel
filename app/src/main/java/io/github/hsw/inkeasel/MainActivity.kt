@@ -213,7 +213,7 @@ class MainActivity : ComponentActivity() {
                     when {
                         vm.selected == null -> {
                             Log.i(TAG, "no frame selected: upload of ${p.title} refused")
-                            Toast.makeText(this, R.string.no_frame, Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
                         }
                         BlePermissions.granted(this) -> sendToFrame(p)
                         else -> requestPermissions()
@@ -228,7 +228,7 @@ class MainActivity : ComponentActivity() {
     private fun sendToFrame(p: Picture) {
         if (p.local) UploadService.startManual(this, path = p.fullUrl)
         else UploadService.startManual(this, url = p.fullUrl, title = p.title)
-        Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -241,7 +241,7 @@ class MainActivity : ComponentActivity() {
         val path = pendingShare.take(System.currentTimeMillis()) ?: return
         Log.i(TAG, "sending the pending share: ${File(path).name}")
         UploadService.startManual(this, path = path)
-        Toast.makeText(this, R.string.sending, Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
     // A share without the permissions reaches a running app here (ShareActivity: CLEAR_TOP | SINGLE_TOP):

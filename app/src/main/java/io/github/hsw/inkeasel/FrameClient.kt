@@ -58,7 +58,7 @@ class FrameClient(private val ctx: Context) {
      * found; it never falls back to another frame.
      */
     suspend fun upload(format: FrameFormat, payload: ByteArray) {
-        val sel = store.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
+        val sel = store.selected() ?: throw TxtException(Txt(R.string.upload_err_no_frame))
         if (sel.kind != FrameKind.NOWMEAN) throw TxtException(Txt(R.string.frame_err_kind, sel.name))
         if (sel.lookup.formatOrNull != format) throw TxtException(Txt(R.string.frame_err_format_changed, sel.name))
         require(payload.size == format.payloadSize) { "payload ${payload.size} B, the format needs ${format.payloadSize} B" }
@@ -123,7 +123,7 @@ class FrameClient(private val ctx: Context) {
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout
         if (seen.advert != null) when (val l = seen.lookup) {
-            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_toast_unsupported, name, l.reason))
+            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, name, l.reason))
             is FormatLookup.Supported -> if (l.format != format) throw TxtException(Txt(R.string.frame_err_format_changed, name))
         }
         return bt.getRemoteDevice(seen.address)

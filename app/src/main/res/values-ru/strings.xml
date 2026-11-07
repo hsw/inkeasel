@@ -18,7 +18,6 @@
     <string name="catalog_retrying">Повторная загрузка…</string>
     <string name="catalog_empty">Источник не вернул ни одной картинки.</string>
     <string name="local_empty">Папка пуста. Скопируйте сюда картинки:\n%1$s\n(с компьютера: adb push файл.jpg \"&lt;эта папка&gt;\")</string>
-    <string name="sending">Отправка на рамку…</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>
@@ -52,7 +51,7 @@
     <string name="perm_name_nearby">Устройства поблизости</string>
     <string name="perm_name_location">Местоположение</string>
     <string name="app_info">О приложении</string>
-    <string name="poster">Постер того, что играет</string>
+    <string name="feature_poster">Постер того, что играет</string>
     <string name="access_granted">Доступ к уведомлениям выдан: приложение видит, что играет.</string>
     <string name="access_missing">Нужен доступ к уведомлениям, чтобы видеть, что играет.</string>
     <string name="access_open">Выдать доступ</string>
@@ -81,28 +80,32 @@
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">на устройстве нет Bluetooth</string>
     <string name="bt_off">Bluetooth выключен</string>
-    <string name="scan_error">ошибка сканирования BLE (%1$d)</string>
+    <string name="bt_missing_sentence">На устройстве нет Bluetooth.</string>
+    <string name="bt_off_sentence">Bluetooth выключен.</string>
+    <string name="scan_err_code">ошибка сканирования BLE (%1$d)</string>
 
     <!-- upload results (UploadOutcome) -->
+    <string name="upload_sending">Отправка на рамку…</string>
     <string name="upload_sent">Фото отправлено</string>
     <string name="upload_failed">Ошибка отправки: %1$s</string>
-    <string name="upload_error_unknown">неизвестная ошибка</string>
+    <string name="upload_err_unknown">неизвестная ошибка</string>
     <string name="upload_picture">картинка</string>
     <string name="upload_default_picture">фото по умолчанию</string>
-    <string name="upload_stopped">служба отправки остановлена</string>
+    <string name="upload_err_stopped">служба отправки остановлена</string>
     <string name="upload_channel">Отправка на рамку</string>
     <string name="upload_no_picture">Не указано фото для отправки</string>
     <string name="upload_wait">Рамка ещё рисует предыдущую картинку: отправка через %1$d с</string>
-    <string name="no_frame">Рамка не выбрана: выберите её в настройках</string>
-    <string name="no_frame_error">рамка не выбрана</string>
-    <string name="image_decode_failed">не удалось декодировать изображение</string>
+    <string name="upload_no_frame">Рамка не выбрана: выберите её в настройках</string>
+    <string name="upload_err_no_frame">рамка не выбрана</string>
+    <string name="upload_err_decode">не удалось декодировать изображение</string>
 
     <!-- upload over Bluetooth (FrameClient): errors -->
     <string name="frame_err_kind">рамка %1$s: этот вид рамок пока не поддерживается</string>
     <string name="frame_err_format_changed">параметры рамки %1$s изменились, отправьте снова</string>
     <string name="frame_err_not_acked">рамка не подтвердила приём</string>
     <string name="frame_err_send">не удалось отправить</string>
-    <string name="frame_err_not_found">Рамка %1$s не найдена. %2$s</string>
+    <string name="frame_err_not_found">рамка %1$s не найдена. %2$s</string>
+    <string name="frame_err_unsupported">рамка %1$s не поддерживается: %2$s</string>
     <string name="frame_err_gatt">не удалось открыть соединение Bluetooth</string>
     <string name="frame_err_no_answer">рамка не отвечает</string>
     <string name="frame_err_mtu">не удалось увеличить MTU</string>

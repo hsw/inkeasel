@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name" translatable="false">InkEasel</string>
+    <!-- joins the parts of one line (a frame's properties); quoted to keep the spaces -->
+    <string name="list_separator" translatable="false">" · "</string>
 
     <!-- catalog -->
     <string name="tab_local">My pictures</string>
@@ -21,7 +23,6 @@
     <string name="catalog_retrying">Retrying…</string>
     <string name="catalog_empty">The source returned no pictures.</string>
     <string name="local_empty">The folder is empty. Copy pictures here:\n%1$s\n(from a computer: adb push picture.jpg \"&lt;this folder&gt;\")</string>
-    <string name="sending">Sending to the frame…</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Settings</string>
@@ -56,7 +57,7 @@
     <string name="perm_name_nearby">Nearby devices</string>
     <string name="perm_name_location">Location</string>
     <string name="app_info">App info</string>
-    <string name="poster">Now-playing poster</string>
+    <string name="feature_poster">Now-playing poster</string>
     <string name="access_granted">Notification access is granted: the app sees what plays.</string>
     <string name="access_missing">Needs notification access to see what plays.</string>
     <string name="access_open">Grant access</string>
@@ -68,7 +69,8 @@
     <string name="advert_size" translatable="false">%1$d×%2$d</string>
     <string name="advert_size_code">code 0x%1$02x</string>
     <string name="advert_size_rotation" translatable="false">%1$s, %2$s</string>
-    <string name="degrees" translatable="false">%1$d°</string>
+    <string name="advert_degrees" translatable="false">%1$d°</string>
+    <string name="advert_degrees_unknown" translatable="false">?</string>
     <string name="advert_rotation_unknown">rotation ?</string>
     <string name="advert_battery">battery %1$d %%</string>
     <string name="advert_firmware">firmware %1$d</string>
@@ -88,29 +90,33 @@
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">this device has no Bluetooth</string>
     <string name="bt_off">Bluetooth is off</string>
-    <string name="scan_error">BLE scan error (%1$d)</string>
+    <string name="bt_missing_sentence">This device has no Bluetooth.</string>
+    <string name="bt_off_sentence">Bluetooth is off.</string>
+    <string name="scan_err_code">BLE scan error (%1$d)</string>
 
     <!-- upload results (UploadOutcome) -->
+    <string name="upload_sending">Sending to the frame…</string>
     <string name="upload_sent">Picture sent</string>
     <string name="upload_failed">Upload failed: %1$s</string>
-    <string name="upload_error_unknown">unknown error</string>
+    <string name="upload_err_unknown">unknown error</string>
     <string name="upload_picture">picture</string>
     <string name="upload_default_picture">default picture</string>
-    <string name="upload_error_text" translatable="false">%1$s</string>
-    <string name="upload_stopped">the upload service stopped</string>
+    <string name="upload_err_text" translatable="false">%1$s</string>
+    <string name="upload_err_stopped">the upload service stopped</string>
     <string name="upload_channel">Sending to the frame</string>
     <string name="upload_no_picture">No picture given to send</string>
     <string name="upload_wait">The frame is still drawing the previous picture: sending in %1$d s</string>
-    <string name="no_frame">No frame selected: choose one in the settings</string>
-    <string name="no_frame_error">no frame selected</string>
-    <string name="image_decode_failed">could not decode the picture</string>
+    <string name="upload_no_frame">No frame selected: choose one in the settings</string>
+    <string name="upload_err_no_frame">no frame selected</string>
+    <string name="upload_err_decode">could not decode the picture</string>
 
     <!-- upload over Bluetooth (FrameClient): errors -->
     <string name="frame_err_kind">frame %1$s: this kind of frame is not supported yet</string>
     <string name="frame_err_format_changed">the parameters of frame %1$s have changed, send again</string>
     <string name="frame_err_not_acked">the frame did not confirm the picture</string>
     <string name="frame_err_send">could not send</string>
-    <string name="frame_err_not_found">Frame %1$s not found. %2$s</string>
+    <string name="frame_err_not_found">frame %1$s not found. %2$s</string>
+    <string name="frame_err_unsupported">frame %1$s is not supported: %2$s</string>
     <string name="frame_err_gatt">could not open a Bluetooth connection</string>
     <string name="frame_err_no_answer">the frame does not respond</string>
     <string name="frame_err_mtu">could not raise the MTU</string>

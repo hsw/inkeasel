@@ -29,7 +29,7 @@ class FrameAdvertTest {
         assertEquals(
             listOf(
                 Txt(R.string.advert_colour_panel, "E6", "TA"),
-                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.degrees, 0)),
+                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.advert_degrees, 0)),
                 Txt(R.string.advert_battery, 100),
                 Txt(R.string.advert_firmware, 21),
             ),
@@ -79,7 +79,7 @@ class FrameAdvertTest {
         assertEquals(
             listOf(
                 Txt(R.string.advert_colour_panel, "E6", "TA"),
-                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.degrees, 0)),
+                Txt(R.string.advert_size_rotation, Txt(R.string.advert_size, 1024, 600), Txt(R.string.advert_degrees, 0)),
                 Txt(R.string.advert_battery, 100),
             ),
             a.describe(),
@@ -119,7 +119,7 @@ class FrameAdvertTest {
         assertNull(a.width)
         assertNull(a.height)
         assertEquals(Txt(R.string.advert_size_code, 0x1F), a.size)
-        assertEquals(Txt(R.string.advert_size_rotation, Txt(R.string.advert_size_code, 0x1F), Txt(R.string.degrees, 0)), a.describe()[1])
+        assertEquals(Txt(R.string.advert_size_rotation, Txt(R.string.advert_size_code, 0x1F), Txt(R.string.advert_degrees, 0)), a.describe()[1])
         assertEquals(Panel.AB, FrameAdvert.parse(bytes(0x4F, 0x13, 0x64))!!.panel)
     }
 

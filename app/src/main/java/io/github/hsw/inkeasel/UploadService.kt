@@ -138,7 +138,7 @@ class UploadService : Service() {
     private fun refuseNoFrame(auto: Boolean, key: String?, title: String?) {
         Log.w(TAG, "no frame selected: ${if (auto) "auto" else "manual"} upload refused: $title (key=$key)")
         if (auto) key?.let { controller.onUploadResult(it, false) }
-        else toast(getString(R.string.no_frame))
+        else toast(getString(R.string.upload_no_frame))
     }
 
     private fun parse(intent: Intent, auto: Boolean, key: String?, stamp: Long): Req? {
@@ -212,10 +212,10 @@ class UploadService : Service() {
             is Art.Url -> Http.bytes(art.url)
         }
         // the selected frame's format: its size, inks and packing (a later rescan may change it, see FrameClient)
-        val sel = frames.selected() ?: throw TxtException(Txt(R.string.no_frame_error))
+        val sel = frames.selected() ?: throw TxtException(Txt(R.string.upload_err_no_frame))
         val format = when (val l = sel.lookup) {
             is FormatLookup.Supported -> l.format
-            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_toast_unsupported, sel.name, l.reason))
+            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, sel.name, l.reason))
         }
         val packed = withContext(Dispatchers.Default) { EpdImage.render(bytes, format) }
         frame.upload(format, packed)
@@ -247,7 +247,7 @@ class UploadService : Service() {
     private fun notification(title: String?): Notification {
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH_ID) else Notification.Builder(this)
-        return b.setContentTitle(getString(R.string.sending))
+        return b.setContentTitle(getString(R.string.upload_sending))
             .setContentText(title.orEmpty())
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
@@ -258,7 +258,7 @@ class UploadService : Service() {
         // the worker is cancelled below: report what it would never finish (it reports nothing once taken)
         for (req in queue.takeAll()) {
             Log.w(TAG, "service stopped before the upload finished: ${req.source.title} (key=${req.key})")
-            done(req, ok = false, error = TxtException(Txt(R.string.upload_stopped)))
+            done(req, ok = false, error = TxtException(Txt(R.string.upload_err_stopped)))
         }
         scope.cancel()
         super.onDestroy()

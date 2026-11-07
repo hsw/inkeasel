@@ -48,12 +48,12 @@ class FrameAdvert private constructor(
         else Txt(R.string.advert_size_code, resolutionCode)
 
     /**
-     * The parts of one line for the frame list, joined with " · " where shown, e.g. "E6, panel TA · 1024×600, 0° ·
-     * battery 100 % · firmware 21".
+     * The parts of one line for the frame list, joined with `list_separator` (" · ") where shown, e.g.
+     * "E6, panel TA · 1024×600, 0° · battery 100 % · firmware 21".
      */
     fun describe(): List<Txt> = listOfNotNull(
         Txt(R.string.advert_colour_panel, colour.name, panel.name),
-        Txt(R.string.advert_size_rotation, size, rotation?.let { Txt(R.string.degrees, it) } ?: Txt(R.string.advert_rotation_unknown)),
+        Txt(R.string.advert_size_rotation, size, rotation?.let { Txt(R.string.advert_degrees, it) } ?: Txt(R.string.advert_rotation_unknown)),
         Txt(R.string.advert_battery, battery),
         firmware?.let { Txt(R.string.advert_firmware, it) },
         Txt(R.string.advert_safe_mode).takeIf { safeMode },
