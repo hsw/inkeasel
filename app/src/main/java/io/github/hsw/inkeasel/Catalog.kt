@@ -1,14 +1,21 @@
 package io.github.hsw.inkeasel
 
 import android.app.Application
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -37,24 +44,60 @@ interface Source {
     suspend fun load(): List<Picture>
 }
 
+/** A non-2xx HTTP answer. [message] stays `HTTP <code>: <url>`: a URL upload toasts it as is. */
+class HttpStatusException(val code: Int, val url: String) : IOException("HTTP $code: $url")
+
 object Http {
     // Wikimedia asks every client for a descriptive User-Agent
     private const val UA = "InkEasel/0.1 (+https://github.com/hsw/inkeasel)"
 
+    /** Longest wait for one catalog list request, from connect to the last byte. */
+    const val LIST_TIMEOUT_S = 20L
+
+    /** Shared by Coil and full-image downloads: big files on slow links may take long. */
     val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("User-Agent", UA).build()) }
         .build()
 
-    suspend fun bytes(url: String): ByteArray = withContext(Dispatchers.IO) {
-        client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("HTTP ${r.code}: $url")
-            r.body!!.bytes()
-        }
+    /** Catalog lists: the same pool and User-Agent, but the whole call gives up after [LIST_TIMEOUT_S]. */
+    private val listClient: OkHttpClient = client.newBuilder().callTimeout(LIST_TIMEOUT_S, TimeUnit.SECONDS).build()
+
+    /** The body of [url]; [HttpStatusException] on a non-2xx answer. Cancelling the coroutine cancels the call. */
+    suspend fun bytes(url: String): ByteArray = fetch(client, url)
+
+    /** A catalog list as JSON, with the [LIST_TIMEOUT_S] limit. */
+    suspend fun json(url: String): JSONObject {
+        val body = fetch(listClient, url)
+        return withContext(Dispatchers.Default) { JSONObject(String(body)) }
     }
 
-    suspend fun json(url: String): JSONObject = JSONObject(String(bytes(url)))
+    // enqueue instead of a blocking execute: a cancelled coroutine (a deadline, a closed screen) cancels the
+    // call at once rather than waiting for its own timeout
+    private suspend fun fetch(c: OkHttpClient, url: String): ByteArray = suspendCancellableCoroutine { cont ->
+        val call = c.newCall(Request.Builder().url(url).build())
+        cont.invokeOnCancellation { call.cancel() }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = cont.resumeWith(Result.failure(e))
+
+            override fun onResponse(call: Call, response: Response) = cont.resumeWith(runCatching {
+                response.use { r ->
+                    if (!r.isSuccessful) throw HttpStatusException(r.code, url)
+                    r.body!!.bytes()
+                }
+            })
+        })
+    }
+}
+
+/**
+ * When a paged source stops asking for more: after [maxPages] pages, once [target] pictures are collected,
+ * or when the source has no next page.
+ */
+class PageBudget(private val maxPages: Int, private val target: Int) {
+    fun more(pagesDone: Int, collected: Int, hasNext: Boolean): Boolean =
+        hasNext && pagesDone < maxPages && collected < target
 }
 
 /** Landscape orientation that survives the crop to a landscape frame (e.g. 1024×600, 800×480) without losing most of the picture. */
@@ -101,9 +144,27 @@ object ClevelandPaintings : Source {
 object CommonsLandscapes : Source {
     override val name = Txt(R.string.tab_landscapes)
 
+    private const val TAG = "CommonsLandscapes"
+
+    // most featured landscapes are wide, so one page of 100 usually gives ~60–80 pictures
+    private val budget = PageBudget(maxPages = 3, target = 120)
+
+    /** The whole load, all pages together; what came in by then is shown. */
+    private const val DEADLINE_MS = 30_000L
+
     override suspend fun load(): List<Picture> {
         val out = mutableListOf<Picture>()
+        val done = withTimeoutOrNull(DEADLINE_MS) { loadPages(out) }
+        if (done == null) {
+            Log.w(TAG, "no full answer in ${DEADLINE_MS / 1000} s, ${out.size} pictures so far")
+            if (out.isEmpty()) throw SocketTimeoutException("no answer in ${DEADLINE_MS / 1000} s")
+        }
+        return out
+    }
+
+    private suspend fun loadPages(out: MutableList<Picture>) {
         var cont: String? = null
+        var fetched = 0
         do {
             val b = "https://commons.wikimedia.org/w/api.php".toHttpUrl().newBuilder()
                 .addQueryParameter("action", "query")
@@ -139,9 +200,9 @@ object CommonsLandscapes : Source {
                     fullUrl = full,
                 )
             }
+            fetched++
             cont = root.optJSONObject("continue")?.optString("gcmcontinue")?.takeIf { it.isNotEmpty() }
-        } while (cont != null && out.size < 120)
-        return out
+        } while (budget.more(fetched, out.size, cont != null))
     }
 }
 

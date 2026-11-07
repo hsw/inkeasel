@@ -10,6 +10,11 @@
     <string name="header_no_frame">No frame selected</string>
     <string name="catalog_loading">Loading the catalog…</string>
     <string name="catalog_failed">Could not load the catalog: %1$s</string>
+    <string name="catalog_err_offline">No connection to the source. Check the network and try again.</string>
+    <string name="catalog_err_timeout">The source is not responding. Try again later.</string>
+    <string name="catalog_err_http_server">The source is unavailable (HTTP %1$d). Try again later.</string>
+    <string name="catalog_err_http">The source answered HTTP %1$d.</string>
+    <string name="catalog_err_unreadable">The source sent an answer that could not be read.</string>
     <string name="retry">Retry</string>
     <string name="local_empty">The folder is empty. Copy pictures here:\n%1$s\n(from a computer: adb push picture.jpg \"&lt;this folder&gt;\")</string>
     <string name="sending">Sending to the frame…</string>

@@ -8,6 +8,11 @@
     <string name="header_no_frame">Рамка не выбрана</string>
     <string name="catalog_loading">Загрузка каталога…</string>
     <string name="catalog_failed">Не удалось загрузить каталог: %1$s</string>
+    <string name="catalog_err_offline">Нет связи с источником. Проверьте сеть и повторите.</string>
+    <string name="catalog_err_timeout">Источник не отвечает. Попробуйте позже.</string>
+    <string name="catalog_err_http_server">Источник недоступен (HTTP %1$d). Попробуйте позже.</string>
+    <string name="catalog_err_http">Источник ответил HTTP %1$d.</string>
+    <string name="catalog_err_unreadable">Источник прислал ответ, который не удалось прочитать.</string>
     <string name="retry">Повторить</string>
     <string name="local_empty">Папка пуста. Скопируйте сюда картинки:\n%1$s\n(с компьютера: adb push файл.jpg \"&lt;эта папка&gt;\")</string>
     <string name="sending">Отправка на рамку…</string>

@@ -78,7 +78,8 @@ private const val TAG = "MainActivity"
 sealed interface CatalogState {
     data object Loading : CatalogState
     data class Loaded(val items: List<Picture>) : CatalogState
-    data class Failed(val message: String) : CatalogState
+    /** [reason] is a whole sentence ([CatalogError]), shown as is. */
+    data class Failed(val reason: Txt) : CatalogState
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -142,7 +143,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                CatalogState.Failed(e.message ?: e.toString())
+                CatalogState.Failed(CatalogError.of(e))
             }
             catalogs[localTab] = fresh
         }
@@ -160,7 +161,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                CatalogState.Failed(e.message ?: e.toString())
+                CatalogState.Failed(CatalogError.of(e))
             }
         }
     }
@@ -258,7 +259,7 @@ fun App(vm: MainViewModel, permitted: Boolean, onRequestPermissions: () -> Unit,
                 when (val st = vm.catalogs[vm.tab] ?: CatalogState.Loading) {
                     CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
                     is CatalogState.Failed -> Column {
-                        Text(stringResource(R.string.catalog_failed, st.message))
+                        Text(st.reason.text())
                         Spacer(Modifier.height(12.dp))
                         Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
                     }

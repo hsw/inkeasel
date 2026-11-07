@@ -141,7 +141,9 @@ Logs (`NowPlayingListener` is also used by the system launcher, so filter by the
       -s NowPlayingListener FrameController UploadService FrameClient
 
 Code:
-- `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes)
+- `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
+  list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`PageBudget`)
+- `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
   verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally
