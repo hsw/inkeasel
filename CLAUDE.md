@@ -15,8 +15,8 @@ implementation plans: `docs/plans/`. Both are local and git-ignored: never stage
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
   Emulator Bluetooth is virtual: uploads to a real frame need a real device.
 - The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
-- `lintDebug` reports two known manifest errors, `UnsupportedTvHardware` (`bluetooth_le` required) and
-  `CoarseFineLocation`; anything else is new. `StringResourcesTest` checks that both string tables have the
+- `lintDebug` has no errors; a new one is a regression. `bluetooth_le` stays `required="true"` (BLE is the
+  only transport) with `UnsupportedTvHardware` suppressed in the manifest. `StringResourcesTest` checks that both string tables have the
   same keys and placeholders.
 - CI (`.github/workflows/`): `ci.yml` runs the build above plus `assembleRelease`; `release.yml` builds a
   signed APK for a `v*` tag with a read-only token and publishes it from a separate job that runs no build.
