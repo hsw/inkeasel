@@ -3,6 +3,23 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Catalog labels follow a language chain; release rows are read leniently
+The catalog's labels are looked up along a chain of Wikidata language codes built from the UI language's tag
+(`LanguageChain`, pure): the regional or script variant first where Wikidata has one, then the language, then
+`en`, then `mul` (Wikidata's language-independent labels); a label missing in all of them falls back to any
+stored language. Android's legacy codes are mapped (`in`→`id`, `iw`→`he`, `ji`→`yi`, `fil`→`tl`). Variants:
+`pt-br`, `en-gb`, `en-ca`, `en-us`, `de-at`, `de-ch`; `es-419` for Latin American regions (`es-US` included,
+Android's Latin American Spanish); Chinese by script (`Hant`, or Taiwan, Hong Kong and Macau without one, is
+Traditional: `zh-hant`, the regional codes with the user's own first, `zh`; else `zh-hans`, …, `zh`);
+Serbian `sr-el` or `sr-ec`, then `sr`; Norwegian `nb`, `no` (Nynorsk `nn` first, then those two). The chain
+names only codes the release can have a labels file for, since each one is a download and a weekly check.
+The release's JSON Lines are read in batches (`JsonLinesReader`, gzip or plain, with the SHA-256 of the file
+as downloaded): a line that is not a valid row (no Wikidata id, no image, no size) is skipped and counted,
+unknown keys and optional values of the wrong type are ignored, so a newer export never stops an older app;
+a broken stream (a truncated gzip) fails the whole file.
+Rejected: `<language>-<region>` for every region (a 404 per user each week for `ru-ru`, `fr-fr`, …), English
+before the user's other variants of the same language, rejecting a whole file for one bad line.
+
 ## 2026-11-09 — Room and Paging, tested under Robolectric
 The catalog database is Room (2.6.1, compiler through KSP) shown through Paging 3 (3.3.6). Both are pinned
 below their newest lines because those pull a newer Kotlin standard library (Room 2.7+: 2.1, over the 2.0.21
