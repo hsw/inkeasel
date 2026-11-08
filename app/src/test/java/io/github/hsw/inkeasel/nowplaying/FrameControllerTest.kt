@@ -1284,6 +1284,27 @@ class FrameControllerTest {
     }
 
     @Test
+    fun manualTappedWhileThePosterUploads_runsAfterIt_andStaysWhileTheFilmPlays() = runTest {
+        val r = Rig(this)
+        r.viaEngine = true
+        r.play()
+        r.advance(60)
+        assertEquals(k1, r.startNext())
+        val m = Source(Source.Type.PHOTO, "sea")
+        r.manual(m)
+        r.complete() // the poster lands first
+        assertEquals(k1, r.c.onFrame)
+        assertEquals(m.manualKey(), r.startNext())
+        r.complete()
+        assertEquals(m.manualKey(), r.c.onFrame)
+        r.play() // repeated PLAYING does not bring the poster back over the manual pick
+        r.advance(300)
+        assertNull(r.startNext())
+        assertEquals(listOf(k1), r.keys())
+        assertEquals(0, r.engine.heldCount)
+    }
+
+    @Test
     fun stamp_autoIsStaleOnlyAfterALaterManualUpload() = runTest {
         val r = Rig(this)
         val before = r.c.manualUploads
