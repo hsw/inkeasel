@@ -15,7 +15,6 @@ package io.github.hsw.inkeasel.nowplaying
  *   which keeps the process in the foreground until the engine has reported it. A refused start (a
  *   background start on Android 12+) is only logged: the request is already in the engine, which uploads it
  *   and reports it once, so it is not reported failed a second time.
- *
  * - When the listener unbinds ([listenerLost]), unheld work still queued or in flight is made held
  *   ([holdAll]) and the hold starts for it, as above. Both run under one lock, so a request is either
  *   submitted unheld before the promotion (and promoted) or decided after it (and held).

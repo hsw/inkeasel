@@ -9,6 +9,7 @@ import io.github.hsw.inkeasel.BlePermissions
 import io.github.hsw.inkeasel.FrameStore
 import io.github.hsw.inkeasel.UploadEngine
 import io.github.hsw.inkeasel.UploadService
+import io.github.hsw.inkeasel.logTo
 
 /**
  * The process-wide [FrameController], wired for production: automatic uploads go straight to the in-process
@@ -47,8 +48,8 @@ object FrameControllers {
             },
             startHold = { UploadService.startHold(app) },
             refuse = { key -> controller.onUploadResult(key, false) },
-            holdAll = { UploadEngine.get(app).holdUnheld() },
-            log = { msg, e -> Log.w(FrameController.TAG, msg, e) },
+            holdAll = { UploadEngine.get(app).holdAll() },
+            log = logTo(FrameController.TAG),
         )
         this.uploader = uploader
         controller = FrameController(

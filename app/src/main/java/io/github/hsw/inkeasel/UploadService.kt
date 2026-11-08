@@ -35,7 +35,7 @@ import java.io.File
  * `FrameController` submits them to the engine itself (`AutoUploader`). Only while the notification listener
  * is not bound, so nothing keeps the process alive, it also starts this service with [ACTION_HOLD]: no
  * payload, the service only goes foreground and stays until the engine's held work is done. The listener does
- * the same when it unbinds with automatic work still queued or in flight ([UploadEngine.holdUnheld]).
+ * the same when it unbinds with automatic work still queued or in flight ([UploadEngine.holdAll]).
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): a manual request is refused at
  * once, before Bluetooth is touched, with a toast. The app starts it only with the Bluetooth permissions

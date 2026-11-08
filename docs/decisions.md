@@ -47,11 +47,11 @@ with vector layers: a dark grey background colour, the same frame and stripes as
 the 66 dp safe zone so no launcher mask cuts the frame's corners, and a monochrome layer for themed icons in
 which the stripes alternate full and half alpha. The old 192 px `mipmap-xhdpi/ic_launcher.png` is deleted:
 nothing uses it once the adaptive icon exists. Lint now warns `IconMissingDensityFolder` for the single
-banner density instead of `IconLocation` for a bitmap in `drawable`; it stays a warning, since Android TV specifies
-the banner at xhdpi only.
+banner density instead of `IconLocation` for a bitmap in `drawable`; it stays a warning, since Android TV
+specifies the banner at xhdpi only.
 Rejected: a 432 px bitmap foreground (the motif is plain rectangles, a vector is sharp at every size), banner
-copies for other densities (not asked for by Android TV, more files to keep in step), a `roundIcon` (the adaptive icon covers round
-masks).
+copies for other densities (not asked for by Android TV, more files to keep in step), a `roundIcon` (the
+adaptive icon covers round masks).
 
 ## 2026-11-08 — Target API 36 with AGP 8.9.1
 compileSdk and targetSdk are 36 (Play's target requirement). AGP goes from 8.7.3 to 8.9.1, the oldest
@@ -101,9 +101,9 @@ system screen leads to the access (adb-only TVs) the panel shows the adb command
 nothing is stored. The other ways to the grant are hints, and they too appear only in the panel: the TV menu
 path (as the way to go, or as the fallback when the list screen's rows are out of the D-pad's reach) and the
 adb command. The menu path is repeated under the poster switch once "Continue" has made the wish pending, so
-the user finds it again after the system screen. Rejected: a separate `AlertDialog` (nested dialogs on TV, focus return harder), showing the
-disclosure only once (the grant may be asked for again after a revoke, and the disclosure belongs right
-before each request).
+the user finds it again after the system screen. Rejected: a separate `AlertDialog` (nested dialogs on TV,
+focus return harder), showing the disclosure only once (the grant may be asked for again after a revoke, and
+the disclosure belongs right before each request).
 
 ## 2026-11-08 — Uploads: poster in-process, manual uploads in a foreground service
 Automatic uploads (now-playing poster, revert to the default picture) run in the app process without a

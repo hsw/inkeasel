@@ -25,7 +25,7 @@ import java.io.File
  * ([FrameStore], [FrameFormats]). Manual uploads come from [UploadService], which holds the process in the
  * foreground for them; automatic ones come straight from the controller ([submitAuto], wired in
  * `FrameControllers`), held by the service only while the notification listener is not bound, or once it
- * unbinds with them still queued or in flight ([holdUnheld]).
+ * unbinds with them still queued or in flight ([holdAll]).
  *
  * The controller is resolved on each callback, never while the engine is built, so building the engine from
  * inside `FrameControllers.get` cannot recurse into a second controller. Lock order is controller → engine:
@@ -46,7 +46,7 @@ class UploadEngine private constructor(private val app: Context) {
         onUploadResult = { key, ok -> controller.onUploadResult(key, ok) },
         onManualUpload = { controller.onManualUpload(it) },
         toast = { msg -> main.post { Toast.makeText(app, msg.resolve(app), Toast.LENGTH_SHORT).show() } },
-        log = { msg, e -> if (e != null) Log.w(TAG, msg, e) else Log.i(TAG, msg) },
+        log = logTo(TAG),
     )
 
     private val core = UploadEngineCore<UploadRequest>(
@@ -58,7 +58,7 @@ class UploadEngine private constructor(private val app: Context) {
         onDone = reports::done,
         onDropped = reports::dropped,
         onIdle = { main.post { onIdle?.invoke() } },
-        log = { msg, e -> Log.w(TAG, msg, e) },
+        log = logTo(TAG),
     )
 
     /**
@@ -80,7 +80,7 @@ class UploadEngine private constructor(private val app: Context) {
      * Make the unheld work queued or in flight held ([UploadEngineCore.holdAll]): the notification listener,
      * which kept the process alive for it, has gone. True if the caller should start the hold service.
      */
-    fun holdUnheld(): Boolean = core.holdAll()
+    fun holdAll(): Boolean = core.holdAll()
 
     /** Held requests not yet reported; the foreground service stays while there are any. */
     val heldCount: Int get() = core.heldCount
@@ -115,3 +115,11 @@ class UploadEngine private constructor(private val app: Context) {
             instance ?: synchronized(this) { instance ?: UploadEngine(context.applicationContext).also { instance = it } }
     }
 }
+
+/**
+ * The Android side of the pure classes' `log(message, throwable)` callbacks ([UploadReports],
+ * [UploadEngineCore], `AutoUploader`), one rule for all: a message with a throwable is a fault and logged as a
+ * warning, one without is information.
+ */
+internal fun logTo(tag: String): (String, Throwable?) -> Unit =
+    { msg, e -> if (e != null) Log.w(tag, msg, e) else Log.i(tag, msg) }

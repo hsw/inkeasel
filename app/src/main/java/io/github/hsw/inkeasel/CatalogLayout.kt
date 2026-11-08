@@ -20,11 +20,15 @@ data class CatalogLayout(
         private const val WIDE = 840
 
         fun forWidth(widthDp: Int): CatalogLayout = when {
-            widthDp < MEDIUM -> CatalogLayout(columns = 2, sidePadding = 16, verticalPadding = 24, gap = 12, splitHeader = true)
+            widthDp < MEDIUM -> CatalogLayout(
+                columns = 2, sidePadding = 16, verticalPadding = 24, gap = 12, splitHeader = true,
+            )
             widthDp < WIDE -> CatalogLayout(
                 columns = 3, sidePadding = 32, verticalPadding = 24, gap = 16, splitHeader = widthDp < SPLIT_BELOW,
             )
-            else -> CatalogLayout(columns = 4, sidePadding = 48, verticalPadding = 27, gap = 20, splitHeader = false)
+            else -> CatalogLayout(
+                columns = 4, sidePadding = 48, verticalPadding = 27, gap = 20, splitHeader = false,
+            )
         }
     }
 }

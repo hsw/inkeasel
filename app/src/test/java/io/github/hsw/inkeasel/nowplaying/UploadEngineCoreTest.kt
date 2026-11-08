@@ -3,10 +3,10 @@ package io.github.hsw.inkeasel.nowplaying
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
@@ -440,8 +440,7 @@ class UploadEngineCoreTest {
                 reported.computeIfAbsent(name) { AtomicInteger() }.incrementAndGet()
                 if (name in held) lastHeldReport.set(clock.incrementAndGet())
             }
-            lateinit var core: UploadEngineCore<R>
-            core = UploadEngineCore(
+            val core = UploadEngineCore<R>(
                 scope = scope,
                 isAuto = { it.auto },
                 awaitIdle = { if (Random.nextInt(4) == 0) delay(1) },

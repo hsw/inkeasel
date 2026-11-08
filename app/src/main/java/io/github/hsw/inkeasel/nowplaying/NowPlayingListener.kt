@@ -69,19 +69,21 @@ class NowPlayingListener : NotificationListenerService() {
     }
 
     override fun onListenerDisconnected() {
-        connected = false // first: an upload requested from now on is held by UploadService
-        FrameControllers.listenerLost() // and one already queued or in flight is held from now on
+        lose()
         release()
     }
 
     override fun onDestroy() {
-        if (connected) { // destroyed without a disconnect first
-            connected = false
-            FrameControllers.listenerLost()
-        }
+        if (connected) lose() // destroyed without a disconnect first
         release()
         scope.cancel()
         super.onDestroy()
+    }
+
+    /** The binding is gone: no longer keeping the process alive for automatic uploads. */
+    private fun lose() {
+        connected = false // first: an upload requested from now on is held by UploadService
+        FrameControllers.listenerLost() // and one already queued or in flight is held from now on
     }
 
     /**

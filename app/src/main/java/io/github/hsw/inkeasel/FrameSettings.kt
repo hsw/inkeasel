@@ -107,7 +107,18 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, ble, poster, access, pending, onPoster, onDisclosureConfirmed, sidePadding, onSelect, onCancel)
+                FrameSettings(
+                    selected = selected,
+                    ble = ble,
+                    poster = poster,
+                    access = access,
+                    pending = pending,
+                    onPoster = onPoster,
+                    onDisclosureConfirmed = onDisclosureConfirmed,
+                    sidePadding = sidePadding,
+                    onSelect = onSelect,
+                    onCancel = onCancel,
+                )
             }
         }
     }
@@ -442,7 +453,7 @@ private fun Disclosure(ui: ListenerAccessUi, onContinue: () -> Unit, onCancel: (
             Spacer(Modifier.height(8.dp))
             Text(ListenerAccessUi.menuText(it).text(), style = MaterialTheme.typography.bodyMedium)
         }
-        val adb = ui.grant == null
+        val adb = ui.adbHint
         if (adb) {
             Spacer(Modifier.height(8.dp))
             Text(

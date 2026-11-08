@@ -20,8 +20,8 @@ or deviation made in a change gets its entry in the same commit.
   Emulator Bluetooth is virtual: uploads to a real frame need a real device.
 - The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
 - `lintDebug` has no errors; a new one is a regression. `bluetooth_le` stays `required="true"` (BLE is the
-  only transport) with `UnsupportedTvHardware` suppressed in the manifest. `StringResourcesTest` checks that both string tables have the
-  same keys and placeholders.
+  only transport) with `UnsupportedTvHardware` suppressed in the manifest. `StringResourcesTest` checks that
+  both string tables have the same keys and placeholders.
 - CI (`.github/workflows/`): `ci.yml` runs the build above (a lint error fails it) plus `assembleRelease`;
   `release.yml` builds a signed APK for a `v*` tag with a read-only token and publishes it from a separate job
   that runs no build.
@@ -94,8 +94,8 @@ or deviation made in a change gets its entry in the same commit.
   (`PosterSwitch.press` → `DISCLOSE`, then "Continue"); a new way into the grant, including a hint text such
   as the TV menu path or the adb command, goes through it too (`ListenerAccessUi.rowMenuHint`). `PRIVACY.md`
   must say exactly what the code does (what is read, when, and what is stored); a change to either updates
-  the other. The privacy
-  policy is `PRIVACY.md`, shown as `settings_privacy_url`; a TV never launches a browser.
+  the other. The privacy policy is `PRIVACY.md`, shown as `settings_privacy_url`; a TV never launches a
+  browser.
 - Share → InkEasel (`ShareActivity`, rules in `ShareRules`): only `content://` URIs of other apps; the copy is
   capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
   with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on

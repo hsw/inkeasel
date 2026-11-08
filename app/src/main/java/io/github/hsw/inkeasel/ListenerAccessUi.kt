@@ -16,13 +16,13 @@ package io.github.hsw.inkeasel
  *   only once the disclosure has been confirmed ([rowMenuHint]).
  * - [adbHint]: the adb command, only when no screen leads to the switch at all (e.g. Android TV 8, which has
  *   no notification-access screen); shown in the disclosure only, as a secondary line.
- *
- * Every way to the grant (the screen, the menu path, the adb command) thus appears only in or after the
- * prominent disclosure.
  * - [restrictedHint]: on a phone or tablet ([tv] false) with Android 13+ and a direct screen, for a
  *   [sideloaded] app (not installed by a store): it must first be allowed "restricted settings" in its App
  *   info (⋮ menu), or the switch there stays greyed out. Not on Android TV (its App info has no such menu;
  *   Google TV 14 granted an adb-installed app in one press) nor with [adbHint] (adb grants are not affected).
+ *
+ * Every way to the grant (the screen, the menu path, the adb command) thus appears only in or after the
+ * prominent disclosure.
  */
 data class ListenerAccessUi(
     val status: Txt,
