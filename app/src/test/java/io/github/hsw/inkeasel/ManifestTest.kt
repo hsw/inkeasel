@@ -10,7 +10,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 /**
  * `UploadService` is closed to other apps: the main manifest (and so the release build) declares it
  * `exported="false"`, and only the debug overlay exports it, for the adb trigger. The app's data stays out of
- * backups and device transfers, as PRIVACY.md says. Unit tests run in the module directory.
+ * backups and device transfers, and no traffic goes over cleartext, as PRIVACY.md says. Unit tests run in the
+ * module directory.
  */
 class ManifestTest {
     private val androidNs = "http://schemas.android.com/apk/res/android"
@@ -85,6 +86,19 @@ class ManifestTest {
             val all = (0 until excludes.length).map { excludes.item(it) as Element }
                 .filter { it.getAttribute("path") == "." }.map { it.getAttribute("domain") }.toSet()
             assertEquals(section, domains, all)
+        }
+    }
+
+    @Test
+    fun noCleartextTraffic_onAnyVersion() {
+        // targetSdk 28+ refuses cleartext by default only from Android 9; minSdk 26 needs the attribute.
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        for (set in listOf("main", "debug")) {
+            val app = factory.newDocumentBuilder().parse(File("src/$set/AndroidManifest.xml"))
+                .getElementsByTagName("application").item(0) as Element
+            val value = app.getAttributeNS(androidNs, "usesCleartextTraffic")
+            assertEquals(set, if (set == "main") "false" else "", value)
+            assertEquals(set, "", app.getAttributeNS(androidNs, "networkSecurityConfig"))
         }
     }
 }

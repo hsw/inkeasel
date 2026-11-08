@@ -48,10 +48,13 @@
     </queries>
 
     <!-- No backup and no device-to-device transfer of the app's data (PRIVACY.md): allowBackup for Android 11
-         and older, the data extraction rules for 12+ (no fullBackupContent needed with backup off) -->
+         and older, the data extraction rules for 12+ (no fullBackupContent needed with backup off).
+         No cleartext traffic on any version (PRIVACY.md: https only): targetSdk 28+ makes that the default only
+         from Android 9, so Android 8.x needs it said; it also makes OkHttp refuse a redirect to http://. -->
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

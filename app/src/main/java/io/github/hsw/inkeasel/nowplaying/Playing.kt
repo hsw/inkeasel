@@ -57,7 +57,7 @@ data class Playing(
          * [MetaKeys.BITMAPS] order and cached (null if the metadata has none). Art priority: `ART_URI` →
          * `ALBUM_ART_URI` → `DISPLAY_ICON_URI` → bitmap. Only https URIs are used: another app's
          * `content://` (or `file://`, `android.resource://`) URI is not readable here, and a plain
-         * `http://` one cannot be fetched (the app targets SDK 28+ and does not permit cleartext traffic),
+         * `http://` one cannot be fetched (the manifest refuses cleartext traffic on every version),
          * so they fall through to the bitmap, which the framework has already downsized to about 640 px.
          *
          * Returns `null` for a transient [state] and for PLAYING without usable art.

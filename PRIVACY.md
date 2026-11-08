@@ -31,8 +31,9 @@ sent to the developer.**
 - **Downloads from public addresses:** the built-in catalogs load their lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/). A poster whose artwork the playing app gives as a web
-  link is downloaded from that link (https only). These are ordinary downloads: the server that answers sees
-  your device's IP address and the request, as with any web page, under its own privacy policy. The app sends
+  link is downloaded from that link. All of these go over https: the app refuses unencrypted connections,
+  also when a server redirects to one. These are ordinary downloads: the server that answers sees your
+  device's IP address and the request, as with any web page, under its own privacy policy. The app sends
   nothing of its own with them.
 
 Nothing else is sent: no titles, no pictures, no device or usage data, to the developer or to anyone else.
@@ -44,8 +45,10 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
   picture, whether you denied the Bluetooth permission, and a shared picture that waits for it;
 - which picture is on the frame: for a now-playing poster, its artwork address or a fingerprint of its
   artwork;
-- the artwork of recent now-playing sessions (in the app's cache, also while the poster is switched off): the
-  20 most recent pictures, plus any that a current session or a poster still waiting for the frame needs;
+- the artwork of recent now-playing sessions (in the app's cache, also while the poster is switched off):
+  each time it stores a new picture there, the app deletes the oldest ones down to the 20 most recent, but
+  never one that a current session or a poster still waiting for the frame needs, so until the next new
+  picture there can be more;
 - the last good catalog lists and cached catalog images;
 - the pictures you shared, and pictures you copied into "My pictures" yourself.
 

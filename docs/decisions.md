@@ -3,6 +3,16 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — No cleartext traffic on any Android version
+The main manifest sets `android:usesCleartextTraffic="false"`. targetSdk 28+ makes that the default only from
+Android 9; on Android 8.x (minSdk 26) cleartext was still allowed, and OkHttp follows a redirect from https to
+http. With the attribute, the platform's policy (which OkHttp honours; Coil uses the same client) refuses every
+`http://` connection, a redirect included, so `PRIVACY.md`'s "over https" holds on every supported version.
+No catalog or artwork address is `http://` (the catalogs publish https, poster art uses only https URIs).
+`ManifestTest` guards the attribute and that no overlay or network security config relaxes it.
+Rejected: a network security config (one attribute says the same), an OkHttp interceptor that rejects
+downgrade redirects (covers OkHttp only, not every client the platform policy covers).
+
 ## 2026-11-08 — "My pictures" stays in the app's external files folder
 Shared and copied pictures live in `getExternalFilesDir()/pictures`: Android deletes it with the app, it needs
 no storage permission, and `adb push` can put pictures there (the empty tab shows that path). The cost
@@ -19,9 +29,9 @@ switching the poster on acts on what plays at once (`onPosterSwitched` arms the 
 already playing, whose PLAYING is not reported again), and switching it off reverts a poster even after a
 process restart. `PRIVACY.md` and the README say exactly this (reading while the access is granted, the
 artwork cache, the `onFrame` key that may be an artwork URL, the BLE rescan during an upload, the hold
-service), and that revoking the access is what stops the reading. Titles and artwork keys stay in the
-logcat lines (other apps cannot read the log; the policy says so) because they are what a poster problem is
-diagnosed with.
+service), and that revoking the access is what stops the reading; the disclosure panel before the grant says
+it too. Titles and artwork keys stay in the logcat lines (other apps cannot read the log; the policy and the
+disclosure say so) because they are what a poster problem is diagnosed with.
 Rejected: gating the listener on the switch (the poster would come up only on the next transition into
 PLAYING after switching it on, and a lost revert would wait for one), dropping titles from release logs
 (diagnosis on a TV is done with the release build too).
@@ -104,7 +114,10 @@ in-app panel that says what the system grant covers (all notifications) and what
 playing app's media-session title and artwork; notifications are ignored), and that only the poster leaves
 the device, to the user's frame over Bluetooth. "Continue" is the affirmative action Play's User Data policy
 requires; "Cancel" and Back change nothing. The text also says that artwork given as a web link is downloaded
-from there, since that is a network request the user should not be surprised by.
+from there, since that is a network request the user should not be surprised by, and that the reading goes on
+as long as the access is granted, also with the poster switched off, with recent artwork kept in the cache and
+titles in the device's system log; with the poster off nothing of what plays leaves the device. Play asks the
+disclosure to cover access the user would not expect, and reading with the poster off is that.
 "Continue" from either entry point remembers the poster wish as pending (the access serves only the poster),
 so "Grant access" now switches the poster on after the grant as the switch does; a press of the switch alone
 no longer stores anything. The panel is inline in the settings, under the poster row, rather than a second

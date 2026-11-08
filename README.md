@@ -100,8 +100,8 @@ tablet).
   [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
   (debug builds only), and the poster artwork, downloaded over https from the address the playing app publishes.
 - Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and images, your
-  pictures, the artwork of recent now-playing sessions (in the app's cache: the 20 most recent, plus any a
-  tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
+  pictures, the artwork of recent now-playing sessions (in the app's cache, pruned to the 20 most recent each
+  time a new one is stored, sparing any a tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
   artwork address or a hash of its artwork) stay in the app's storage on the device. "My pictures" is the
   app's folder on the shared storage (`getExternalFilesDir`), which other apps with the storage permission can
   read on Android 9 and older (and on Android 10 if they opt out of scoped storage); the rest is private.
@@ -268,16 +268,18 @@ Below the frame list, **Settings → Permissions and features** collects what th
   shows the poster as it works: on only while the poster is wanted (on by default, prefs `features`, key
   `poster`) **and** the access is granted (`PosterSwitch`). Pressing it while it is on switches the poster
   off; while it is off with the access, on. Without the access the switch stays off, and the press (like
-  "Grant access") opens a disclosure panel under it first: the system grant covers all notifications, the app
+  "Grant access") opens a disclosure panel under it first: the system grant covers all notifications; the app
   ignores them and reads only the playing app's media-session title and artwork (artwork given as a web link
-  is downloaded from there), and only the poster leaves the device, to the frame over Bluetooth. "Cancel" and
-  Back close it and change nothing (the focus goes back to the switch or the button); "Continue" remembers the
-  wish (key `posterPending`) and starts the grant flow, and when the app comes back with the access granted
-  the poster is switched on. Where no screen leads to the access, the panel shows the adb command instead of
-  "Continue". Every way to the grant (the system screen, the TV menu path, the adb command) appears only in
-  the panel, or after its "Continue": the menu path is repeated under the switch while the wish is pending. If the access is revoked from outside, the
-  switch shows off but the stored wish stays, so granting the access again brings the poster back. With the
-  access missing (`ListenerAccessUi`):
+  is downloaded from there); it reads them whenever the access is granted, also with the poster off, and keeps
+  recent artwork in its cache and titles in the system log; only the poster leaves the device, to the frame
+  over Bluetooth (with the poster off, nothing of what plays does). "Cancel" and Back close it and change
+  nothing (the focus goes back to the switch or the button); "Continue" remembers the wish (key
+  `posterPending`) and starts the grant flow, and when the app comes back with the access granted the poster
+  is switched on. Where no screen leads to the access, the panel shows the adb command instead of "Continue".
+  Every way to the grant (the system screen, the TV menu path, the adb command) appears only in the panel, or
+  after its "Continue": the menu path is repeated under the switch while the wish is pending. If the access is
+  revoked from outside, the switch shows off but the stored wish stays, so granting the access again brings
+  the poster back. With the access missing (`ListenerAccessUi`):
   - phones and tablets: "Continue" opens the system screen: the app's own page
     (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not from a store)
     may find the switch there greyed out ("Restricted setting"): the section says so and offers App info,
@@ -383,7 +385,8 @@ How it works:
   while it waits, a newer request of the same kind replaces it and a manual one goes first.
 - Sessions without art are ignored. Spotify publishes an https cover and works; SmartTube publishes its
   artwork once yuliskov/SmartTube#6423 is merged. A plain `http://` art URI is not used (the
-  app does not permit cleartext traffic); the artwork bitmap is used instead, if the session has one.
+  app refuses cleartext traffic on every Android version, `usesCleartextTraffic="false"`); the artwork bitmap
+  is used instead, if the session has one.
 
 Manual upload from adb, **debug builds only** (release builds do not export `UploadService`, so no other
 app can start an upload through the service directly; a share to `ShareActivity`, which stays exported as the
@@ -457,8 +460,9 @@ Code:
   - `SessionView.kt`: one session's effective event (effective state + current art), reported to the
     controller only when it changes, from every path (snapshot, metadata, playback state, reconnect)
   - `ArtCache.kt`: artwork bitmaps keyed by the SHA-1 of their pixels, stored as `cacheDir/nowplaying/<sha1>.png`
-    (the 20 most recent are kept; pruning never deletes the artwork of a tracked session or a key the
-    controller may still upload: what plays, a pending start, an upload without a result yet)
+    (storing a new one prunes to the 20 most recent, a target rather than a bound: pruning never deletes the
+    artwork of a tracked session or a key the controller may still upload: what plays, a pending start, an
+    upload without a result yet)
   - `FrameController.kt`: the state machine (debounce, dedup by key, revert, poster switch);
     `FrameControllers.kt` wires the process-wide instance
   - `FeatureStore.kt`: the poster switch and its pending wish (prefs `features`)

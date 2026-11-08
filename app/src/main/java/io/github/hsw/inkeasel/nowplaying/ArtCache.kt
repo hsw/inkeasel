@@ -8,10 +8,12 @@ import java.security.MessageDigest
  * Disk cache for MediaSession artwork bitmaps, in [dir] (`cacheDir/nowplaying` in production).
  *
  * The key of a bitmap is the SHA-1 of its raw pixels ([keyOf]); its file is `<sha1>.png` ([fileFor]),
- * written only when it is missing ([store]). At most [maxFiles] files are kept: storing a new one deletes
- * the least recently stored or reused ones, except the keys the caller still needs (a poster waiting for its
- * start or upload), which stay even if that leaves more than [maxFiles]. Free of Android types: the caller copies the pixels out of the
- * `Bitmap` and passes the PNG encoder as a lambda, so all of this runs as a plain JVM unit test.
+ * written only when it is missing ([store]). [maxFiles] is a pruning target, not a bound: storing a new file
+ * deletes the least recently stored or reused ones down to [maxFiles], except the keys the caller still needs
+ * (a poster waiting for its start or upload), which stay even if that leaves more. Nothing is pruned on a
+ * reuse or when a key stops being needed, so the excess stays until the next new file. Free of Android types:
+ * the caller copies the pixels out of the `Bitmap` and passes the PNG encoder as a lambda, so all of this runs
+ * as a plain JVM unit test.
  */
 class ArtCache(private val dir: File, private val maxFiles: Int = MAX_FILES) {
 
