@@ -35,7 +35,7 @@ class AutoUploader(
 
     override fun upload(art: Art, title: String, key: String) {
         if (!permitted()) {
-            log("no Bluetooth permission: auto upload not started: $key", null)
+            log("no Bluetooth permission: auto upload not started: ${MediaLog.key(key)}", null)
             refuse(key)
             return
         }
@@ -44,7 +44,10 @@ class AutoUploader(
             submit(art, title, key, hold)
             hold
         }
-        if (hold) startHoldSafe("listener not bound and the hold service not started; the upload runs without it: $key")
+        if (hold) {
+            val k = MediaLog.key(key)
+            startHoldSafe("listener not bound and the hold service not started; the upload runs without it: $k")
+        }
     }
 
     /**

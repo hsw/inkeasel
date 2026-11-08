@@ -19,6 +19,9 @@ import org.junit.Test
 import io.github.hsw.inkeasel.R
 import io.github.hsw.inkeasel.Txt
 import io.github.hsw.inkeasel.nowplaying.Playing.State
+import java.io.IOException
+import java.io.PrintWriter
+import java.io.StringWriter
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
@@ -62,7 +65,8 @@ class FrameControllerTest {
      * lets it take the next request. [bound] is the listener's binding: while it is off, a request is held and
      * [holds] counts the hold-service starts ([holdRefused]: the start throws, as a refused background start
      * does); [loseListener] unbinds it. [reports] counts each key's reports to the controller, [toasts] the
-     * toasts of manual uploads.
+     * toasts of manual uploads. [logs] has every log line of the controller, the uploader and the reports (with
+     * its error as the log prints it); a failed upload throws [failure].
      */
     private inner class Rig(scope: TestScope, onFrame: String? = null, default: Art? = Art.File(photo)) {
         val ts = scope
@@ -75,6 +79,7 @@ class FrameControllerTest {
         var bound = true // NowPlayingListener.connected
         var holds = 0
         var holdRefused = false
+        var failure: (UploadRequest) -> Exception = { IllegalStateException("upload failed") }
         val reports = mutableMapOf<String, Int>()
         val toasts = mutableListOf<Txt>()
         var inFlight: UploadRequest? = null
@@ -94,6 +99,7 @@ class FrameControllerTest {
             },
             refuse = { key -> c.onUploadResult(key, false) },
             holdAll = { engine.holdAll() },
+            log = ::log,
         )
         val c: FrameController = FrameController(scope.backgroundScope, { art, title, key ->
             uploads += Upload(scope.testScheduler.currentTime, art, title, key)
@@ -110,6 +116,7 @@ class FrameControllerTest {
             },
             onManualUpload = { c.onManualUpload(it) },
             toast = { toasts += it },
+            log = ::log,
         )
         val engine = UploadEngineCore<UploadRequest>(
             scope = scope.backgroundScope,
@@ -126,7 +133,7 @@ class FrameControllerTest {
                 inFlight = req
                 val ok = CompletableDeferred<Boolean>().also { finished = it }.await()
                 inFlight = null
-                if (!ok) error("upload failed")
+                if (!ok) throw failure(req)
             },
             isStale = { c.isStale(it.auto, it.stamp, it.key) },
             onDone = engineReports::done,
@@ -136,6 +143,10 @@ class FrameControllerTest {
             },
             onIdle = {},
         )
+
+        private fun log(msg: String, e: Throwable?) {
+            logs += msg + (e?.let { "\n" + StringWriter().also { w -> it.printStackTrace(PrintWriter(w)) } } ?: "")
+        }
 
         /** A request's controller key; a manual one is named by its source. */
         private fun id(req: UploadRequest): String = req.key ?: req.source.manualKey()
@@ -416,6 +427,48 @@ class FrameControllerTest {
         r.complete()
         assertEquals(k1, r.c.onFrame)
         assertEquals(0, r.engine.heldCount)
+    }
+
+    // --- what plays in the log: only with MediaLog.details (debug builds) ---
+
+    @Test
+    fun detailsOff_noTitleOrPosterKeyInAnyLogLine_defaultAndPackageStay() = runTest {
+        MediaLog.details = false
+        try {
+            val r = Rig(this, onFrame = k2)
+            r.viaEngine = true
+            r.failure = { req -> IOException("download failed", IOException("HTTP 404: ${req.source.value}")) }
+            r.c.onEvent(Playing(video, k1, "Secret Film", Art.Url(k1), State.PLAYING, s1))
+            r.advance(60)
+            assertEquals(k1, r.startNext())
+            r.complete(ok = false)
+            r.c.onEvent(Playing(video, k1, "Secret Film", Art.Url(k1), State.STOPPED, s1))
+            r.advance(60)
+            assertEquals(defaultKey, r.startNext())
+            r.complete()
+            val all = r.logs.joinToString("\n")
+            for (secret in listOf("Secret Film", k1, k2, "film1", "film2")) assertFalse(secret, all.contains(secret))
+            assertTrue(all, all.contains("upload poster: <key>"))
+            assertTrue(all, all.contains("HTTP 404: <key>")) // the error's cause, redacted but still there
+            assertTrue(all, all.contains("on frame: $defaultKey")) // the user's own pick stays
+            assertTrue(all, all.contains(video))
+        } finally {
+            MediaLog.details = true
+        }
+    }
+
+    @Test
+    fun detailsOn_logNamesTitleAndKey() = runTest {
+        MediaLog.details = true
+        val r = Rig(this)
+        r.viaEngine = true
+        r.play(title = "Secret Film")
+        r.advance(60)
+        assertEquals(k1, r.startNext())
+        r.complete()
+        val all = r.logs.joinToString("\n")
+        assertTrue(all, all.contains("on frame: $k1"))
+        assertTrue(all, all.contains("Secret Film (key=$k1)"))
     }
 
     // --- an automatic request replaced in the engine's queue (reported at once, under the controller's lock) ---

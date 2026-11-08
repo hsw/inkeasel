@@ -72,7 +72,7 @@
     <!-- the prominent disclosure shown before every way into the notification-access grant -->
     <string name="access_disclosure_title">Before you grant notification access</string>
     <!-- %1$s the app name -->
-    <string name="access_disclosure_text">Android grants this access to all of your notifications. %1$s ignores the notifications: it reads only what the playing app reports about what plays, its title and artwork (artwork given as a web link is downloaded from there). It does so as long as the access is granted, also with the poster switched off, and keeps recent artwork in its cache and titles in the device\'s own system log. Only the poster leaves the device, over Bluetooth to your frame; with the poster off, nothing of what plays does.</string>
+    <string name="access_disclosure_text">Android grants this access to all of your notifications. %1$s ignores the notifications: it reads only what the playing app reports about what plays, its title and artwork (artwork given as a web link is downloaded from there). It does so as long as the access is granted, also with the poster switched off, and keeps recent artwork in its cache. Only the poster leaves the device, over Bluetooth to your frame; with the poster off, nothing of what plays does.</string>
     <string name="access_disclosure_continue">Continue</string>
     <string name="access_disclosure_cancel">Cancel</string>
     <string name="settings_privacy">Privacy policy</string>

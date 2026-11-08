@@ -90,6 +90,8 @@ or deviation made in a change gets its entry in the same commit.
   controller → engine: the engine resolves the controller lazily and never calls it (or `onIdle`) under its
   own lock. `UploadService` takes only manual extras and is not exported; only the debug manifest overlay
   (`app/src/debug/AndroidManifest.xml`) exports it for the adb trigger, and `ManifestTest` guards that.
+- What plays reaches the log only through `MediaLog` (`title`, `key`, `error`): a new log line with a
+  now-playing title, a poster or `onFrame` key, or an artwork address uses it, so a release build logs none.
 - Notification access is asked for only through the disclosure panel in "Permissions and features"
   (`PosterSwitch.press` → `DISCLOSE`, then "Continue"); a new way into the grant, including a hint text such
   as the TV menu path or the adb command, goes through it too (`ListenerAccessUi.rowMenuHint`). `PRIVACY.md`

@@ -23,7 +23,7 @@ fun interface Uploader {
  * Decides what the frame shows while something plays: the poster of the playing film after [START_DELAY]
  * of continuous playback, and the default picture (the last manual upload) [REVERT_DELAY] after playback
  * ends. Free of Android types: the scope, the uploader, the default source, the persisted frame key and
- * the logger are injected.
+ * the logger are injected; a key reaches the log only through [MediaLog].
  *
  * Rules (also in README.md, "Now playing"):
  * - PLAYING K (any pkg, which becomes [current]): cancel the revert; nothing if K is already on the frame,
@@ -179,10 +179,10 @@ class FrameController(
         val retry = retryPoster == key
         if (retry) retryPoster = null
         if (ok) {
-            log("on frame: $key")
+            log("on frame: ${MediaLog.key(key)}")
             setOnFrame(key)
         } else {
-            log("upload failed: $key (on frame stays $onFrame)")
+            log("upload failed: ${MediaLog.key(key)} (on frame stays ${MediaLog.key(onFrame)})")
         }
         if (key.startsWith(DEFAULT_PREFIX)) revertFailures = if (ok) 0 else revertFailures + 1
         reconcile(key, ok, retry)
@@ -234,7 +234,7 @@ class FrameController(
         current = p
         if (!posterEnabled()) { // tracked only; a pending revert (of a poster from before the switch) stays
             cancelStart()
-            log("poster off: not scheduled: $key (${p.pkg})")
+            log("poster off: not scheduled: ${MediaLog.key(key)} (${p.pkg})")
             return
         }
         cancelRevert()
@@ -249,10 +249,10 @@ class FrameController(
     /** Upload [key] after [startDelay] if it still plays then. */
     private fun armStart(key: String, pkg: String) { // callers check posterEnabled first
         if (!frameSelected()) {
-            log("no frame selected: poster not scheduled: $key ($pkg)")
+            log("no frame selected: poster not scheduled: ${MediaLog.key(key)} ($pkg)")
             return
         }
-        log("start in $startDelay: $key ($pkg)")
+        log("start in $startDelay: ${MediaLog.key(key)} ($pkg)")
         startKey = key
         startJob = scope.launch {
             delay(startDelay)
@@ -329,14 +329,14 @@ class FrameController(
     private fun scheduleRevert() {
         if (!isAuto(onFrame) || revertJob != null) return
         if (!frameSelected()) {
-            log("no frame selected: revert from $onFrame not scheduled")
+            log("no frame selected: revert from ${MediaLog.key(onFrame)} not scheduled")
             return
         }
         if (revertFailures >= MAX_REVERT_ATTEMPTS) {
-            log("revert failed $revertFailures times; $onFrame stays until playback ends again")
+            log("revert failed $revertFailures times; ${MediaLog.key(onFrame)} stays until playback ends again")
             return
         }
-        log("revert in $revertDelay from $onFrame")
+        log("revert in $revertDelay from ${MediaLog.key(onFrame)}")
         revertJob = scope.launch {
             delay(revertDelay)
             synchronized(lock) {
@@ -359,7 +359,7 @@ class FrameController(
     private fun requestDefault(what: String) {
         val art = defaults.load()
         if (art == null) {
-            log("no default picture; $onFrame stays")
+            log("no default picture; ${MediaLog.key(onFrame)} stays")
             return
         }
         request(art, "", defaultKey(art), what) // no title: the default picture is named by its file
@@ -372,14 +372,14 @@ class FrameController(
      */
     private fun request(art: Art, title: String, key: String, what: String) {
         if (!frameSelected()) { // chosen frame gone between scheduling and now: the uploader would refuse it
-            log("no frame selected: upload $what not requested: $key")
+            log("no frame selected: upload $what not requested: ${MediaLog.key(key)}")
             return
         }
         if (!pending.add(key)) {
-            log("upload $what: $key still pending, not requested again")
+            log("upload $what: ${MediaLog.key(key)} still pending, not requested again")
             return
         }
-        log("upload $what: $key")
+        log("upload $what: ${MediaLog.key(key)}")
         // may report at once, re-entering onUploadResult (and reconcile) under this lock: the request itself
         // refused without the Bluetooth permission, or an earlier automatic request it replaced in the
         // engine's queue. Nothing may follow this call that relies on the state from before it.

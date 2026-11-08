@@ -170,7 +170,7 @@ class NowPlayingListener : NotificationListenerService() {
         /** Send [p], a change of this session's effective event ([SessionView.update]), to the controller. */
         private fun report(p: Playing?) {
             if (p == null) return
-            Log.i(TAG, "$id ${p.state} key=${p.key} title=${p.title}")
+            Log.i(TAG, "$id ${p.state} key=${MediaLog.key(p.key)} title=${MediaLog.title(p.title)}")
             // an end of this session is not an end of the app while another of its sessions plays
             val siblings = if (p.state == Playing.State.PLAYING) emptyList()
             else live.filter { it !== this && it.pkg == pkg }.mapNotNull { it.event() }

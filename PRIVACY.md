@@ -15,8 +15,8 @@ sent to the developer.**
   in the system settings. The app uses what it reads only to pick the poster and to time when it goes to the
   frame and when the frame returns to your picture. It ignores the notifications themselves, although Android
   grants this access to all of them. The artwork of recent sessions is kept in the app's cache (see "What is
-  stored on the device"). Titles and artwork addresses are written to the device's own system log (logcat)
-  for troubleshooting, which other apps cannot read; the app sends them nowhere.
+  stored on the device"). The released app writes no title and no artwork address to the device's system
+  log (logcat); only a debug build, made for development, does.
 - **Pictures you share to InkEasel** from a gallery or a file manager: the app copies the picture into its own
   storage so it can send it to the frame and show it under "My pictures".
 - **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them, and during

@@ -69,6 +69,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true // BuildConfig.DEBUG: what plays reaches the log only in debug builds (MediaLog)
     }
     // lists the app under Settings → App languages (Android 13+) with the locales of res/ (default: res/resources.properties)
     androidResources {

@@ -93,8 +93,8 @@ tablet).
 
 - What plays is read from the media sessions **on the device** whenever notification access is granted (also
   with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
-  is not sent anywhere. Titles and artwork addresses go to the device's own system log (logcat) for
-  troubleshooting.
+  is not sent anywhere. A release build writes no title and no artwork address to the system log (logcat);
+  a debug build does, for development (`MediaLog`).
 - Network traffic is limited to the picture sources: the catalog lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
@@ -271,7 +271,7 @@ Below the frame list, **Settings → Permissions and features** collects what th
   "Grant access") opens a disclosure panel under it first: the system grant covers all notifications; the app
   ignores them and reads only the playing app's media-session title and artwork (artwork given as a web link
   is downloaded from there); it reads them whenever the access is granted, also with the poster off, and keeps
-  recent artwork in its cache and titles in the system log; only the poster leaves the device, to the frame
+  recent artwork in its cache; only the poster leaves the device, to the frame
   over Bluetooth (with the poster off, nothing of what plays does). "Cancel" and Back close it and change
   nothing (the focus goes back to the switch or the button); "Continue" remembers the wish (key
   `posterPending`) and starts the grant flow, and when the app comes back with the access granted the poster
@@ -397,7 +397,8 @@ manifests; extras, first usable wins: `path` = an existing file, `photo` = file 
 
     adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
 
-Logs (`NowPlayingListener` is also used by the system launcher, so filter by the app's pid):
+Logs (`NowPlayingListener` is also used by the system launcher, so filter by the app's pid; titles and poster
+keys appear only in a debug build, a release build logs `<title>` and `<key>` instead):
 
     adb logcat --pid=$(adb shell pidof io.github.hsw.inkeasel) \
       -s NowPlayingListener FrameController UploadService UploadEngine FrameClient
@@ -478,3 +479,5 @@ Code:
     upload is reported as failed at once
   - `UploadOutcome.kt`: what the upload engine does after an upload (toast, report to the controller,
     remember as the default)
+  - `MediaLog.kt`: what plays as the log names it: titles, poster keys and a poster upload's error as they
+    are in a debug build, `<title>` / `<key>` in a release build

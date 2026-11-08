@@ -3,6 +3,19 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — What plays is logged only in debug builds
+Now-playing titles, poster keys (an artwork URL or the SHA-1 of the artwork pixels, also as `onFrame`) and the
+artwork addresses in a poster upload's error reach logcat only through `MediaLog`, which passes them as they
+are in a debug build (`BuildConfig.DEBUG`, so `buildConfig` is on) and writes `<title>` / `<key>` in a release
+build. Package names, session ids and the user's own picks (`default:` and `manual:` keys, catalog titles,
+shared file names) are not what plays and stay. A redacted error keeps its class, its stack trace and the rest
+of its message (e.g. `HTTP 404: <key>`). Logcat is readable over adb and lands in bug reports, and the
+disclosure before notification access should not need a clause about the log, so it and `PRIVACY.md` drop it.
+The cost: diagnosing a poster problem by film needs a debug build; a release log still shows every step.
+Rejected: keeping the titles in release logs and disclosing them (the earlier choice; it widens what the user
+has to accept for diagnosis only), dropping the log lines entirely (they are what a poster problem is debugged
+with), a short hash of the key instead of a placeholder (it would still link log lines to one film).
+
 ## 2026-11-08 — No cleartext traffic on any Android version
 The main manifest sets `android:usesCleartextTraffic="false"`. targetSdk 28+ makes that the default only from
 Android 9; on Android 8.x (minSdk 26) cleartext was still allowed, and OkHttp follows a redirect from https to
@@ -30,11 +43,10 @@ already playing, whose PLAYING is not reported again), and switching it off reve
 process restart. `PRIVACY.md` and the README say exactly this (reading while the access is granted, the
 artwork cache, the `onFrame` key that may be an artwork URL, the BLE rescan during an upload, the hold
 service), and that revoking the access is what stops the reading; the disclosure panel before the grant says
-it too. Titles and artwork keys stay in the logcat lines (other apps cannot read the log; the policy and the
-disclosure say so) because they are what a poster problem is diagnosed with.
+it too. Titles and artwork keys reach the logcat lines only in debug builds (see "What plays is logged only
+in debug builds" above).
 Rejected: gating the listener on the switch (the poster would come up only on the next transition into
-PLAYING after switching it on, and a lost revert would wait for one), dropping titles from release logs
-(diagnosis on a TV is done with the release build too).
+PLAYING after switching it on, and a lost revert would wait for one).
 
 ## 2026-11-08 — No backup and no device transfer of app data
 `android:allowBackup="false"` stops backup only up to Android 11; from Android 12 a device-to-device transfer
@@ -115,8 +127,9 @@ playing app's media-session title and artwork; notifications are ignored), and t
 the device, to the user's frame over Bluetooth. "Continue" is the affirmative action Play's User Data policy
 requires; "Cancel" and Back change nothing. The text also says that artwork given as a web link is downloaded
 from there, since that is a network request the user should not be surprised by, and that the reading goes on
-as long as the access is granted, also with the poster switched off, with recent artwork kept in the cache and
-titles in the device's system log; with the poster off nothing of what plays leaves the device. Play asks the
+as long as the access is granted, also with the poster switched off, with recent artwork kept in the cache;
+with the poster off nothing of what plays leaves the device. It says nothing about the log: a release build
+logs no title or artwork address (debug builds do, for development). Play asks the
 disclosure to cover access the user would not expect, and reading with the poster off is that.
 "Continue" from either entry point remembers the poster wish as pending (the access serves only the poster),
 so "Grant access" now switches the poster on after the grant as the switch does; a press of the switch alone
