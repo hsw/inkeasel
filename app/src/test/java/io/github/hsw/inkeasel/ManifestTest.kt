@@ -9,8 +9,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * `UploadService` is closed to other apps: the main manifest (and so the release build) declares it
- * `exported="false"`, and only the debug overlay exports it, for the adb trigger. Unit tests run in the module
- * directory.
+ * `exported="false"`, and only the debug overlay exports it, for the adb trigger. The app's data stays out of
+ * backups and device transfers, as PRIVACY.md says. Unit tests run in the module directory.
  */
 class ManifestTest {
     private val androidNs = "http://schemas.android.com/apk/res/android"
@@ -63,5 +63,23 @@ class ManifestTest {
         val overlays = File("src").listFiles().orEmpty()
             .filter { File(it, "AndroidManifest.xml").isFile }.map { it.name }.toSet()
         assertEquals(setOf("main", "debug"), overlays)
+    }
+
+    @Test
+    fun noBackup_noDeviceTransfer() {
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val app = factory.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+            .getElementsByTagName("application").item(0) as Element
+        assertEquals("false", app.getAttributeNS(androidNs, "allowBackup")) // Android 11 and older
+        assertEquals("@xml/data_extraction_rules", app.getAttributeNS(androidNs, "dataExtractionRules")) // 12+
+        val rules = factory.newDocumentBuilder().parse(File("src/main/res/xml/data_extraction_rules.xml"))
+        for (section in listOf("cloud-backup", "device-transfer")) {
+            val e = rules.getElementsByTagName(section).item(0) as Element
+            assertEquals(section, 0, e.getElementsByTagName("include").length)
+            val excludes = e.getElementsByTagName("exclude")
+            val all = (0 until excludes.length).map { excludes.item(it) as Element }
+                .filter { it.getAttribute("path") == "." }.map { it.getAttribute("domain") }.toSet()
+            assertEquals(section, setOf("root", "device_root", "external"), all)
+        }
     }
 }

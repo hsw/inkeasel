@@ -47,13 +47,17 @@
         </intent>
     </queries>
 
+    <!-- No backup and no device-to-device transfer of the app's data (PRIVACY.md): allowBackup for Android 11
+         and older, the data extraction rules for 12+ (no fullBackupContent needed with backup off) -->
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.InkEasel">
+        android:theme="@style/Theme.InkEasel"
+        tools:ignore="DataExtractionRules">
         <!-- Any orientation. Rotation and resizing do not recreate the activity (no second permission prompt;
              the settings scan and the focus survive): the UI is all Compose and re-lays out for the width. -->
         <activity

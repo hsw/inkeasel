@@ -68,18 +68,22 @@ list and select it.
   - phones and tablets open the system screen for InkEasel; on Android 13+ an APK installed outside a store
     may first need App info → ⋮ → "Allow restricted settings", and the section says so;
   - Android TV 12 and newer open the list of apps with notification access: select InkEasel there. The
-    section also names the menu path below, in case the remote cannot reach the list (seen on Google TV 14);
-  - Android TV 9–11 (e.g. the Shield) have the switch only in the menu: the app opens Settings → Apps and
-    shows the path **Settings → Apps → Special app access → Notification access → InkEasel** (one press on
-    InkEasel there grants it);
-  - Android TV 8 has no screen for it at all, so the section shows the adb command (pictures work without it):
+    disclosure also names the menu path below, in case the remote cannot reach the list (seen on Google TV
+    14);
+  - Android TV 9–11 (e.g. the Shield) have the switch only in the menu: the app opens Settings → Apps; the
+    disclosure names the path **Settings → Apps → Special app access → Notification access → InkEasel** (one
+    press on InkEasel there grants it);
+  - Android TV 8 has no screen for it at all, so the disclosure shows the adb command (pictures work without
+    it):
 
         adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
 
-  The poster can be switched off in the same section without revoking the access.
+  The poster can be switched off in the same section without revoking the access; what plays is still
+  followed while the access is granted (see Privacy).
 - **Internet**: the catalogs and the posters (see Privacy).
 - **Foreground service** (connected device; no dialog): keeps a manual upload or a share running for the
-  seconds it takes when you leave the app. Now-playing posters run without it (see "Now playing → poster").
+  seconds it takes when you leave the app. Now-playing posters run without it, except while the notification
+  listener is not bound, or unbinds with a poster upload under way (see "Now playing → poster").
 
 ## Privacy
 
@@ -87,19 +91,30 @@ InkEasel has no account, no analytics, no ads and no server of its own. The full
 permission and why: [PRIVACY.md](PRIVACY.md); the settings show its address (a tap opens it on a phone or
 tablet).
 
-- What plays is read from the media sessions **on the device** and used only to pick and time the poster;
-  it is not sent anywhere. The titles go to the device's own system log (logcat) for troubleshooting.
+- What plays is read from the media sessions **on the device** whenever notification access is granted (also
+  with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
+  is not sent anywhere. Titles and artwork addresses go to the device's own system log (logcat) for
+  troubleshooting.
 - Network traffic is limited to the picture sources: the catalog lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
   (debug builds only), and the poster artwork, downloaded over https from the address the playing app publishes.
-- Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and your
-  pictures stay in the app's storage on the device (Android backup is off).
+- Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and images, your
+  pictures, the artwork of recent now-playing sessions (at most 20, in the app's cache) and the key of the
+  picture on the frame (for a poster, its artwork address or a hash of its artwork) stay in the app's storage
+  on the device. Backup and device-to-device transfer are off (`allowBackup="false"`, and data extraction
+  rules that exclude everything on Android 12+, `res/xml/data_extraction_rules.xml`).
+- A BLE scan runs while the settings search for frames, and during an upload when the chosen frame has to be
+  found again by its name (filtered to the frame's service, see "Uploading to the chosen frame").
 
 ## Builds and releases
 
 - **Target**: compile and target SDK 36 (Android 16), minimum SDK 26 (Android 8.0); Android Gradle plugin
-  8.9.1, Gradle 8.11.1, Kotlin 2.0.21.
+  8.9.1, Gradle 8.11.1, Kotlin 2.0.21. The release APK is 16 KB page-size aligned, as Play requires: the only
+  native library is Compose's `libandroidx.graphics.path.so`. After a dependency change that may bring native
+  code, check it with `zipalign -c -P 16 -v 4 app-release.apk` (SDK build-tools) and that every `.so` has 16
+  KB-aligned LOAD segments.
+- **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -250,11 +265,13 @@ Below the frame list, **Settings → Permissions and features** collects what th
   `poster`) **and** the access is granted (`PosterSwitch`). Pressing it while it is on switches the poster
   off; while it is off with the access, on. Without the access the switch stays off, and the press (like
   "Grant access") opens a disclosure panel under it first: the system grant covers all notifications, the app
-  ignores them and reads only the playing app's media-session title and artwork, and only the poster leaves
-  the device, to the frame over Bluetooth. "Cancel" and Back close it and change nothing (the focus goes back
-  to the switch or the button); "Continue" remembers the wish (key `posterPending`) and starts the grant flow,
-  and when the app comes back with the access granted the poster is switched on. Where no screen leads to the
-  access, the panel shows the adb command instead of "Continue". If the access is revoked from outside, the
+  ignores them and reads only the playing app's media-session title and artwork (artwork given as a web link
+  is downloaded from there), and only the poster leaves the device, to the frame over Bluetooth. "Cancel" and
+  Back close it and change nothing (the focus goes back to the switch or the button); "Continue" remembers the
+  wish (key `posterPending`) and starts the grant flow, and when the app comes back with the access granted
+  the poster is switched on. Where no screen leads to the access, the panel shows the adb command instead of
+  "Continue". Every way to the grant (the system screen, the TV menu path, the adb command) appears only in
+  the panel, or after its "Continue": the menu path is repeated under the switch while the wish is pending. If the access is revoked from outside, the
   switch shows off but the stored wish stays, so granting the access again brings the poster back. With the
   access missing (`ListenerAccessUi`):
   - phones and tablets: "Continue" opens the system screen: the app's own page
@@ -262,13 +279,14 @@ Below the frame list, **Settings → Permissions and features** collects what th
     may find the switch there greyed out ("Restricted setting"): the section says so and offers App info,
     where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed the app);
   - Android TV 12+: the list of apps (InkEasel is in it, one D-pad press grants it), plus the menu path as a
-    fallback: "If the remote cannot reach the switch there, go back and use Settings → Apps → Special app
-    access → Notification access → InkEasel" (on Google TV 14 the D-pad cannot reach the rows of that list);
+    fallback, in the panel and then under the switch: "If the remote cannot reach the switch there, go back
+    and use Settings → Apps → Special app access → Notification access → InkEasel" (on Google TV 14 the D-pad
+    cannot reach the rows of that list);
   - Android TV 9–11 (the Shield): no such screen; "Continue" opens Settings → Apps (the Settings home
-    where that is missing) and the section names the same menu path;
+    where that is missing), and the panel (then the section) names the same menu path;
   - Android TV 8, a low-RAM TV without the list screen (they hide the menu item), or any device where no
-    settings screen resolves: the adb command, in small print (see "Now playing → poster"), and in the
-    disclosure panel.
+    settings screen resolves: the adb command (see "Now playing → poster"), in small print in the disclosure
+    panel only.
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
 - **Privacy policy**: the address of [PRIVACY.md](PRIVACY.md) as text (`settings_privacy_url`). A tap opens
   it in the browser on a phone or tablet; on TV the row only shows it (a TV app must not launch a browser),
@@ -351,7 +369,9 @@ How it works:
   service: the bound listener keeps the process alive. Only while it is not bound (access granted but not
   bound yet, the binding lost) a request also starts `UploadService` with an internal hold action that keeps
   the process in the foreground until the upload is done; if Android refuses that start (the app in the
-  background), the upload still runs and is reported once. No toast over the film, only a log line.
+  background), the upload still runs and is reported once. When the listener unbinds while an automatic
+  upload is still queued or under way, that upload becomes held work and the hold starts for it the same way.
+  No toast over the film, only a log line.
   Manual uploads (a catalog tap, a share) go through the same engine inside `UploadService`, a short
   `connectedDevice` foreground service, so they finish after the user leaves the app.
 - Uploads are at least 35 s apart, also across app restarts: the frame draws for ~27 s after an upload and
@@ -401,8 +421,7 @@ Code:
   was seen: a dismissed dialog does not count), and App info
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
   `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
-  the poster switch shows and does, the disclosure's action, and the wish kept until the access is granted
-  (pure)
+  the poster switch shows and does, and the wish kept until the access is granted (pure)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
@@ -415,17 +434,15 @@ Code:
   permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
   (`save`), the size cap and the pending-share rule (pure)
 - `UploadEngine.kt`: the process-wide upload engine (`nowplaying/UploadEngineCore.kt`, pure), one upload at
-  a time (a newer request replaces a queued one of the same kind, a manual one goes first;
-  `nowplaying/UploadQueue.kt`); manual uploads toast and become the default picture, automatic uploads
+  a time (a newer request replaces a queued one of the same kind, a manual one goes first); manual uploads toast and become the default picture, automatic uploads
   report the result to `FrameController` and are dropped if a manual upload succeeded after they were
   decided (`stamp` = `FrameController.manualUploads`), if a poster's turn comes while the poster is switched
   off, or if a revert's turn comes while the playing film's poster is on the frame; it waits for the frame
   to finish drawing before the next upload (`DrawGate.kt`)
 - `UploadService.kt`: transient foreground service for manual uploads (and the hold of automatic ones while
   the listener is not bound); it stops with `stopSelfResult` once the engine has reported its held work, so
-  a start arriving as it finishes is not lost
-- `nowplaying/AutoUploader.kt`: the controller's uploader: straight to the engine, held only while the
-  listener is not bound; without the Bluetooth permissions an automatic upload is reported as failed at once
+  a start arriving as it finishes is not lost; started without the Bluetooth permissions (only the debug adb
+  trigger can) it toasts and stops
 - `nowplaying/`:
   - `Playing.kt`: the `Playing`/`Art`/`State` model and pure mappers from metadata
     (art priority `ART_URI` → `ALBUM_ART_URI` → `DISPLAY_ICON_URI` → bitmap; only https URIs are used)
@@ -440,5 +457,14 @@ Code:
     `FrameControllers.kt` wires the process-wide instance
   - `FeatureStore.kt`: the poster switch and its pending wish (prefs `features`)
   - `DefaultStore.kt`: the default picture (prefs `default`) and the key on the frame (prefs `frame`)
+  - `UploadEngineCore.kt`: the engine's queue and worker, pure: every request reported exactly once, a
+    replaced one from inside the `submit` that replaced it; held work and `onIdle`; `holdAll` makes unheld
+    work held; `UploadQueue.kt`: the queue rules
+  - `UploadRequest.kt`: one request (manual, or automatic with the controller's key and stamp);
+    `UploadReports.kt`: what the engine does with each report (toasts, `FrameController` callbacks), pure, so
+    the controller tests run the production rules
+  - `AutoUploader.kt`: the controller's uploader: straight to the engine, held only while the listener is not
+    bound (and made held when it unbinds during an upload); without the Bluetooth permissions an automatic
+    upload is reported as failed at once
   - `UploadOutcome.kt`: what the upload engine does after an upload (toast, report to the controller,
     remember as the default)

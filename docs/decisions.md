@@ -3,6 +3,28 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — The listener follows media sessions whenever the access is granted
+`NowPlayingListener` reads every media session (title, state, artwork; artwork bitmaps cached as PNGs) as
+long as notification access is granted, also while the poster is switched off. `FrameController` needs that:
+switching the poster on acts on what plays at once (`onPosterSwitched` arms the start of a film that is
+already playing, whose PLAYING is not reported again), and switching it off reverts a poster even after a
+process restart. `PRIVACY.md` and the README say exactly this (reading while the access is granted, the
+artwork cache, the `onFrame` key that may be an artwork URL, the BLE rescan during an upload, the hold
+service), and that revoking the access is what stops the reading. Titles and artwork keys stay in the
+logcat lines (other apps cannot read the log; the policy says so) because they are what a poster problem is
+diagnosed with.
+Rejected: gating the listener on the switch (the poster would come up only on the next transition into
+PLAYING after switching it on, and a lost revert would wait for one), dropping titles from release logs
+(diagnosis on a TV is done with the release build too).
+
+## 2026-11-08 — No backup and no device transfer of app data
+`android:allowBackup="false"` stops backup only up to Android 11; from Android 12 a device-to-device transfer
+ignores it. `android:dataExtractionRules` (`res/xml/data_extraction_rules.xml`) therefore excludes every
+domain (`root`, `device_root`, `external`) for both cloud backup and device transfer, so "nothing goes into a
+backup or a transfer" in `PRIVACY.md` holds on every version. `ManifestTest` guards both.
+Rejected: allowing the transfer and saying so (it would carry the chosen frame and cached artwork to a new
+device to save one frame choice, at the cost of an exception in the policy).
+
 ## 2026-11-08 — TV overscan margins by window width, lint in CI
 The catalog keeps the Android TV overscan margins, 48 dp at the sides and 27 dp at the top and bottom, in the
 widest `CatalogLayout` bucket (840 dp and up); narrower windows keep 24 dp top and bottom. The bucket is chosen
@@ -76,7 +98,10 @@ no longer stores anything. The panel is inline in the settings, under the poster
 dialog: the settings are already a dialog, and an inline panel keeps one Back handler and one focus path
 (focus moves to "Continue" when it opens and back to the element that opened it when it closes). Where no
 system screen leads to the access (adb-only TVs) the panel shows the adb command instead of "Continue", and
-nothing is stored. Rejected: a separate `AlertDialog` (nested dialogs on TV, focus return harder), showing the
+nothing is stored. The other ways to the grant are hints, and they too appear only in the panel: the TV menu
+path (as the way to go, or as the fallback when the list screen's rows are out of the D-pad's reach) and the
+adb command. The menu path is repeated under the poster switch once "Continue" has made the wish pending, so
+the user finds it again after the system screen. Rejected: a separate `AlertDialog` (nested dialogs on TV, focus return harder), showing the
 disclosure only once (the grant may be asked for again after a revoke, and the disclosure belongs right
 before each request).
 
@@ -93,7 +118,18 @@ process in the foreground until that work is done. Manual uploads and shares sta
 read from a flag it sets first on connect and clears first on disconnect; the controller's uploader
 (`AutoUploader`, pure, so the hold fallback and a refused hold start are unit-tested) submits every request
 before it starts the hold, so a refused start (a background start on Android 12+) is only logged and the
-engine still uploads and reports the request once.
+engine still uploads and reports the request once. When the listener unbinds (`onListenerDisconnected`, or
+`onDestroy` without it) after clearing its flag, `AutoUploader.listenerLost` makes every unheld request still
+queued or in flight held work and starts the hold for it; `AutoUploader` decides and submits under one lock,
+so a request is either promoted or decided after the flag was cleared. The engine is the only reporter:
+`UploadService.onDestroy` reports nothing, and a process death takes the controller with it. A request
+replaced in the queue is reported at once, from inside the `submit` that replaced it, so the controller's
+`onUploadResult` re-enters under its own lock (a revert that replaces a queued poster may arm a second revert
+timer, which then finds the default on the frame and does nothing). The report rules are a pure
+`UploadReports` that the controller tests use as they are; why a request was dropped (`REPLACED` or `STALE`)
+only chooses the log line, but stays explicit for the tests. A failed draw wait (`DrawGate`) lets the upload go
+ahead without it rather than leave the queue stuck. `UploadService`'s stop logic (stay while held work is
+left, `stopSelfResult(lastStartId)`) is Android glue checked on an emulator, not by unit tests.
 Rejected:
 - expedited WorkManager — on Android 11 and older (the Shield) it runs as a foreground service with a
   notification anyway, has quotas and would split the queue rules;
@@ -109,6 +145,15 @@ service is exported only by a debug manifest overlay, for the documented adb tri
 manual uploads (no automatic-upload extras), so even the debug export cannot touch now-playing work.
 A JVM test guards the manifests. The overlay repeats `foregroundServiceType`, because lint's
 `ForegroundServiceType` check reads the overlay's `<service>` element on its own.
+Started without the Bluetooth permissions, which only the debug adb trigger can do, the service toasts and
+stops.
+Accepted residual: `ShareActivity` stays exported (it is the share target) and uploads a shared picture
+without asking again, so an app that may start activities (one in the foreground, or exempt from Android's
+background-launch limits) can still send an image of its choosing to the frame, through the visible share
+path and with a `content://` grant of its own. A share is a user action by design, the sender has to be in
+front to start it, and the picture also lands in "My pictures", where the user sees it. Rejected: a
+confirmation step before every share (one more press for every real share), checking the referrer (it is
+set by the sender and proves nothing).
 Rejected: keeping it exported behind a custom signature permission (adb's shell cannot hold it), or a
 runtime check of the caller (a `Service` start carries no caller identity).
 

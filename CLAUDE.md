@@ -31,12 +31,23 @@ or deviation made in a change gets its entry in the same commit.
 - Release uses R8 (code and resource shrinking) with `-dontobfuscate` (public code; readable traces and
   `Throwable.userText` class names). Add a keep rule to `app/proguard-rules.pro` only when an R8 warning or a
   release smoke test proves it necessary; smoke-test the release APK after a dependency change.
+- Play requires 16 KB page-size alignment. After a dependency change that may bring native code, check the
+  release APK with `zipalign -c -P 16 -v 4 app-release.apk` and that each `.so` has 16 KB-aligned LOAD
+  segments (today the only one is Compose's `libandroidx.graphics.path.so`).
 - Emulator techniques: to force an offline or slow catalog, airplane mode does not cut the TV emulator's
   ethernet; set a dead global proxy (`adb shell settings put global http_proxy localhost:9`; undo with
   `settings delete global http_proxy` and `settings put global http_proxy :0`). `adb exec-out screencap -p`
   returns black frames on the TV emulator: use `adb shell screencap -p /sdcard/s.png`, `adb pull`, then
   delete the file. README screenshots live in `docs/screenshots/` (English UI, nothing identifying, the
   tablet's status bar in demo mode, compressed with pngquant).
+- Poster path on an emulator: a poster needs a media session with artwork, and YouTube does not run there,
+  so use a throwaway media-session helper app (never committed, uninstalled afterwards). Unbind the listener
+  to test the hold fallback with
+  `adb shell cmd notification disallow_listener io.github.hsw.inkeasel/.nowplaying.NowPlayingListener`
+  (`allow_listener` undoes it). `adb shell dumpsys activity services io.github.hsw.inkeasel` shows whether
+  `UploadService` runs (a poster with the listener bound shows only `NowPlayingListener`), `dumpsys activity
+  processes` the `curProcState`. With the app in the background, Android 12+ refuses the hold start
+  (`ForegroundServiceStartNotAllowedException`), which reproduces the refused-hold path.
 
 ## Conventions
 - Code, comments, commit messages, README and backlog items: English. UI strings live in resources:
@@ -69,14 +80,21 @@ or deviation made in a change gets its entry in the same commit.
 - Uploads: one process-wide `UploadEngine` (pure core `UploadEngineCore`) holds the queue and the worker.
   Automatic uploads go straight to it from `FrameController` (`AutoUploader`) with no foreground service
   while `NowPlayingListener` is bound; only while it is not bound they are held work and `UploadService`
-  is started with `ACTION_HOLD` (a refused start is only logged, the engine still reports the request once).
+  is started with `ACTION_HOLD` (a refused start is only logged, the engine still reports the request once);
+  when it unbinds, unheld work still queued or in flight is made held (`AutoUploader.listenerLost`). A
+  replaced automatic request is reported from inside `submit`, so `FrameController.onUploadResult` re-enters
+  under the controller's lock: nothing may follow `uploader.upload` there. The report rules are pure
+  (`UploadReports`) and the controller tests use them; never copy them into a test rig.
   Manual uploads and shares run in `UploadService` (`connectedDevice`), which stops with
   `stopSelfResult` once the engine reports its held work done; it reports nothing itself. Lock order is
   controller → engine: the engine resolves the controller lazily and never calls it (or `onIdle`) under its
   own lock. `UploadService` takes only manual extras and is not exported; only the debug manifest overlay
   (`app/src/debug/AndroidManifest.xml`) exports it for the adb trigger, and `ManifestTest` guards that.
 - Notification access is asked for only through the disclosure panel in "Permissions and features"
-  (`PosterSwitch.press` → `DISCLOSE`, `confirm`); a new way into the grant goes through it too. The privacy
+  (`PosterSwitch.press` → `DISCLOSE`, then "Continue"); a new way into the grant, including a hint text such
+  as the TV menu path or the adb command, goes through it too (`ListenerAccessUi.rowMenuHint`). `PRIVACY.md`
+  must say exactly what the code does (what is read, when, and what is stored); a change to either updates
+  the other. The privacy
   policy is `PRIVACY.md`, shown as `settings_privacy_url`; a TV never launches a browser.
 - Share → InkEasel (`ShareActivity`, rules in `ShareRules`): only `content://` URIs of other apps; the copy is
   capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
