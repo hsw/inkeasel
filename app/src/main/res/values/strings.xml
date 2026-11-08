@@ -65,6 +65,14 @@
     <string name="perm_name_nearby">Nearby devices</string>
     <string name="perm_name_location">Location</string>
     <string name="app_info">App info</string>
+    <!-- the Bluetooth panel (BleAsk), shown before the system dialog: %1$s the app name, %2$s the permission's name in the system settings (perm_name_*) -->
+    <string name="perm_panel_intro">%1$s sends pictures to your e-paper frame over Bluetooth. To find the frame, allow %2$s.</string>
+    <!-- after one denial, what stops working: %1$s the app name, %2$s the permission's name (perm_name_*) -->
+    <string name="perm_panel_rationale">Without %2$s, %1$s cannot find your frame or send pictures to it; you can still browse pictures. Allow it to use the frame.</string>
+    <!-- before Android 12, under perm_panel_intro or perm_panel_rationale: %1$s the app name -->
+    <string name="perm_panel_location">Android uses location to search for Bluetooth devices, so location must also be turned on. %1$s does not read where you are.</string>
+    <string name="perm_panel_find">Find my frame</string>
+    <string name="perm_panel_later">Not now</string>
     <string name="feature_poster">Now-playing poster</string>
     <string name="access_granted">Notification access is granted: the app sees what plays.</string>
     <string name="access_missing">Needs notification access to see what plays.</string>
@@ -129,6 +137,7 @@
     <string name="upload_wait">The frame is still drawing the previous picture: sending in %1$d s</string>
     <string name="upload_no_frame">No frame selected: choose one in the settings</string>
     <string name="upload_no_permission">Bluetooth is not allowed: open the app to allow it</string>
+    <string name="upload_toast_blocked">Bluetooth is denied, so pictures cannot be sent. Settings → Permissions and features says how to allow it.</string>
     <string name="upload_err_no_frame">no frame selected</string>
     <string name="upload_err_decode">could not decode the picture</string>
 

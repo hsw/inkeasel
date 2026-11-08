@@ -44,7 +44,8 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
 
 - the chosen frame (its name, Bluetooth address and advertised properties);
 - the default picture, the switches in the settings, and small app state such as when the frame last drew a
-  picture, whether you denied the Bluetooth permission, and a shared picture that waits for it;
+  picture, whether you denied the Bluetooth permission or answered the app's first question about it,
+  and a shared picture that waits for it;
 - which picture is on the frame: for a now-playing poster, its artwork address or a fingerprint of its
   artwork;
 - the artwork of recent now-playing sessions (in the app's cache, also while the poster is switched off):

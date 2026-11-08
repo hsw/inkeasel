@@ -3,6 +3,28 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — Bluetooth is asked for in context, through one panel
+The app no longer opens the system permission dialog in `onCreate`. Google asks to request a permission when
+the user starts the feature and not all at startup (developer.android.com/training/permissions/requesting,
+…/usage-notes). A start without the permission shows a panel over the catalog that says why ("InkEasel sends
+pictures to your e-paper frame over Bluetooth. To find the frame, allow Nearby devices."), with **Find my
+frame** focused and **Not now**; after a grant without a frame chosen it opens the frame settings. The
+settings no longer open by themselves without the permission (they could only ask again), so the panel and
+the settings never stack. "Not now", Back and any answer in the system dialog count as an answer: the panel
+then never appears by itself again (prefs `permissions`, key `bleIntroDone`), only when the user wants the
+feature: a pressed or shared picture without the permission opens it, and the settings keep "Allow". After a
+denial it says what stops working before the dialog. Once the system no longer asks, there is no panel: the
+app degrades in place, a pressed picture toasts why it is not sent and where the settings explain it, and
+App info is offered only in the settings (and to a share, which opens them), following Google's advice not to
+push users to the system settings. Below Android 12 the panel and the frame section name Location, which
+the dialog asks for, and the panel adds that a Bluetooth search uses location and needs it on. The rules are
+pure (`BleAsk`). With a frame chosen (the permission taken back later) the button says "Allow" and the pressed
+picture is sent once granted.
+Rejected: the system dialog at start (it covered the app before the user saw anything), the panel inside the
+settings (a pressed picture would have opened a full-screen dialog to explain one permission), showing the
+first-run panel on every start until granted (nagging), a panel for the permanently denied state with an App
+info button (pushing to the system settings), asking again at every start after a denial.
+
 ## 2026-11-08 — The frame protocol is described in the repository
 Code comments cite `docs/protocol.md`: the BLE protocol (advertising, GATT, framing, chunking, acks, timing)
 and the image formats, each statement checked against the code, with what was only seen on a real frame or

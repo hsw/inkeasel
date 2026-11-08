@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel
 
 import android.app.Application
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.FileObserver
 import android.util.Log
@@ -135,7 +136,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         posterPending = pending
     }
 
+    /**
+     * The Bluetooth panel ([BleAsk]) is open with this text stage, and the pressed picture that opened it,
+     * if one did (sent once the permission is granted); `null` while it is closed. Never open with the settings.
+     */
+    var blePanel by mutableStateOf<BlePanelState?>(null)
+        private set
+
+    fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
+        settingsOpen = false
+        blePanel = BlePanelState(stage, picture)
+    }
+
+    fun closeBlePanel() {
+        blePanel = null
+    }
+
     fun openSettings() {
+        blePanel = null
         settingsOpen = true
     }
 
@@ -230,6 +248,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 }
 
+/** The open Bluetooth panel: its text [stage], and the pressed [picture] that opened it, if one did. */
+data class BlePanelState(val stage: BleAsk.Stage, val picture: Picture?)
+
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
@@ -237,23 +258,60 @@ class MainActivity : ComponentActivity() {
     private var permitted by mutableStateOf(false)
 
     /**
-     * The last request came back denied and the system will not show its dialog again ([BlePermissions.blocked]):
-     * asking would silently do nothing, so "Allow" opens App info instead.
+     * The system no longer shows its dialog ([BlePermissions.blocked], read again on every start, resume and
+     * request): asking would silently do nothing, so "Allow" in the settings opens App info instead, and the
+     * Bluetooth panel is not shown ([BleAsk]).
      */
     private var blocked by mutableStateOf(false)
 
     private val askPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        permitted = BlePermissions.granted(this)
-        if (result.isEmpty()) { // cancelled (another request was running): nothing was answered
-            Log.i(TAG, "BLE permission request cancelled: granted=$permitted")
-        } else {
-            val perms = BlePermissions.all.toList()
-            val rationale = { p: String -> shouldShowRequestPermissionRationale(p) }
-            BlePermissions.noteDenial(this, perms, rationale)
-            blocked = BlePermissions.blocked(perms, permitted, BlePermissions.deniedBefore(this), rationale)
-            Log.i(TAG, "BLE permissions: granted=$permitted blocked=$blocked")
+        val answered = result.isNotEmpty() // empty: cancelled (another request was running), nothing answered
+        if (answered) {
+            BlePermissions.noteDenial(this, BlePermissions.all.toList(), ::shouldShowRequestPermissionRationale)
+            BlePermissions.noteIntroDone(this)
         }
+        readBle()
+        Log.i(TAG, "BLE permission request: answered=$answered granted=$permitted blocked=$blocked")
+        panelAfter(answered)
         sendPendingShare()
+    }
+
+    /** Read whether the permissions are granted, and whether the system still asks ([BlePermissions.blocked]). */
+    private fun readBle() {
+        permitted = BlePermissions.granted(this)
+        blocked = BlePermissions.blocked(
+            BlePermissions.all.toList(), permitted, BlePermissions.deniedBefore(this), ::shouldShowRequestPermissionRationale,
+        )
+    }
+
+    private fun rationale(): Boolean = BlePermissions.all.any(::shouldShowRequestPermissionRationale)
+
+    /** Open the Bluetooth panel ([BleAsk.stage]); [picture] is sent once the permission is granted. */
+    private fun showPanel(picture: Picture?) {
+        vm.showBlePanel(BleAsk.stage(rationale()), picture)
+    }
+
+    /** The open panel after the system dialog, or after a return to the app with the permission ([BleAsk.afterRequest]). */
+    private fun panelAfter(answered: Boolean) {
+        val panel = vm.blePanel ?: return
+        val after = BleAsk.afterRequest(answered, permitted, blocked, vm.selected != null, panel.picture != null)
+        Log.i(TAG, "Bluetooth panel: $after")
+        when (after) {
+            BleAsk.After.FIND -> vm.openSettings()
+            BleAsk.After.SEND -> {
+                vm.closeBlePanel()
+                panel.picture?.let(::sendToFrame)
+            }
+            BleAsk.After.CLOSE -> vm.closeBlePanel()
+            BleAsk.After.STAY -> showPanel(panel.picture)
+        }
+    }
+
+    /** "Not now", Back or a tap outside the panel: the first-run panel counts as answered. */
+    private fun dismissPanel() {
+        Log.i(TAG, "Bluetooth panel: not now")
+        BlePermissions.noteIntroDone(this)
+        vm.closeBlePanel()
     }
 
     /** A shared picture that waits for the permissions and a frame ([ShareActivity]). */
@@ -273,29 +331,41 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
-        permitted = BlePermissions.granted(this)
-        if (!permitted) askPermissions.launch(BlePermissions.all)
-        // a fresh start without a chosen frame opens the frame settings; cancelling them leaves the catalog
-        if (savedInstanceState == null && vm.selected == null) {
-            Log.i(TAG, "no frame selected: opening the frame settings")
-            vm.openSettings()
+        readBle()
+        // a fresh start asks for nothing by itself: without the permission it shows the first-run panel (until
+        // answered once), with it and no frame chosen the frame settings ([BleAsk.atStart]); a share comes after
+        if (savedInstanceState == null) {
+            val start = BleAsk.atStart(permitted, vm.selected != null, BlePermissions.introDone(this), blocked)
+            Log.i(TAG, "start: $start (granted=$permitted blocked=$blocked frame=${vm.selected != null})")
+            when (start) {
+                BleAsk.Start.PANEL -> showPanel(null)
+                BleAsk.Start.SETTINGS -> vm.openSettings()
+                BleAsk.Start.CATALOG -> Unit
+            }
+            handleShareIntent(intent)
         }
-        if (savedInstanceState == null) handleShareIntent(intent, ask = false) // the request runs already
         setContent {
             App(
                 vm,
                 ble = BleAccess(permitted, blocked, ::requestPermissions),
                 onFrameSelected = ::sendPendingShare,
                 onSend = { p ->
-                    when {
-                        vm.selected == null -> {
+                    readBle()
+                    when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
+                        BleAsk.Send.SEND -> sendToFrame(p)
+                        BleAsk.Send.NO_FRAME -> {
                             Log.i(TAG, "no frame selected: upload of ${p.title} refused")
                             Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
                         }
-                        BlePermissions.granted(this) -> sendToFrame(p)
-                        else -> requestPermissions()
+                        BleAsk.Send.PANEL -> showPanel(p)
+                        BleAsk.Send.BLOCKED -> {
+                            Log.i(TAG, "Bluetooth denied for good: upload of ${p.title} refused")
+                            Toast.makeText(this, R.string.upload_toast_blocked, Toast.LENGTH_LONG).show()
+                        }
                     }
                 },
+                onPanelConfirm = { askPermissions.launch(BlePermissions.all) },
+                onPanelDismiss = ::dismissPanel,
             )
         }
     }
@@ -325,26 +395,30 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleShareIntent(intent, ask = true)
+        handleShareIntent(intent)
     }
 
     /**
-     * Opened by a share that waits for the permissions ([EXTRA_PENDING_SHARE]): while they are missing, show
-     * the settings, which say what is missing (with "App info" where the system no longer asks), and [ask]
-     * for them unless the system no longer shows its dialog.
+     * Opened by a share that waits for the permissions ([EXTRA_PENDING_SHARE]): while they are missing, the
+     * Bluetooth panel asks for them, or, where the system no longer asks, the settings say where to allow them
+     * ([BleAsk.onShare]).
      */
-    private fun handleShareIntent(intent: Intent, ask: Boolean) {
-        if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false) || BlePermissions.granted(this)) return
-        vm.openSettings()
-        if (ask && !blocked) askPermissions.launch(BlePermissions.all)
+    private fun handleShareIntent(intent: Intent) {
+        if (!intent.getBooleanExtra(EXTRA_PENDING_SHARE, false)) return
+        readBle()
+        when (BleAsk.onShare(permitted, blocked)) {
+            BleAsk.Share.NOTHING -> Unit
+            BleAsk.Share.PANEL -> showPanel(null)
+            BleAsk.Share.SETTINGS -> vm.openSettings()
+        }
     }
 
     // Returning to the app re-scans the local folder, in case files changed while it was away.
     // Permissions and notification access may also have been granted from the system settings meanwhile.
     override fun onResume() {
         super.onResume()
-        permitted = BlePermissions.granted(this)
-        if (permitted) blocked = false
+        readBle()
+        if (permitted) panelAfter(answered = true)
         vm.refreshLocal()
         vm.onResume()
         sendPendingShare()
@@ -362,6 +436,8 @@ fun App(
     ble: BleAccess,
     onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
+    onPanelConfirm: () -> Unit,
+    onPanelDismiss: () -> Unit,
 ) {
     // the cards take the chosen frame's shape; the frame this app was built with while none is chosen
     val aspect = (vm.selected?.lookup?.formatOrNull ?: FrameFormats.DEFAULT).aspect
@@ -414,6 +490,8 @@ fun App(
                     onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )
+            } else vm.blePanel?.let { panel ->
+                BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
             }
         }
     }

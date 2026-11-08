@@ -56,6 +56,11 @@
     <string name="perm_name_nearby">Устройства поблизости</string>
     <string name="perm_name_location">Местоположение</string>
     <string name="app_info">О приложении</string>
+    <string name="perm_panel_intro">%1$s отправляет картинки на вашу рамку с электронной бумагой по Bluetooth. Чтобы найти рамку, разрешите «%2$s».</string>
+    <string name="perm_panel_rationale">Без разрешения «%2$s» %1$s не может найти рамку и отправить на неё картинки; смотреть картинки можно и так. Разрешите его, чтобы пользоваться рамкой.</string>
+    <string name="perm_panel_location">Android ищет устройства Bluetooth с помощью геолокации, поэтому её тоже нужно включить. %1$s не узнаёт, где вы находитесь.</string>
+    <string name="perm_panel_find">Найти рамку</string>
+    <string name="perm_panel_later">Не сейчас</string>
     <string name="feature_poster">Постер того, что играет</string>
     <string name="access_granted">Доступ к уведомлениям выдан: приложение видит, что играет.</string>
     <string name="access_missing">Нужен доступ к уведомлениям, чтобы видеть, что играет.</string>
@@ -108,6 +113,7 @@
     <string name="upload_wait">Рамка ещё рисует предыдущую картинку: отправка через %1$d с</string>
     <string name="upload_no_frame">Рамка не выбрана: выберите её в настройках</string>
     <string name="upload_no_permission">Bluetooth не разрешён: откройте приложение, чтобы разрешить</string>
+    <string name="upload_toast_blocked">Bluetooth запрещён, поэтому картинки не отправляются. Как его разрешить, см. «Настройки → Разрешения и функции».</string>
     <string name="upload_err_no_frame">рамка не выбрана</string>
     <string name="upload_err_decode">не удалось декодировать изображение</string>
 

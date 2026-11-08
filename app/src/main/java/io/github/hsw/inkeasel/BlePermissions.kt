@@ -60,15 +60,26 @@ object BlePermissions {
         if (!deniedBefore(ctx) && permissions.any(rationale)) prefs(ctx).edit().putBoolean(KEY_DENIED, true).apply()
     }
 
+    /**
+     * Whether the first-run panel has been answered ("Not now", Back, or an answer in the system dialog):
+     * from then on the app asks only in context ([BleAsk]).
+     */
+    fun introDone(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_INTRO, false)
+
+    fun noteIntroDone(ctx: Context) {
+        if (!introDone(ctx)) prefs(ctx).edit().putBoolean(KEY_INTRO, true).apply()
+    }
+
     private fun prefs(ctx: Context) = ctx.getSharedPreferences("permissions", Context.MODE_PRIVATE)
 
     private const val KEY_DENIED = "bleDenied"
+    private const val KEY_INTRO = "bleIntroDone"
 }
 
 /**
  * The Bluetooth permission as the settings see it: whether it is [permitted], whether the system no longer
- * asks for it ([blocked], see [BlePermissions.blocked]), and [request], which asks for it or, once blocked,
- * opens App info.
+ * asks for it ([blocked], see [BlePermissions.blocked]), and [request], which asks for it (the system dialog
+ * straight away: the user asked for it there, and the section says why) or, once blocked, opens App info.
  */
 data class BleAccess(val permitted: Boolean, val blocked: Boolean, val request: () -> Unit)
 

@@ -52,15 +52,31 @@ Requirements: Android 8.0 or newer with Bluetooth LE; Android TV, a tablet or a 
 
       ./gradlew testDebugUnitTest
 
-On the first start the settings open by themselves: allow Bluetooth, wait for the frame to appear in the
-list and select it.
+On the first start a panel says why the app needs Bluetooth: **Find my frame** asks for the permission and
+then opens the settings, where the frame appears in the list; select it. **Not now** leaves the catalog.
 
 ## Permissions
 
 - **Bluetooth** ("Nearby devices" on Android 12+, location on Android 11 and older, where the system also
-  wants location turned on for a BLE scan): needed to find the frame and send pictures. The app asks on
-  start and from **Settings**; if the system no longer shows its dialog, the settings name the path in App
-  info.
+  wants location turned on for a BLE scan): needed to find the frame and send pictures. The app asks only in
+  context (below); if the system no longer shows its dialog, the settings name the path in App info.
+
+How the app asks for Bluetooth (`BleAsk`, pure):
+- A start without the permission shows a panel over the catalog, not the system dialog: "InkEasel sends
+  pictures to your e-paper frame over Bluetooth. To find the frame, allow Nearby devices." (on Android 11 and
+  older it names Location, adds that Android uses location for Bluetooth searches and that it must be on).
+  **Find my frame** has the focus and opens the system dialog; once allowed, the frame settings open (with a
+  frame already chosen, the button says **Allow** and a pressed picture is sent). **Not now**, Back or a tap
+  outside closes it. It appears by itself only until it has been answered once (**Not now** or an answer in
+  the system dialog, prefs `permissions`, key `bleIntroDone`); with the permission and no frame chosen, a start
+  opens the frame settings instead, and the two never open together.
+- After that the app asks only when the user wants the feature: pressing a picture, or sharing one, without
+  the permission opens the same panel; **Settings** offers "Allow" next to the Bluetooth state and in the frame
+  section. After one denial the panel says what stops working (the frame search and sending; the catalog
+  still works) before the dialog again.
+- Once the system no longer shows its dialog, the panel is not shown: the app keeps working without the
+  frame, a pressed picture toasts that Bluetooth is denied and where the settings say how to allow it, and
+  only the settings (and a share, which opens them) offer App info.
 - **Notification access** (optional, only for the now-playing poster): it lets the app read the
   media sessions of other apps (title and artwork of what plays). The app does not read notifications. There
   is no permission dialog for it: pressing the poster switch (or **Grant access**) in **Settings →
@@ -227,8 +243,8 @@ Only a `content://` picture of another app is taken (no `file://` paths, nothing
 with a `<user>@` prefix on the authority). Types:
 JPEG, PNG, WebP, GIF, BMP and HEIC/HEIF (decoded by the system, Android 9+).
 
-Without the Bluetooth permission the picture is still copied and waits: the app opens with its settings and
-asks for the permission; once it is granted and a frame is chosen, the picture is sent. One share waits at a
+Without the Bluetooth permission the picture is still copied and waits: the app opens with the Bluetooth
+panel (or, once the system no longer asks, with its settings, which name the path in App info); once it is granted and a frame is chosen, the picture is sent. One share waits at a
 time (the newest), for at most an hour (prefs `share`); after that, or if the file is gone, it is dropped,
 and the picture stays in "My pictures" either way.
 
@@ -332,7 +348,8 @@ picture is rendered in the frame's format (size and inks from its advertisement)
 frame now advertises other properties, the upload fails and the next one uses the new format.
 
 **No frame chosen**: the catalog browses normally, but nothing is uploaded:
-- a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing;
+- a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing (without the
+  Bluetooth permission it opens the Bluetooth panel instead, since a frame can only be found with it);
 - `UploadService` refuses a manual request (adb, debug build) before touching Bluetooth and toasts the same;
   the upload engine fails an automatic one before any download or Bluetooth and reports it to
   `FrameController` (so its key does not stay pending);
@@ -446,7 +463,10 @@ Code:
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
   (Bluetooth, the poster switch with its disclosure panel, notification access, the privacy policy row)
 - `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
-  was seen: a dismissed dialog does not count), and App info
+  was seen: a dismissed dialog does not count), whether the first-run panel was answered, and App info
+- `BleAsk.kt`: when and how the app asks for Bluetooth: the first-run panel, a pressed or shared picture, its
+  text per state and Android version, and what happens after the system dialog (pure); `BlePanel.kt`: the
+  panel
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
   `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
   the poster switch shows and does, and the wish kept until the access is granted (pure)
