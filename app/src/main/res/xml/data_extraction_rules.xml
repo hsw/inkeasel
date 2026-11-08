@@ -1,15 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12+: nothing of the app's data goes into a cloud backup or a device-to-device transfer
-     (android:allowBackup="false" covers Android 11 and older, and only the cloud backup on 12+). -->
+     (android:allowBackup="false" covers Android 11 and older, and only the cloud backup on 12+).
+     Every domain is excluded on its own: the backup walks files, databases and shared preferences as separate
+     trees, which an exclusion of "root" does not reach (nor "device_root" the device-protected ones). -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />
-        <exclude domain="device_root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" path="." />
-        <exclude domain="device_root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
         <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
     </device-transfer>
 </data-extraction-rules>

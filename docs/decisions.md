@@ -3,6 +3,15 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — "My pictures" stays in the app's external files folder
+Shared and copied pictures live in `getExternalFilesDir()/pictures`: Android deletes it with the app, it needs
+no storage permission, and `adb push` can put pictures there (the empty tab shows that path). The cost
+is that on Android 9 and older, and on Android 10 for apps that opt out of scoped storage, any app with the
+storage permission can read the folder. `PRIVACY.md` and the README say so instead of calling all stored data
+private; everything else stays in internal storage.
+Rejected: moving the folder into `filesDir` (private on every version, but no way left to copy pictures in
+from a computer).
+
 ## 2026-11-08 — The listener follows media sessions whenever the access is granted
 `NowPlayingListener` reads every media session (title, state, artwork; artwork bitmaps cached as PNGs) as
 long as notification access is granted, also while the poster is switched off. `FrameController` needs that:
@@ -20,8 +29,12 @@ PLAYING after switching it on, and a lost revert would wait for one), dropping t
 ## 2026-11-08 — No backup and no device transfer of app data
 `android:allowBackup="false"` stops backup only up to Android 11; from Android 12 a device-to-device transfer
 ignores it. `android:dataExtractionRules` (`res/xml/data_extraction_rules.xml`) therefore excludes every
-domain (`root`, `device_root`, `external`) for both cloud backup and device transfer, so "nothing goes into a
-backup or a transfer" in `PRIVACY.md` holds on every version. `ManifestTest` guards both.
+domain for both cloud backup and device transfer, so "nothing goes into a backup or a transfer" in
+`PRIVACY.md` holds on every version. Each domain is listed on its own (`root`, `file`, `database`,
+`sharedpref`, `external` and the four `device_*` ones): the backup agent walks the files, databases and
+shared preferences as trees of their own and matches an exclusion by the exact path of what it visits, so an
+exclusion of `root` (the app's data folder itself) never matches inside them and left the preferences and the
+catalog files in a transfer. `ManifestTest` guards the manifest and every domain in both sections.
 Rejected: allowing the transfer and saying so (it would carry the chosen frame and cached artwork to a new
 device to save one frame choice, at the cost of an exception in the policy).
 

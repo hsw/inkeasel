@@ -44,13 +44,17 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
   picture, whether you denied the Bluetooth permission, and a shared picture that waits for it;
 - which picture is on the frame: for a now-playing poster, its artwork address or a fingerprint of its
   artwork;
-- the artwork of recent now-playing sessions (at most 20 pictures, in the app's cache), also while the poster
-  is switched off;
+- the artwork of recent now-playing sessions (in the app's cache, also while the poster is switched off): the
+  20 most recent pictures, plus any that a current session or a poster still waiting for the frame needs;
 - the last good catalog lists and cached catalog images;
-- the pictures you shared.
+- the pictures you shared, and pictures you copied into "My pictures" yourself.
 
-They stay in the app's private storage. None of it goes into an Android backup or a transfer to a new
-device. Uninstalling the app, or clearing its storage in the system settings, deletes all of them.
+They stay on the device. The pictures under "My pictures" are in the app's own folder on the shared storage
+(`Android/data/io.github.hsw.inkeasel/files/pictures`): on Android 9 and older, and on Android 10 for apps
+that opt out of its storage limits, other apps that hold the storage permission can read that folder.
+Everything else is in the app's private storage, which other apps cannot read. None of it goes into an
+Android backup or a transfer to a new device. Uninstalling the app, or clearing its storage in the system
+settings, deletes all of them.
 
 ## Permissions and why
 

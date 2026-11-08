@@ -73,13 +73,18 @@ class ManifestTest {
         assertEquals("false", app.getAttributeNS(androidNs, "allowBackup")) // Android 11 and older
         assertEquals("@xml/data_extraction_rules", app.getAttributeNS(androidNs, "dataExtractionRules")) // 12+
         val rules = factory.newDocumentBuilder().parse(File("src/main/res/xml/data_extraction_rules.xml"))
+        // Each domain on its own: the backup walks files, databases and preferences apart from the root tree.
+        val domains = setOf(
+            "root", "file", "database", "sharedpref", "external",
+            "device_root", "device_file", "device_database", "device_sharedpref",
+        )
         for (section in listOf("cloud-backup", "device-transfer")) {
             val e = rules.getElementsByTagName(section).item(0) as Element
             assertEquals(section, 0, e.getElementsByTagName("include").length)
             val excludes = e.getElementsByTagName("exclude")
             val all = (0 until excludes.length).map { excludes.item(it) as Element }
                 .filter { it.getAttribute("path") == "." }.map { it.getAttribute("domain") }.toSet()
-            assertEquals(section, setOf("root", "device_root", "external"), all)
+            assertEquals(section, domains, all)
         }
     }
 }

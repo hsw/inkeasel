@@ -100,10 +100,14 @@ tablet).
   [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
   (debug builds only), and the poster artwork, downloaded over https from the address the playing app publishes.
 - Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and images, your
-  pictures, the artwork of recent now-playing sessions (at most 20, in the app's cache) and the key of the
-  picture on the frame (for a poster, its artwork address or a hash of its artwork) stay in the app's storage
-  on the device. Backup and device-to-device transfer are off (`allowBackup="false"`, and data extraction
-  rules that exclude everything on Android 12+, `res/xml/data_extraction_rules.xml`).
+  pictures, the artwork of recent now-playing sessions (in the app's cache: the 20 most recent, plus any a
+  tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
+  artwork address or a hash of its artwork) stay in the app's storage on the device. "My pictures" is the
+  app's folder on the shared storage (`getExternalFilesDir`), which other apps with the storage permission can
+  read on Android 9 and older (and on Android 10 if they opt out of scoped storage); the rest is private.
+  Backup and device-to-device transfer are off (`allowBackup="false"`, and data extraction rules that exclude
+  every domain on Android 12+, `res/xml/data_extraction_rules.xml`: an exclusion of `root` does not reach the
+  `file`, `database` and `sharedpref` trees, which the backup walks on their own).
 - A BLE scan runs while the settings search for frames, and during an upload when the chosen frame has to be
   found again by its name (filtered to the frame's service, see "Uploading to the chosen frame").
 
@@ -382,9 +386,11 @@ How it works:
   app does not permit cleartext traffic); the artwork bitmap is used instead, if the session has one.
 
 Manual upload from adb, **debug builds only** (release builds do not export `UploadService`, so no other
-app can send a picture to the frame; only the debug manifest overlay `app/src/debug/AndroidManifest.xml`
-exports it, and `ManifestTest` guards both manifests; extras, first usable wins: `path` = an existing file, `photo` = file
-name in the pictures folder, `url`; plus an optional `title` for any of them):
+app can start an upload through the service directly; a share to `ShareActivity`, which stays exported as the
+share target, still uploads the shared picture without asking again, see `docs/decisions.md`. Only the debug
+manifest overlay `app/src/debug/AndroidManifest.xml` exports the service, and `ManifestTest` guards both
+manifests; extras, first usable wins: `path` = an existing file, `photo` = file name in the pictures folder,
+`url`; plus an optional `title` for any of them):
 
     adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
 
