@@ -187,6 +187,8 @@ most 3 pages within 30 s and shows what came in by then, also when a later page 
 answers with no usable picture says so ("The source returned no pictures.") with **Retry**. A failure reads as a sentence (no connection, the
 source is not responding, HTTP code, unreadable answer) with **Retry**. "My pictures" speaks of your pictures, not
 of a catalog, while it reads the folder ("Looking for your pictures…") and if that fails (`Source.local`).
+Empty, it leads with sharing a picture to InkEasel from a gallery or a file manager on the device (see
+"Share → InkEasel"); the folder path and an `adb push` line follow as secondary text for advanced users.
 
 The last good, non-empty list of each online tab is saved in the app's files (`files/catalog/<source>.json`).
 When the source fails later, that list is shown with a note above it ("Saved list from <date>. <reason>")

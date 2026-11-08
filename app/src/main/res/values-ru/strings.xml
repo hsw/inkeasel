@@ -19,7 +19,8 @@
     <string name="catalog_empty">Источник не вернул ни одной картинки.</string>
     <string name="local_loading">Поиск ваших картинок…</string>
     <string name="local_failed">Не удалось прочитать ваши картинки: %1$s</string>
-    <string name="local_empty">Папка пуста. Скопируйте сюда картинки:\n%1$s\n(с компьютера: adb push файл.jpg \"&lt;эта папка&gt;\")</string>
+    <string name="local_empty">Здесь пока нет картинок. Поделитесь картинкой с InkEasel из галереи или файлового менеджера на этом устройстве: она сохранится здесь и отправится на рамку.</string>
+    <string name="local_empty_advanced">Для опытных пользователей: картинки, скопированные в папку приложения, тоже появятся здесь, например с компьютера:\nadb push файл.jpg %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>

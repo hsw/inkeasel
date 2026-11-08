@@ -501,12 +501,16 @@ private fun CatalogGrid(
     onRetry: () -> Unit,
     onSend: (Picture) -> Unit,
 ) {
-    if (st.items.isEmpty() && local) {
-        Text(
-            stringResource(R.string.local_empty, LocalImages.adbDir(LocalContext.current)),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    if (st.items.isEmpty() && local) { // Share first; the folder and adb only for advanced users
+        Column {
+            Text(stringResource(R.string.local_empty), style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                stringResource(R.string.local_empty_advanced, LocalImages.adbDir(LocalContext.current)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     } else if (st.items.isEmpty()) { // a remote source answered with nothing usable
         Column {
             Text(stringResource(R.string.catalog_empty))
