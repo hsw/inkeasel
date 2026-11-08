@@ -55,11 +55,16 @@ release also carries one file with every language for offline search in all of t
 starter set, the top 1,000 with labels in every UI language (about 1.1 MB), which shows at once on first
 launch while the full catalog downloads and imports in the background. The download replaces the starter rows
 by Wikidata id in one transaction; the starter set stays if the download fails. A weekly update fetches only
-changed files (ETag).
+changed files (ETag). The export is `tools/catalog-export.py`; it keeps each Query Service result on disk and
+retries only the failed queries, and fails rather than write a partial catalog. Its files are the assets of
+one GitHub release with the fixed tag `catalog`, replaced on each update, and the app reads
+`https://github.com/hsw/inkeasel/releases/download/catalog/<file>`. Asset names are flat (`core.jsonl.gz`,
+`labels-<lang>.jsonl.gz`, `labels-all.jsonl.gz`), since a release asset cannot sit in a directory.
 Rejected: one labels file with all languages on the device (3.8 MB gzip, but about 16 MB of text and an
 estimated 30–40 MB in SQLite with the search index, too much for 8 GB TV boxes), querying Wikidata from
 devices for the catalog, a backend of our own (not needed; the format lets a server serve it later),
-committing the export weekly (repository growth).
+committing the export weekly (repository growth), `releases/latest` for the catalog (it is the newest APK
+release).
 
 ## 2026-11-08 — A multilingual app with no preferred language (*planned*)
 English is the base. The app is translated into the languages that both Wikipedia/Wikidata and Android

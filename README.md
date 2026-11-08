@@ -120,6 +120,9 @@ tablet).
   code, check it with `zipalign -c -P 16 -v 4 app-release.apk` (SDK build-tools) and that every `.so` has 16
   KB-aligned LOAD segments.
 - **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
+- **Catalog export** (planned delivery, not used by the app yet): `uv run --script tools/catalog-export.py
+  <outdir>` exports famous paintings from Wikidata and Commons as gzipped JSON Lines for the GitHub release
+  `catalog`.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
