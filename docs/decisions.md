@@ -3,6 +3,52 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — Search runs locally first, then on live Wikidata (*planned*)
+Search matches titles, aliases and artist names in every language stored on the device at once, whatever the
+UI language ("Джоконда", "La Gioconda" and "Mona Lisa" find the same picture). It uses an FTS4 table over our
+own normalised text (case folding, no diacritics, token prefixes, one typo on long tokens) in the framework
+SQLite, so no native SQLite library ships. When the local search finds little, or the query is in a language
+whose labels the device did not download, it asks Wikidata's full-text search (paintings with an image), then
+the sources' own search APIs.
+Rejected: FTS5 or the `unicode61` tokenizer (not guaranteed in the SQLite of minSdk 26 devices), a bundled
+SQLite (`.so` files and their 16 KB alignment checks), a search server of our own.
+
+## 2026-11-08 — The catalog is exported from Wikidata and shipped as files, without a server (*planned*)
+A script in the repository, run by hand or by a weekly CI job and never on devices, exports paintings with an
+image and at least 3 Wikipedia articles (about 9,600). Their metadata is CC0 and their files are on Commons,
+which hosts only free files, so there is no copyright or death-date filter. The script records each image's
+licence, attribution flag and credit, and the app shows the credit where attribution is required. The
+output is JSON Lines sorted by fame: a language-neutral core and one labels file per language (label,
+aliases, Wikipedia article title), published gzipped as GitHub Release assets rather than committed weekly.
+The device downloads the core, English and the UI language (about 1.2 MB), more languages on demand. The
+release also carries one file with every language for offline search in all of them. The APK carries a
+starter set, the top 1,000 with labels in every UI language (about 1.1 MB), which shows at once on first
+launch while the full catalog downloads and imports in the background. The download replaces the starter rows
+by Wikidata id in one transaction; the starter set stays if the download fails. A weekly update fetches only
+changed files (ETag).
+Rejected: one labels file with all languages on the device (3.8 MB gzip, but about 16 MB of text and an
+estimated 30–40 MB in SQLite with the search index, too much for 8 GB TV boxes), querying Wikidata from
+devices for the catalog, a backend of our own (not needed; the format lets a server serve it later),
+committing the export weekly (repository growth).
+
+## 2026-11-08 — A multilingual app with no preferred language (*planned*)
+English is the base. The app is translated into the languages that both Wikipedia/Wikidata and Android
+support, and none gets preference: Russian is one translation among the others. Picture titles and artists
+come from the catalog in the UI language, falling back to English, then to the original label. Translation
+feedback goes to GitHub Issues.
+Rejected: keeping English and Russian as the two first-class languages.
+
+## 2026-11-08 — One "Catalog" section, sorted by fame, with filters and search (*planned*)
+Every source (the Wikidata catalog and the live museum and Commons sources) is mapped to one schema in a local
+Room database and shown as one Catalog section instead of a tab per source. The default order is fame: the
+number of Wikipedia articles (Wikidata sitelinks), found for museum pictures through the museum's
+external-ID property on Wikidata; pictures without a match rank by the source's own signal, after the matched
+ones. The same painting from two sources is one entry, joined by its Wikidata id. Filters (museum, artist,
+period, movement, genre, orientation, fits the frame) and search narrow the same Paging 3 list; "Landscapes"
+becomes a genre filter. Navigation shrinks to Catalog, My pictures and Settings.
+Rejected: a tab per source (does not scale past a few sources and repeats the same painting), sorting by
+source order or at random by default.
+
 ## 2026-11-08 — What plays is logged only in debug builds
 Now-playing titles, poster keys (an artwork URL or the SHA-1 of the artwork pixels, also as `onFrame`) and the
 artwork addresses in a poster upload's error reach logcat only through `MediaLog`, which passes them as they
