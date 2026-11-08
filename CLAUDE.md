@@ -24,7 +24,9 @@ or deviation made in a change gets its entry in the same commit.
   both string tables have the same keys and placeholders.
 - CI (`.github/workflows/`): `ci.yml` runs the build above (a lint error fails it) plus `assembleRelease`;
   `release.yml` builds a signed APK for a `v*` tag with a read-only token and publishes it from a separate job
-  that runs no build.
+  that runs no build, marked latest (`releases/latest` is the app download). The catalog files live in a
+  separate release with the fixed tag `catalog` (built by `tools/catalog-export.py`, assets replaced in place,
+  never latest); no workflow touches it.
   Release signing comes only from `INKEASEL_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`;
   none set falls back to the debug key, a partial set fails a release packaging task (not release unit tests
   or lint). No keystore or secret in the repo.

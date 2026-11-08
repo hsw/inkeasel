@@ -94,4 +94,6 @@ jobs:
         run: |
           apk="$RUNNER_TEMP/inkeasel-$TAG.apk"
           mv "$RUNNER_TEMP/apk/app-release.apk" "$apk"
-          gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --verify-tag --title "InkEasel $TAG" --generate-notes
+          # an APK release is always "latest": releases/latest is the app download, while the catalog files
+          # live in the separate `catalog` release (never touched here, a v* tag only)
+          gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --verify-tag --latest --title "InkEasel $TAG" --generate-notes
