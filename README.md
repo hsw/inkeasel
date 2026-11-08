@@ -63,8 +63,8 @@ list and select it.
 - **Notification access** (optional, only for the now-playing poster): it lets the app read the
   media sessions of other apps (title and artwork of what plays). The app does not read notifications. There
   is no permission dialog for it: pressing the poster switch (or **Grant access**) in **Settings →
-  Permissions and features** opens the system settings, and the poster turns on once you come back with the
-  access granted:
+  Permissions and features** first shows what the access covers and what the app really reads; **Continue**
+  opens the system settings, and the poster turns on once you come back with the access granted:
   - phones and tablets open the system screen for InkEasel; on Android 13+ an APK installed outside a store
     may first need App info → ⋮ → "Allow restricted settings", and the section says so;
   - Android TV 12 and newer open the list of apps with notification access: select InkEasel there. The
@@ -236,21 +236,27 @@ Below the frame list, **Settings → Permissions and features** collects what th
 - **Now-playing poster**: an on/off switch and the state of the notification access it needs. The switch
   shows the poster as it works: on only while the poster is wanted (on by default, prefs `features`, key
   `poster`) **and** the access is granted (`PosterSwitch`). Pressing it while it is on switches the poster
-  off; while it is off with the access, on. Without the access the switch stays off: the press is remembered
-  (key `posterPending`) and starts the grant flow, and when the app comes back with the access granted the
-  poster is switched on. If the access is revoked from outside, the switch shows off but the stored wish
-  stays, so granting the access again brings the poster back. With the access missing (`ListenerAccessUi`):
-  - phones and tablets: "Grant access" (and the switch) open the system screen: the app's own page
+  off; while it is off with the access, on. Without the access the switch stays off, and the press (like
+  "Grant access") opens a disclosure panel under it first: the system grant covers all notifications, the app
+  ignores them and reads only the playing app's media-session title and artwork, and only the poster leaves
+  the device, to the frame over Bluetooth. "Cancel" and Back close it and change nothing (the focus goes back
+  to the switch or the button); "Continue" remembers the wish (key `posterPending`) and starts the grant flow,
+  and when the app comes back with the access granted the poster is switched on. Where no screen leads to the
+  access, the panel shows the adb command instead of "Continue". If the access is revoked from outside, the
+  switch shows off but the stored wish stays, so granting the access again brings the poster back. With the
+  access missing (`ListenerAccessUi`):
+  - phones and tablets: "Continue" opens the system screen: the app's own page
     (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not from a store)
     may find the switch there greyed out ("Restricted setting"): the section says so and offers App info,
     where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed the app);
   - Android TV 12+: the list of apps (InkEasel is in it, one D-pad press grants it), plus the menu path as a
     fallback: "If the remote cannot reach the switch there, go back and use Settings → Apps → Special app
     access → Notification access → InkEasel" (on Google TV 14 the D-pad cannot reach the rows of that list);
-  - Android TV 9–11 (the Shield): no such screen; "Grant access" opens Settings → Apps (the Settings home
+  - Android TV 9–11 (the Shield): no such screen; "Continue" opens Settings → Apps (the Settings home
     where that is missing) and the section names the same menu path;
   - Android TV 8, a low-RAM TV without the list screen (they hide the menu item), or any device where no
-    settings screen resolves: the adb command, in small print (see "Now playing → poster").
+    settings screen resolves: the adb command, in small print (see "Now playing → poster"), and in the
+    disclosure panel.
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
 
 Switching the poster off stops new posters at once and puts the default picture back if a poster is on
@@ -375,7 +381,8 @@ Code:
   was seen: a dismissed dialog does not count), and App info
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
   `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
-  the poster switch shows and does, with the wish kept until the access is granted (pure)
+  the poster switch shows and does, the disclosure's action, and the wish kept until the access is granted
+  (pure)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the

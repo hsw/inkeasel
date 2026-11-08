@@ -11,6 +11,9 @@ import android.provider.Settings
 import android.util.Log
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,7 +28,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -67,7 +73,8 @@ private const val TAG = "FrameSettings"
  * frames and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves
  * it and closes the dialog. Section "Permissions and features" ([FeaturesSection]): the Bluetooth permission
  * and the now-playing poster switch with its notification access; a change there applies at once. "Close"
- * and Back call [onCancel] and leave the frame as it was. The scan stops when the dialog closes and while
+ * and Back call [onCancel] and leave the frame as it was (Back closes the notification-access disclosure
+ * first, while it is open). The scan stops when the dialog closes and while
  * the app is in the background.
  *
  * The whole content scrolls as one column (a phone in landscape is about 380 dp tall), and "Close" sits at
@@ -86,6 +93,7 @@ fun FrameSettingsDialog(
     poster: Boolean,
     access: Boolean,
     onPoster: () -> PosterSwitch.Press,
+    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -97,7 +105,7 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, ble, poster, access, onPoster, sidePadding, onSelect, onCancel)
+                FrameSettings(selected, ble, poster, access, onPoster, onDisclosureConfirmed, sidePadding, onSelect, onCancel)
             }
         }
     }
@@ -129,6 +137,7 @@ private fun FrameSettings(
     poster: Boolean,
     access: Boolean,
     onPoster: () -> PosterSwitch.Press,
+    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
     sidePadding: Int,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
@@ -256,7 +265,7 @@ private fun FrameSettings(
             }
         }
         Spacer(Modifier.height(32.dp))
-        FeaturesSection(ble, poster, access, onPoster)
+        FeaturesSection(ble, poster, access, onPoster, onDisclosureConfirmed)
     }
 }
 
@@ -264,15 +273,22 @@ private fun FrameSettings(
  * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
  * asks, "App info"; the frame list above names the path to it then), and the now-playing [poster] switch
  * with the notification [access] it needs ([ListenerAccessUi]). The switch shows the poster as it works
- * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`), and without the access that
- * starts the grant flow: the system screen [ListenerAccessUi.grant] names, while the section says the menu
- * path on TV (or the adb command where no screen leads to the switch). The access itself is read again by
- * the view model on resume, the screens here.
+ * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`). Without the access, the switch
+ * and "Grant access" both open the [Disclosure] first; its "Continue" calls [onDisclosureConfirmed]
+ * (`MainViewModel.confirmDisclosure`) and starts the grant flow: the system screen [ListenerAccessUi.grant]
+ * names, while the section says the menu path on TV (or the adb command where no screen leads to the switch).
+ * The access itself is read again by the view model on resume, the screens here.
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
  */
 @Composable
-private fun FeaturesSection(ble: BleAccess, poster: Boolean, access: Boolean, onPoster: () -> PosterSwitch.Press) {
+private fun FeaturesSection(
+    ble: BleAccess,
+    poster: Boolean,
+    access: Boolean,
+    onPoster: () -> PosterSwitch.Press,
+    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
+) {
     val ctx = LocalContext.current
     val tv = remember { ListenerAccess.tv(ctx) }
     val lowRam = remember { ListenerAccess.lowRam(ctx) }
@@ -285,9 +301,36 @@ private fun FeaturesSection(ble: BleAccess, poster: Boolean, access: Boolean, on
         onPauseOrDispose {}
     }
     val ui = ListenerAccessUi.of(access, direct, apps, Build.VERSION.SDK_INT, tv, lowRam, sideloaded)
-    val openAccess: () -> Unit = { ui.grant?.let { ListenerAccess.open(ctx, it, tv) } }
-    val pressPoster: () -> Unit = { if (onPoster() == PosterSwitch.Press.GRANT) openAccess() }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
+
+    // The disclosure is open while it knows what opened it, and gives the focus back there when it closes.
+    var disclosedFrom by remember { mutableStateOf<DisclosureOpener?>(null) }
+    var refocus by remember { mutableStateOf<DisclosureOpener?>(null) }
+    val posterFocus = remember { FocusRequester() }
+    val grantFocus = remember { FocusRequester() }
+    val closeDisclosure: () -> Unit = {
+        refocus = disclosedFrom
+        disclosedFrom = null
+    }
+    val pressPoster: () -> Unit = { if (onPoster() == PosterSwitch.Press.DISCLOSE) disclosedFrom = DisclosureOpener.SWITCH }
+    val pressGrant: () -> Unit = { disclosedFrom = DisclosureOpener.BUTTON }
+    val confirm: () -> Unit = {
+        val grant = ui.grant
+        if (onDisclosureConfirmed(grant != null) == PosterSwitch.Confirm.SET_PENDING_AND_GRANT && grant != null) {
+            ListenerAccess.open(ctx, grant, tv)
+        }
+        closeDisclosure()
+    }
+    BackHandler(enabled = disclosedFrom != null, onBack = closeDisclosure)
+    LaunchedEffect(access) { if (access && disclosedFrom != null) closeDisclosure() } // granted meanwhile
+    LaunchedEffect(refocus) {
+        val to = refocus ?: return@LaunchedEffect
+        withFrameNanos {}
+        // "Grant access" is gone once the access is granted: the switch takes the focus then
+        val moved = to == DisclosureOpener.BUTTON && runCatching { grantFocus.requestFocus() }.isSuccess
+        if (!moved) runCatching { posterFocus.requestFocus() }
+        refocus = null
+    }
 
     Text(stringResource(R.string.settings_features), style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(8.dp))
@@ -302,7 +345,7 @@ private fun FeaturesSection(ble: BleAccess, poster: Boolean, access: Boolean, on
     ListItem(
         selected = false,
         onClick = pressPoster,
-        modifier = Modifier.onTap(pressPoster),
+        modifier = Modifier.focusRequester(posterFocus).onTap(pressPoster),
         headlineContent = { Text(stringResource(R.string.feature_poster)) },
         supportingContent = {
             Column {
@@ -321,11 +364,72 @@ private fun FeaturesSection(ble: BleAccess, poster: Boolean, access: Boolean, on
     )
     if (ui.openButton) {
         Spacer(Modifier.height(8.dp))
-        Button(onClick = openAccess, modifier = Modifier.onTap(openAccess)) { Text(stringResource(R.string.access_open)) }
+        Button(onClick = pressGrant, modifier = Modifier.focusRequester(grantFocus).onTap(pressGrant)) {
+            Text(stringResource(R.string.access_open))
+        }
+    }
+    disclosedFrom?.let { from ->
+        Spacer(Modifier.height(8.dp))
+        // keyed by the opener, so opening it again from the other element moves the focus into it again
+        key(from) { Disclosure(PosterSwitch.confirm(ui.grant != null), confirm, closeDisclosure) }
     }
     if (ui.restrictedHint) {
         Spacer(Modifier.height(8.dp))
         SectionRow(title = null, text = stringResource(R.string.access_restricted), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
+    }
+}
+
+/** What opened the [Disclosure]: the poster switch or "Grant access". */
+private enum class DisclosureOpener { SWITCH, BUTTON }
+
+/**
+ * The prominent disclosure before notification access: what the system grant covers (all notifications),
+ * what the app really reads (the playing app's media-session title and artwork) and what leaves the device
+ * (only the poster, to the frame over Bluetooth). It takes the D-pad focus when it opens. "Continue"
+ * ([onContinue]) is the affirmative action; where no system screen leads to the access ([confirm] is
+ * [PosterSwitch.Confirm.SHOW_ADB_HINT]) the adb command takes its place. "Cancel" ([onCancel]) changes nothing.
+ */
+@OptIn(ExperimentalFoundationApi::class) // BringIntoViewRequester
+@Composable
+private fun Disclosure(confirm: PosterSwitch.Confirm, onContinue: () -> Unit, onCancel: () -> Unit) {
+    val ctx = LocalContext.current
+    val focus = remember { FocusRequester() }
+    val inView = remember { BringIntoViewRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos {}
+        runCatching { focus.requestFocus() }
+        withFrameNanos {}
+        inView.bringIntoView() // the whole panel, not only the focused button, once it fits on the screen
+    }
+    Column(
+        Modifier.fillMaxWidth()
+            .bringIntoViewRequester(inView)
+            .border(1.dp, MaterialTheme.colorScheme.border, RoundedCornerShape(12.dp)) // a fill would hide the buttons' own
+            .padding(16.dp)
+    ) {
+        Text(stringResource(R.string.access_disclosure_title), style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(Txt(R.string.access_disclosure_text, Txt(R.string.app_name)).text(), style = MaterialTheme.typography.bodyMedium)
+        val adb = confirm == PosterSwitch.Confirm.SHOW_ADB_HINT
+        if (adb) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!adb) {
+                Button(onClick = onContinue, modifier = Modifier.focusRequester(focus).onTap(onContinue)) {
+                    Text(stringResource(R.string.access_disclosure_continue))
+                }
+            }
+            Button(onClick = onCancel, modifier = (if (adb) Modifier.focusRequester(focus) else Modifier).onTap(onCancel)) {
+                Text(stringResource(R.string.access_disclosure_cancel))
+            }
+        }
     }
 }
 

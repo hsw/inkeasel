@@ -16,12 +16,22 @@ project).
 it, since a TV app must not launch a browser (TV-WB).
 Rejected: a QR code (needs a new dependency such as zxing), a WebView.
 
-## 2026-11-08 — Prominent disclosure before notification access (*planned*)
+## 2026-11-08 — Prominent disclosure before notification access
 Every way into the notification-access grant (the poster switch and the "Grant access" button) first shows an
 in-app panel that says what the system grant covers (all notifications) and what the app actually reads (the
 playing app's media-session title and artwork; notifications are ignored), and that only the poster leaves
 the device, to the user's frame over Bluetooth. "Continue" is the affirmative action Play's User Data policy
-requires; "Cancel" and Back change nothing.
+requires; "Cancel" and Back change nothing. The text also says that artwork given as a web link is downloaded
+from there, since that is a network request the user should not be surprised by.
+"Continue" from either entry point remembers the poster wish as pending (the access serves only the poster),
+so "Grant access" now switches the poster on after the grant as the switch does; a press of the switch alone
+no longer stores anything. The panel is inline in the settings, under the poster row, rather than a second
+dialog: the settings are already a dialog, and an inline panel keeps one Back handler and one focus path
+(focus moves to "Continue" when it opens and back to the element that opened it when it closes). Where no
+system screen leads to the access (adb-only TVs) the panel shows the adb command instead of "Continue", and
+nothing is stored. Rejected: a separate `AlertDialog` (nested dialogs on TV, focus return harder), showing the
+disclosure only once (the grant may be asked for again after a revoke, and the disclosure belongs right
+before each request).
 
 ## 2026-11-08 — Uploads: poster in-process, manual uploads in a foreground service
 Automatic uploads (now-playing poster, revert to the default picture) run in the app process without a

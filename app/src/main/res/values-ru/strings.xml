@@ -60,6 +60,10 @@
     <string name="access_menu_only">Где включить: %1$s.</string>
     <string name="access_menu_fallback">Если пультом не добраться до переключателя, вернитесь и откройте %1$s.</string>
     <string name="access_restricted">Если переключатель там неактивен («Ограниченная настройка»), сначала откройте «О приложении» → ⋮ → «Разрешить ограниченные настройки».</string>
+    <string name="access_disclosure_title">Перед выдачей доступа к уведомлениям</string>
+    <string name="access_disclosure_text">Android выдаёт этот доступ ко всем вашим уведомлениям. Приложение %1$s их не читает: оно берёт только то, что играющее приложение сообщает о том, что играет, — название и обложку (обложку, заданную веб-ссылкой, скачивает по ней). С устройства уходит только постер — по Bluetooth на вашу рамку.</string>
+    <string name="access_disclosure_continue">Продолжить</string>
+    <string name="access_disclosure_cancel">Отмена</string>
 
     <!-- frame advertisement (FrameAdvert.describe) -->
     <string name="advert_colour_panel">%1$s, панель %2$s</string>

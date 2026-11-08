@@ -143,8 +143,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The poster switch was pressed ([PosterSwitch.press]): switched off or on, or, without the access, the
-     * wish is kept as pending and [PosterSwitch.Press.GRANT] tells the caller to start the grant flow.
+     * The poster switch was pressed ([PosterSwitch.press]): switched off or on, or, without the access,
+     * nothing changes and [PosterSwitch.Press.DISCLOSE] tells the caller to show the disclosure.
      */
     fun pressPoster(): PosterSwitch.Press {
         val press = PosterSwitch.press(posterEnabled, listenerAccess)
@@ -155,9 +155,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 setPoster(false)
             }
             PosterSwitch.Press.TURN_ON -> setPoster(true)
-            PosterSwitch.Press.GRANT -> features.posterPending = true
+            PosterSwitch.Press.DISCLOSE -> Unit
         }
         return press
+    }
+
+    /**
+     * The disclosure's affirmative action ([PosterSwitch.confirm]): with a system screen for the grant
+     * ([grantAvailable]) the wish is kept as pending and [PosterSwitch.Confirm.SET_PENDING_AND_GRANT] tells
+     * the caller to open it. Cancelling the disclosure does not call this and changes nothing.
+     */
+    fun confirmDisclosure(grantAvailable: Boolean): PosterSwitch.Confirm {
+        val confirm = PosterSwitch.confirm(grantAvailable)
+        Log.i(TAG, "notification access disclosure confirmed: $confirm")
+        if (confirm == PosterSwitch.Confirm.SET_PENDING_AND_GRANT) features.posterPending = true
+        return confirm
     }
 
     /** The app is back in front: read the access again and switch on a poster that waited for it. */
@@ -368,6 +380,7 @@ fun App(
                     poster = vm.posterOn,
                     access = vm.listenerAccess,
                     onPoster = vm::pressPoster,
+                    onDisclosureConfirmed = vm::confirmDisclosure,
                     onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )
