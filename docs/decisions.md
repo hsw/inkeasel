@@ -3,6 +3,16 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — Back from the catalog content goes to the tabs first
+Back with the focus on a card or a Retry button moves the focus to the selected tab and scrolls the grid to
+its first row; only the next Back leaves the app. That is Google's TV navigation guidance for a top
+navigation, and before it Back several rows down closed the app at once. Phones and tablets get the same:
+a grid scrolled down by touch scrolls back up on Back, without moving the focus onto a tab (it was not in the
+content). The rule is pure (`CatalogBack`); the settings dialog, its disclosure panel and the share flow keep
+their own Back.
+Rejected: Back leaving the app from anywhere (the old behaviour), scrolling to the top without moving the
+focus (the focused card would scroll out of view and the tabs would still be rows away).
+
 ## 2026-11-08 — Search runs locally first, then on live Wikidata (*planned*)
 Search matches titles, aliases and artist names in every language stored on the device at once, whatever the
 UI language ("Джоконда", "La Gioconda" and "Mona Lisa" find the same picture). It uses an FTS4 table over our

@@ -8,6 +8,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,17 +31,24 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -357,25 +365,39 @@ fun App(
 ) {
     // the cards take the chosen frame's shape; the frame this app was built with while none is chosen
     val aspect = (vm.selected?.lookup?.formatOrNull ?: FrameFormats.DEFAULT).aspect
+    val grid = rememberLazyGridState()
+    val tabFocus = remember { FocusRequester() }
+    var contentFocused by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             // the width outside the layout padding (inside the system bars) picks the columns and the padding
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
-                    Header(vm, layout.splitHeader)
+                    Header(vm, layout.splitHeader, tabFocus)
                     Spacer(Modifier.height(16.dp))
                     LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
-                    when (val st = vm.catalogs[vm.tab] ?: CatalogState.Loading) {
-                        CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
-                        is CatalogState.Failed -> Column {
-                            Text(st.reason.text())
-                            Spacer(Modifier.height(12.dp))
-                            Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
-                        }
-                        is CatalogState.Loaded -> Column {
-                            if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
-                            CatalogGrid(st, aspect, layout, local = vm.tab == vm.localTab, onRetry = { vm.load(vm.tab) }, onSend)
+                    val st = vm.catalogs[vm.tab] ?: CatalogState.Loading
+                    // Back from the content goes to the tabs first ([CatalogBack]); the settings dialog has its own
+                    val gridShown = st is CatalogState.Loaded && st.items.isNotEmpty()
+                    val back = CatalogBack.of(contentFocused, scrolledDown = gridShown && grid.canScrollBackward)
+                    BackHandler(enabled = back.taken && !vm.settingsOpen) {
+                        if (back.focusTab) runCatching { tabFocus.requestFocus() } // before the scroll drops the focused card
+                        if (back.scrollToTop) scope.launch { grid.scrollToItem(0) }
+                    }
+                    Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
+                        when (st) {
+                            CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
+                            is CatalogState.Failed -> Column {
+                                Text(st.reason.text())
+                                Spacer(Modifier.height(12.dp))
+                                Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
+                            }
+                            is CatalogState.Loaded -> Column {
+                                if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
+                                CatalogGrid(st, aspect, layout, grid, local = vm.tab == vm.localTab, onRetry = { vm.load(vm.tab) }, onSend)
+                            }
                         }
                     }
                 }
@@ -400,16 +422,21 @@ fun App(
 /**
  * The app name, the source tabs and the frame button: one row on a wide screen; on a narrow one ([split]) the
  * tabs go on their own row under the other two (the tv-material `TabRow` scrolls by itself when they do not fit).
+ * [tabFocus] reaches the selected tab ([CatalogBack]).
  */
 @Composable
-private fun Header(vm: MainViewModel, split: Boolean) {
+private fun Header(vm: MainViewModel, split: Boolean, tabFocus: FocusRequester) {
     val title = @Composable {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
     }
     val tabs = @Composable {
         TabRow(selectedTabIndex = vm.tab) {
             vm.sources.forEachIndexed { i, s ->
-                Tab(selected = vm.tab == i, onFocus = { vm.selectTab(i) }, modifier = Modifier.onTap { vm.selectTab(i) }) {
+                Tab(
+                    selected = vm.tab == i,
+                    onFocus = { vm.selectTab(i) },
+                    modifier = (if (vm.tab == i) Modifier.focusRequester(tabFocus) else Modifier).onTap { vm.selectTab(i) },
+                ) {
                     Text(s.name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), maxLines = 1)
                 }
             }
@@ -469,6 +496,7 @@ private fun CatalogGrid(
     st: CatalogState.Loaded,
     aspect: Float,
     layout: CatalogLayout,
+    grid: LazyGridState,
     local: Boolean,
     onRetry: () -> Unit,
     onSend: (Picture) -> Unit,
@@ -487,6 +515,7 @@ private fun CatalogGrid(
         }
     } else LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns),
+        state = grid,
         contentPadding = PaddingValues(vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
         verticalArrangement = Arrangement.spacedBy(layout.gap.dp),

@@ -170,7 +170,12 @@ asked twice); the layout follows the window width:
 
 The widest bucket keeps the Android TV overscan margins (48 × 27 dp); a landscape tablet falls into it too.
 
-The tabs scroll sideways when they do not fit. The app draws behind the status and navigation bars
+The tabs scroll sideways when they do not fit. Back from the content (a card, a **Retry** button) first
+moves the focus to the selected tab and scrolls the grid back to its first row; the next Back leaves the app.
+A grid scrolled down by touch goes back to its first row the same way. The settings and the disclosure panel
+close with Back as before (`CatalogBack`).
+
+The app draws behind the status and navigation bars
 (Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
 or button navigation; the settings dialog does the same. A TV has no bars, so nothing changes there.
 
@@ -440,6 +445,7 @@ Code:
 - `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
   sends a waiting shared picture once the permission is granted and a frame chosen
 - `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
+- `CatalogBack.kt`: what Back does on the catalog screen before it leaves the app (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
   permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
   (`save`), the size cap and the pending-share rule (pure)
