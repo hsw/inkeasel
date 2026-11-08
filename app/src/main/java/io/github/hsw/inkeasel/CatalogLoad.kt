@@ -22,6 +22,9 @@ sealed interface CatalogState {
     data class Failed(val reason: Txt) : CatalogState
 
     companion object {
+        /** The text of [Loading]: the [Source.local] tab reads the user's pictures, not a catalog. */
+        fun loadingText(local: Boolean): Txt = Txt(if (local) R.string.local_loading else R.string.catalog_loading)
+
         /** What a tab shows while it (re)loads after [previous]: a stale list stays, marked as retrying. */
         fun reloading(previous: CatalogState?): CatalogState =
             if (previous is Loaded && previous.staleSince != null) previous.copy(retrying = true) else Loading
@@ -37,7 +40,8 @@ sealed interface CatalogState {
  * short ([Listing.complete] false) only when nothing is saved yet or it is not smaller than the saved one, so
  * it never shrinks the fallback; an empty answer is shown as is but never saved (see [CatalogCache.write]); on
  * a failure the saved list is shown with the reason ([CatalogState.failed]). Without one (the local folder,
- * read from disk anyway) nothing is saved or read. Pure: [now] and [log] are injected.
+ * read from disk anyway) nothing is saved or read. A [Source.local] failure is about the user's pictures, not
+ * the catalog ([CatalogError] speaks of a source). Pure: [now] and [log] are injected.
  */
 suspend fun loadCatalog(src: Source, cache: CatalogCache?, now: () -> Long, log: (String) -> Unit = {}): CatalogState = try {
     val got = src.load()
@@ -51,7 +55,7 @@ suspend fun loadCatalog(src: Source, cache: CatalogCache?, now: () -> Long, log:
     throw e
 } catch (e: Exception) {
     log("catalog ${src.id} failed: $e")
-    CatalogState.failed(CatalogError.of(e), cache?.read(src.id))
+    CatalogState.failed(if (src.local) e.userText(R.string.local_failed) else CatalogError.of(e), cache?.read(src.id))
 }
 
 /** A tab that loads again when it gets focus: never loaded, failed, or showing a saved list (not while it retries). */

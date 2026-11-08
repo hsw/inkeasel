@@ -102,7 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val loads = mutableMapOf<Int, Job>()
 
     /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
-    val localTab = sources.indexOfFirst { it is LocalImages }
+    val localTab = sources.indexOfFirst { it.local }
     private var localReload: Job? = null
     private val localWatcher: FileObserver? = (sources.getOrNull(localTab) as? LocalImages)?.let { src ->
         val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO or
@@ -388,7 +388,7 @@ fun App(
                     }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
                         when (st) {
-                            CatalogState.Loading -> Text(stringResource(R.string.catalog_loading))
+                            CatalogState.Loading -> Text(CatalogState.loadingText(local = vm.tab == vm.localTab).text())
                             is CatalogState.Failed -> Column {
                                 Text(st.reason.text())
                                 Spacer(Modifier.height(12.dp))

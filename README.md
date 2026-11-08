@@ -185,7 +185,8 @@ Tabs: "My pictures" (the app's own folder on the device), "Paintings" (Cleveland
 "Landscapes" (Wikimedia Commons featured pictures). A list request gives up after 20 s; Commons reads at
 most 3 pages within 30 s and shows what came in by then, also when a later page fails. A source that
 answers with no usable picture says so ("The source returned no pictures.") with **Retry**. A failure reads as a sentence (no connection, the
-source is not responding, HTTP code, unreadable answer) with **Retry**.
+source is not responding, HTTP code, unreadable answer) with **Retry**. "My pictures" speaks of your pictures, not
+of a catalog, while it reads the folder ("Looking for your pictures…") and if that fails (`Source.local`).
 
 The last good, non-empty list of each online tab is saved in the app's files (`files/catalog/<source>.json`).
 When the source fails later, that list is shown with a note above it ("Saved list from <date>. <reason>")

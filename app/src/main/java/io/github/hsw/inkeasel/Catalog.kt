@@ -52,6 +52,13 @@ interface Source {
 
     /** The tab title. */
     val name: Txt
+
+    /**
+     * Pictures on the device rather than a catalog ([LocalImages]): never cached, and its tab speaks of the
+     * user's pictures, not of a catalog, while it loads or when it fails ([CatalogState.loadingText], [loadCatalog]).
+     */
+    val local: Boolean get() = false
+
     suspend fun load(): Listing
 }
 
@@ -255,6 +262,7 @@ object CommonsLandscapes : Source {
 class LocalImages(private val app: Application) : Source {
     override val id = "local"
     override val name = Txt(R.string.tab_local)
+    override val local = true
 
     companion object {
         private const val DIR = "pictures"

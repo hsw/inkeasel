@@ -21,8 +21,8 @@ class CatalogLoadTest {
     private fun pic(n: Int) = Picture("t:$n", "Picture $n", "", "https://example.org/$n-s.jpg", "https://example.org/$n.jpg")
     private fun pics(n: Int) = (1..n).map(::pic)
 
-    /** A source that answers [answer] (or throws it). */
-    private class Fake(val answer: () -> Listing) : Source {
+    /** A source that answers [answer] (or throws it); [local] like "My pictures". */
+    private class Fake(override val local: Boolean = false, val answer: () -> Listing) : Source {
         override val id = "fake"
         override val name = Txt(R.string.tab_paintings)
         override suspend fun load() = answer()
@@ -49,6 +49,18 @@ class CatalogLoadTest {
             CatalogState.Failed(offline),
             loadCatalog(Fake { throw UnknownHostException("example.org") }, null, { 100 }),
         )
+    }
+
+    @Test
+    fun localTab_loadingAndFailure_speakOfThePictures_notOfACatalog() = runTest {
+        assertEquals(Txt(R.string.local_loading), CatalogState.loadingText(local = true))
+        assertEquals(Txt(R.string.catalog_loading), CatalogState.loadingText(local = false))
+        assertEquals(
+            CatalogState.Failed(Txt(R.string.local_failed, "Permission denied")),
+            loadCatalog(Fake(local = true) { throw IOException("Permission denied") }, null, { 100 }),
+        )
+        val own = Txt(R.string.share_err_save) // a text of its own is kept
+        assertEquals(CatalogState.Failed(own), loadCatalog(Fake(local = true) { throw TxtException(own) }, null, { 100 }))
     }
 
     @Test

@@ -22,6 +22,8 @@
     <string name="catalog_stale">Saved list from %1$s. %2$s</string>
     <string name="catalog_retrying">Retrying…</string>
     <string name="catalog_empty">The source returned no pictures.</string>
+    <string name="local_loading">Looking for your pictures…</string>
+    <string name="local_failed">Could not read your pictures: %1$s</string>
     <string name="local_empty">The folder is empty. Copy pictures here:\n%1$s\n(from a computer: adb push picture.jpg \"&lt;this folder&gt;\")</string>
 
     <!-- settings: frame -->
