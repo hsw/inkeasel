@@ -1,10 +1,12 @@
 package io.github.hsw.inkeasel.nowplaying
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -49,14 +51,15 @@ class FrameControllerTest {
         }
     }
 
-    /** A request in the model of `UploadService` ([Rig.service]). */
+    /** A request in the upload engine ([Rig.service]). */
     private data class Req(val key: String, val auto: Boolean, val stamp: Long, val source: Source? = null)
 
     /**
      * Test rig: uploads are recorded; by default each one reports success at once (`result = true`). With
-     * [service] set, automatic uploads go instead into a model of `UploadService` (one upload at a time from
-     * an [UploadQueue], automatic requests stamped with [FrameController.manualUploads] and dropped before
-     * upload once superseded), driven by [manual], [startNext] and [complete].
+     * [service] set, automatic uploads go instead into the real [UploadEngineCore] (one upload at a time,
+     * automatic requests stamped with [FrameController.manualUploads] and dropped before upload once
+     * superseded), driven step by step by [manual], [startNext] and [complete]: the worker waits at the
+     * DrawGate until [startNext] lets it take the next request.
      */
     private inner class Rig(scope: TestScope, onFrame: String? = null, default: Art? = Art.File(photo)) {
         val ts = scope
@@ -66,38 +69,66 @@ class FrameControllerTest {
         val logs = mutableListOf<String>()
         var result: Boolean? = true
         var service = false
-        val queue = UploadQueue<Req> { it.auto }
         var inFlight: Req? = null
         val dropped = mutableListOf<String>()
         var frame = true // a frame is chosen in the settings
         var poster = true // the poster switch in the settings
+        private val gate = Channel<Unit>() // startNext lets the worker past its DrawGate wait
+        private var atGate = false
+        private var finished: CompletableDeferred<Boolean>? = null
         val c: FrameController = FrameController(scope.backgroundScope, { art, title, key ->
             uploads += Upload(scope.testScheduler.currentTime, art, title, key)
             if (service) {
-                queue.offer(Req(key, auto = true, stamp = c.manualUploads))?.let { c.onUploadResult(it.key, false) }
+                engine.submit(Req(key, auto = true, stamp = c.manualUploads), hold = true)
             } else {
                 result?.let { ok -> c.onUploadResult(key, ok) }
             }
         }, defaults, state, { logs += it }, frameSelected = { frame }, posterEnabled = { poster })
+        val engine = UploadEngineCore<Req>(
+            scope = scope.backgroundScope,
+            isAuto = { it.auto },
+            awaitIdle = {
+                atGate = true
+                try {
+                    gate.receive()
+                } finally {
+                    atGate = false
+                }
+            },
+            upload = { req ->
+                inFlight = req
+                val ok = CompletableDeferred<Boolean>().also { finished = it }.await()
+                inFlight = null
+                if (!ok) error("upload failed")
+            },
+            isStale = { c.isStale(it.auto, it.stamp, it.key) },
+            onDone = { req, ok, _ -> if (req.auto) c.onUploadResult(req.key, ok) else if (ok) c.onManualUpload(req.source!!) },
+            onDropped = { req, why ->
+                if (why == UploadEngineCore.Drop.STALE) dropped += req.key
+                if (req.auto) c.onUploadResult(req.key, false)
+            },
+            onIdle = {},
+        )
 
-        /** The user taps a picture: a manual request joins the service's queue. */
-        fun manual(src: Source) = assertNull(queue.offer(Req(src.manualKey(), auto = false, stamp = 0, source = src)))
+        /** The user taps a picture: a manual request joins the engine's queue. */
+        fun manual(src: Source) = assertNull(engine.submit(Req(src.manualKey(), auto = false, stamp = 0, source = src), hold = true))
 
-        /** The service takes the next request into flight (dropping superseded automatic ones); its key. */
+        /** The engine takes the next request into flight (dropping superseded automatic ones); its key. */
         fun startNext(): String? {
+            ts.runCurrent()
             check(inFlight == null)
-            inFlight = queue.poll(stale = { c.isStale(it.auto, it.stamp, it.key) }) {
-                dropped += it.key
-                c.onUploadResult(it.key, false)
-            }
+            if (!atGate) return null // nothing queued
+            check(gate.trySend(Unit).isSuccess)
+            ts.runCurrent()
             return inFlight?.key
         }
 
         /** The request in flight finishes. */
         fun complete(ok: Boolean = true) {
-            val req = checkNotNull(inFlight)
-            inFlight = null
-            if (req.auto) c.onUploadResult(req.key, ok) else if (ok) c.onManualUpload(req.source!!)
+            checkNotNull(inFlight)
+            checkNotNull(finished).complete(ok)
+            finished = null
+            ts.runCurrent()
         }
 
         fun play(key: String = k1, pkg: String = video, title: String = "Film", session: String? = null) =

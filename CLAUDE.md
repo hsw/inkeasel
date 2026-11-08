@@ -4,6 +4,8 @@ Android app (Kotlin, Compose; `androidx.tv.material3`) that uploads pictures and
 e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets and phones (touch via
 `Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/`;
 implementation plans: `docs/plans/`. Both are local and git-ignored: never stage, commit or force-add them.
+Design decisions, with reasons and rejected options: `docs/decisions.md` (committed, newest first); a decision
+or deviation made in a change gets its entry in the same commit.
 
 ## Build and test
 - `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug`

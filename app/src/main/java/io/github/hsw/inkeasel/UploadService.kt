@@ -12,30 +12,21 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import android.widget.Toast
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.FrameController
 import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import io.github.hsw.inkeasel.nowplaying.Source
 import io.github.hsw.inkeasel.nowplaying.UploadOutcome
-import io.github.hsw.inkeasel.nowplaying.UploadQueue
 import io.github.hsw.inkeasel.nowplaying.Uploader
 import java.io.File
 
 /**
- * Sends one image to the frame in the background, so playback in another app (e.g. a video player) is not
- * interrupted — the upload is Bluetooth only and never brings UI forward. Start it with
- * `startForegroundService`; it is a transient foreground service: it uploads, shows a short toast for a
- * manual upload, then stops itself, so nothing stays resident when idle.
+ * Keeps the process in the foreground while an upload runs, so playback in another app (e.g. a video player)
+ * is not interrupted — the upload is Bluetooth only and never brings UI forward. Start it with
+ * `startForegroundService`; it is a transient foreground service: it hands the request to the in-process
+ * [UploadEngine] as held work, and stops once the engine has reported the last held request
+ * ([UploadEngine.onIdle]), so nothing stays resident when idle. The queue, the worker, the toasts and the
+ * reports live in the engine, not here.
  *
  * Trigger by intent (keeps the current app on screen):
  *   adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo seaworld-abudhabi
@@ -46,41 +37,28 @@ import java.io.File
  * A manual upload (the default) toasts and, on success, becomes the frame's default picture
  * (`FrameController.onManualUpload`). `auto=true` (boolean) marks an upload started by the
  * `FrameController` (a now-playing poster or the revert to the default): no toast, log only, and the
- * result goes to `FrameController.onUploadResult(key, ok)` with the `key` extra. Requests queue in an
- * [UploadQueue]: a newer one replaces a queued one of the same kind (a replaced automatic one is reported
- * as failed), an automatic request never replaces a manual one, and a manual one goes first. An automatic
- * request carries the controller's `stamp` ([FrameController.manualUploads] when it was decided); if a manual
- * upload succeeded since, it is dropped before upload and reported as failed, so a revert or a poster queued
- * behind a manual upload never covers the user's pick. A poster still queued when the poster is switched off
- * in the settings is dropped the same way, and so is a revert still queued when the film playing has its
- * poster on the frame again (the switch went back on, or the film resumed).
+ * result goes to `FrameController.onUploadResult(key, ok)` with the `key` extra. An automatic request carries
+ * the controller's `stamp` ([FrameController.manualUploads] when it was decided). The engine's queue rules
+ * ([io.github.hsw.inkeasel.nowplaying.UploadEngineCore]) decide what is replaced or dropped as stale.
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): every request is refused at
  * once, before Bluetooth is touched ([refuseNoFrame]). Without the Bluetooth permissions ([BlePermissions])
  * it is not started at all: the app asks for them before a manual upload, and [autoUploader] reports an
- * automatic one as failed. A picture is rendered in the chosen frame's format
- * ([FrameFormats]: size, inks, packing).
+ * automatic one as failed.
  *
- * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]): the worker waits
- * until the frame has finished drawing the previous picture before it takes the next request, also when the
- * previous upload ran in an earlier service start. The wait is not a failure; a manual request that has to
- * wait toasts how long.
+ * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]); a manual request
+ * that has to wait toasts how long.
  *
  * It stops with `stopSelfResult(lastStartId)`, so a start accepted by the system but not yet delivered to
- * [onStartCommand] keeps it running. If it is destroyed anyway, every request still owed a result (in flight
- * or queued) is reported as failed in [onDestroy], so the `FrameController` can retry or reconcile.
+ * [onStartCommand] keeps it running. [onDestroy] reports nothing: the engine is the only reporter, and a
+ * process death takes the controller with it.
  */
 class UploadService : Service() {
-    private class Req(val source: Source, val art: Art, val auto: Boolean, val key: String?, val stamp: Long)
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val queue = UploadQueue<Req> { it.auto } // one upload at a time
-    private val wake = Channel<Unit>(Channel.CONFLATED) // a request was queued
-    private var worker: Job? = null // main thread only
     private var lastStartId = 0 // the latest start delivered to onStartCommand; main thread only
-    private val frame by lazy { FrameClient(this) }
+    private val engine by lazy { UploadEngine.get(this) }
     private val frames by lazy { FrameStore(this) }
     private val controller by lazy { FrameControllers.get(applicationContext) }
+    private val idle: () -> Unit = { stopIfIdle() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -91,6 +69,7 @@ class UploadService : Service() {
                 NotificationChannel(CH_ID, getString(R.string.upload_channel), NotificationManager.IMPORTANCE_LOW)
             )
         }
+        engine.onIdle = idle
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -116,15 +95,10 @@ class UploadService : Service() {
             stopIfIdle()
             return START_NOT_STICKY
         }
-        if (!auto) frame.gate.waitMs().takeIf { it > 0 }?.let { // known only when no upload is in flight
+        if (!auto) engine.drawWaitMs().takeIf { it > 0 }?.let { // known only when no upload is in flight
             toast(getString(R.string.upload_wait, ((it + 999) / 1000).toInt()))
         }
-        queue.offer(req)?.let { replaced ->
-            Log.i(TAG, "replaced by a newer request: ${replaced.source.title} (key=${replaced.key})")
-            if (replaced.auto) report(replaced, ok = false)
-        }
-        wake.trySend(Unit)
-        ensureWorker()
+        engine.submit(req, hold = true) // a replaced request is reported by the engine
         return START_NOT_STICKY
     }
 
@@ -142,7 +116,7 @@ class UploadService : Service() {
         else toast(getString(R.string.upload_no_frame))
     }
 
-    private fun parse(intent: Intent, auto: Boolean, key: String?, stamp: Long): Req? {
+    private fun parse(intent: Intent, auto: Boolean, key: String?, stamp: Long): UploadEngine.Req? {
         val resolve = { name: String -> resolvePhoto(this, name) }
         val picked = Source.fromExtras(
             path = intent.getStringExtra(EXTRA_PATH),
@@ -151,95 +125,18 @@ class UploadService : Service() {
             title = intent.getStringExtra(EXTRA_TITLE),
             resolvePhoto = resolve,
         ) ?: return null
-        return Req(picked.source, picked.art, auto, key, stamp)
-    }
-
-    private fun ensureWorker() {
-        if (worker?.isActive == true) return
-        worker = scope.launch {
-            val self = coroutineContext[Job]
-            try {
-                // Linger briefly after each upload so a rapid re-trigger reuses this service.
-                while (true) {
-                    if (queue.isEmpty()) withTimeoutOrNull(1_500) { wake.receive() } ?: return@launch
-                    if (queue.isEmpty()) continue // a wake left over from a request already taken
-                    // wait out the frame's refresh before taking a request, so a newer one can still replace
-                    // it or a manual one overtake it meanwhile
-                    frame.awaitIdle()
-                    val req = next() ?: continue
-                    try {
-                        upload(req)
-                        finish(req, ok = true, error = null)
-                    } catch (e: CancellationException) {
-                        throw e // onDestroy reported it (UploadQueue.takeAll)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "upload failed", e)
-                        finish(req, ok = false, error = e)
-                    }
-                }
-            } finally {
-                withContext(Dispatchers.Main) {
-                    if (worker !== self) return@withContext // a newer worker took over while this one finished
-                    worker = null
-                    if (!queue.isEmpty()) ensureWorker() // queued while this worker was finishing
-                    else stopIfIdle()
-                }
-            }
-        }
+        return UploadEngine.Req(picked.source, picked.art, auto, key, stamp)
     }
 
     /**
-     * Stop unless an upload runs or waits. `stopSelfResult` refuses if the system has accepted a newer start
-     * whose [onStartCommand] has not run yet; the service then stays and that start queues its request.
+     * Stop unless held work is still queued or in flight in the engine. `stopSelfResult` refuses if the system
+     * has accepted a newer start whose [onStartCommand] has not run yet; the service then stays and that start
+     * submits its request. Main thread only (also as [UploadEngine.onIdle]).
      */
     private fun stopIfIdle() {
-        if (worker?.isActive == true || !queue.isEmpty()) return // do not cut off an upload
+        if (engine.heldCount > 0) return // do not cut off an upload
         if (stopSelfResult(lastStartId)) stopForeground(STOP_FOREGROUND_REMOVE)
         else Log.i(TAG, "a newer start is pending; staying")
-    }
-
-    /**
-     * The next request to upload; an automatic one decided before a later manual upload, a poster while the
-     * poster is switched off, or a revert while the playing film's poster is on the frame, is dropped
-     * ([FrameController.isStale]).
-     */
-    private fun next(): Req? = queue.poll(stale = { controller.isStale(it.auto, it.stamp, it.key) }) { dropped ->
-        Log.i(TAG, "auto upload dropped (a manual upload came after it, the poster is off, or its poster plays again): ${dropped.source.title} (key=${dropped.key})")
-        report(dropped, ok = false)
-    }
-
-    private suspend fun upload(req: Req) {
-        val bytes = when (val art = req.art) {
-            is Art.File -> withContext(Dispatchers.IO) { File(art.path).readBytes() }
-            is Art.Url -> Http.bytes(art.url)
-        }
-        // the selected frame's format: its size, inks and packing (a later rescan may change it, see FrameClient)
-        val sel = frames.selected() ?: throw TxtException(Txt(R.string.upload_err_no_frame))
-        val format = when (val l = sel.lookup) {
-            is FormatLookup.Supported -> l.format
-            is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, sel.name, l.reason))
-        }
-        val packed = withContext(Dispatchers.Default) { EpdImage.render(bytes, format) }
-        frame.upload(format, packed)
-    }
-
-    /** The in-flight [req] finished; report it unless [onDestroy] already did. */
-    private fun finish(req: Req, ok: Boolean, error: Throwable?) {
-        if (queue.settle(req)) done(req, ok, error)
-    }
-
-    /** Toast, report and remember as [UploadOutcome] decides. */
-    private fun done(req: Req, ok: Boolean, error: Throwable?) {
-        val out = UploadOutcome.of(req.auto, ok, error)
-        Log.i(TAG, "${if (req.auto) "auto" else "manual"} upload ${if (ok) "done" else "failed"}: ${req.source.title} (key=${req.key})")
-        out.toast?.let { toast(it.resolve(this)) }
-        if (out.report) report(req, ok)
-        if (out.remember) controller.onManualUpload(req.source)
-    }
-
-    private fun report(req: Req, ok: Boolean) {
-        val key = req.key
-        if (key != null) controller.onUploadResult(key, ok) else Log.w(TAG, "auto upload without key: not reported")
     }
 
     private fun toast(msg: String) = Handler(Looper.getMainLooper()).post {
@@ -257,12 +154,7 @@ class UploadService : Service() {
     }
 
     override fun onDestroy() {
-        // the worker is cancelled below: report what it would never finish (it reports nothing once taken)
-        for (req in queue.takeAll()) {
-            Log.w(TAG, "service stopped before the upload finished: ${req.source.title} (key=${req.key})")
-            done(req, ok = false, error = TxtException(Txt(R.string.upload_err_stopped)))
-        }
-        scope.cancel()
+        if (engine.onIdle === idle) engine.onIdle = null // the engine keeps any work and reports it itself
         super.onDestroy()
     }
 

@@ -340,7 +340,7 @@ pictures folder, `url`; plus an optional `title` for any of them; `auto`, `key` 
 Logs (`NowPlayingListener` is also used by the system launcher, so filter by the app's pid):
 
     adb logcat --pid=$(adb shell pidof io.github.hsw.inkeasel) \
-      -s NowPlayingListener FrameController UploadService FrameClient
+      -s NowPlayingListener FrameController UploadService UploadEngine FrameClient
 
 Code:
 - `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
