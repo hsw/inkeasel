@@ -78,6 +78,8 @@ list and select it.
 
   The poster can be switched off in the same section without revoking the access.
 - **Internet**: the catalogs and the posters (see Privacy).
+- **Foreground service** (connected device; no dialog): keeps a manual upload or a share running for the
+  seconds it takes when you leave the app. Now-playing posters run without it (see "Now playing → poster").
 
 ## Privacy
 
@@ -89,17 +91,23 @@ tablet).
   it is not sent anywhere. The titles go to the device's own system log (logcat) for troubleshooting.
 - Network traffic is limited to the picture sources: the catalog lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
-  [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service, and the
-  poster artwork, downloaded over https from the address the playing app publishes.
+  [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
+  (debug builds only), and the poster artwork, downloaded over https from the address the playing app publishes.
 - Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and your
   pictures stay in the app's storage on the device (Android backup is off).
 
 ## Builds and releases
 
+- **Target**: compile and target SDK 36 (Android 16), minimum SDK 26 (Android 8.0); Android Gradle plugin
+  8.9.1, Gradle 8.11.1, Kotlin 2.0.21.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
-  `./gradlew testDebugUnitTest assembleDebug assembleRelease` on JDK 21 (the release build signed with the
-  debug key, only to see it builds); the debug APK is kept as the run's artifact. A `v*` tag runs the release
-  workflow instead.
+  `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
+  with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
+  debug APK is kept as the run's artifact. A `v*` tag runs the release workflow instead.
+- **Release build**: R8 shrinks the code and the resources (`proguard-android-optimize.txt` plus
+  `app/proguard-rules.pro`) but does not obfuscate (`-dontobfuscate`): the code is public, and kept names
+  make crash traces readable without a mapping file. No keep rule was needed; one is added only when an R8
+  warning or a release smoke test proves it necessary. The release APK is about 1.4 MB.
 - **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
   environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
   `INKEASEL_KEY_ALIAS` and `INKEASEL_KEY_PASSWORD`. With none of them set, it is signed with the debug key
@@ -134,12 +142,14 @@ Made for a TV and the D-pad; phones and tablets work by touch in any orientation
 does not restart the screen (the open tab, the settings and their frame list stay, and no permission is
 asked twice); the layout follows the window width:
 
-| Width         | Columns | Side padding | Header                                     |
-|---------------|---------|--------------|--------------------------------------------|
-| under 600 dp  | 2       | 16 dp        | name and frame button, tabs on a row below |
-| 600–719 dp    | 3       | 32 dp        | as above                                   |
-| 720–839 dp    | 3       | 32 dp        | one row                                    |
-| 840 dp and up | 4       | 48 dp        | one row (a TV is 960 dp wide)              |
+| Width         | Columns | Side padding | Top and bottom | Header                                     |
+|---------------|---------|--------------|----------------|--------------------------------------------|
+| under 600 dp  | 2       | 16 dp        | 24 dp          | name and frame button, tabs on a row below |
+| 600–719 dp    | 3       | 32 dp        | 24 dp          | as above                                   |
+| 720–839 dp    | 3       | 32 dp        | 24 dp          | one row                                    |
+| 840 dp and up | 4       | 48 dp        | 27 dp          | one row (a TV is 960 dp wide)              |
+
+The widest bucket keeps the Android TV overscan margins (48 × 27 dp); a landscape tablet falls into it too.
 
 The tabs scroll sideways when they do not fit. The app draws behind the status and navigation bars
 (Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
@@ -340,7 +350,10 @@ How it works:
 - Automatic uploads run in the app process, in the same upload engine as manual ones, without a foreground
   service: the bound listener keeps the process alive. Only while it is not bound (access granted but not
   bound yet, the binding lost) a request also starts `UploadService` with an internal hold action that keeps
-  the process in the foreground until the upload is done. No toast over the film, only a log line.
+  the process in the foreground until the upload is done; if Android refuses that start (the app in the
+  background), the upload still runs and is reported once. No toast over the film, only a log line.
+  Manual uploads (a catalog tap, a share) go through the same engine inside `UploadService`, a short
+  `connectedDevice` foreground service, so they finish after the user leaves the app.
 - Uploads are at least 35 s apart, also across app restarts: the frame draws for ~27 s after an upload and
   a picture sent meanwhile is not drawn properly. A later request waits (a manual one toasts how long);
   while it waits, a newer request of the same kind replaces it and a manual one goes first.
@@ -349,7 +362,8 @@ How it works:
   app does not permit cleartext traffic); the artwork bitmap is used instead, if the session has one.
 
 Manual upload from adb, **debug builds only** (release builds do not export `UploadService`, so no other
-app can send a picture to the frame; extras, first usable wins: `path` = an existing file, `photo` = file
+app can send a picture to the frame; only the debug manifest overlay `app/src/debug/AndroidManifest.xml`
+exports it, and `ManifestTest` guards both manifests; extras, first usable wins: `path` = an existing file, `photo` = file
 name in the pictures folder, `url`; plus an optional `title` for any of them):
 
     adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
@@ -382,6 +396,7 @@ Code:
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
   Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
+  (Bluetooth, the poster switch with its disclosure panel, notification access, the privacy policy row)
 - `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
   was seen: a dismissed dialog does not count), and App info
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
@@ -392,10 +407,10 @@ Code:
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
   next upload waits until 35 s after the previous one was handed over (kept in prefs, so also across
-  service starts and app restarts)
+  app restarts)
 - `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
   sends a waiting shared picture once the permission is granted and a frame chosen
-- `CatalogLayout.kt`: columns, side padding and header shape for the window width (pure)
+- `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
   permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
   (`save`), the size cap and the pending-share rule (pure)

@@ -8,11 +8,12 @@ Design decisions, with reasons and rejected options: `docs/decisions.md` (commit
 or deviation made in a change gets its entry in the same commit.
 
 ## Build and test
-- `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug`
+- `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug lintDebug`
   In the sandboxed agent shell `packageDebugResources` may fail (`clonefile` → "Operation not permitted"):
   add `-x packageDebugResources` for a test-only run. A clean `app/build` can fail once in
   `parseDebugLocalResources` ("!directory.isDirectory()"); rerunning passes.
-- Android SDK path is in `local.properties` (git-ignored).
+- Android SDK path is in `local.properties` (git-ignored). compileSdk and targetSdk 36 on AGP 8.9.1 (the oldest
+  that supports 36), Gradle 8.11.1, Kotlin 2.0.21, minSdk 26.
 - Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
   Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
@@ -21,11 +22,15 @@ or deviation made in a change gets its entry in the same commit.
 - `lintDebug` has no errors; a new one is a regression. `bluetooth_le` stays `required="true"` (BLE is the
   only transport) with `UnsupportedTvHardware` suppressed in the manifest. `StringResourcesTest` checks that both string tables have the
   same keys and placeholders.
-- CI (`.github/workflows/`): `ci.yml` runs the build above plus `assembleRelease`; `release.yml` builds a
-  signed APK for a `v*` tag with a read-only token and publishes it from a separate job that runs no build.
+- CI (`.github/workflows/`): `ci.yml` runs the build above (a lint error fails it) plus `assembleRelease`;
+  `release.yml` builds a signed APK for a `v*` tag with a read-only token and publishes it from a separate job
+  that runs no build.
   Release signing comes only from `INKEASEL_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`;
   none set falls back to the debug key, a partial set fails a release packaging task (not release unit tests
   or lint). No keystore or secret in the repo.
+- Release uses R8 (code and resource shrinking) with `-dontobfuscate` (public code; readable traces and
+  `Throwable.userText` class names). Add a keep rule to `app/proguard-rules.pro` only when an R8 warning or a
+  release smoke test proves it necessary; smoke-test the release APK after a dependency change.
 - Emulator techniques: to force an offline or slow catalog, airplane mode does not cut the TV emulator's
   ethernet; set a dead global proxy (`adb shell settings put global http_proxy localhost:9`; undo with
   `settings delete global http_proxy` and `settings put global http_proxy :0`). `adb exec-out screencap -p`
@@ -54,13 +59,25 @@ or deviation made in a change gets its entry in the same commit.
 - tv-material components ignore touch: every new clickable component also gets `Modifier.onTap(...)`.
 - Orientation is free and rotation does not recreate `MainActivity` (`configChanges`): keep state that must
   survive in Compose, not in a recreate. Widths come from `CatalogLayout.forWidth` (columns, padding, split
-  header); a TV (960 dp) must keep 4 columns, 48 dp and one header row.
+  header); a TV (960 dp) must keep 4 columns, the 48 × 27 dp overscan margins and one header row.
 - `BlePermissions` is the one BLE permission set (scan + connect on 12+, fine location before); every screen
   asks for and checks it through it. "Permissions and features" in the settings is where the app shows what
   it needs; a new permission or feature switch gets a row there.
 - Now-playing poster: `FeatureStore.posterEnabled` (default on) gates `FrameController` before any frame
   rule; whoever changes it calls `FrameController.onPosterSwitched()`. Notification access screens differ per
   device (`ListenerAccess`: detail screen, list screen, or the adb hint on older Android TV).
+- Uploads: one process-wide `UploadEngine` (pure core `UploadEngineCore`) holds the queue and the worker.
+  Automatic uploads go straight to it from `FrameController` (`AutoUploader`) with no foreground service
+  while `NowPlayingListener` is bound; only while it is not bound they are held work and `UploadService`
+  is started with `ACTION_HOLD` (a refused start is only logged, the engine still reports the request once).
+  Manual uploads and shares run in `UploadService` (`connectedDevice`), which stops with
+  `stopSelfResult` once the engine reports its held work done; it reports nothing itself. Lock order is
+  controller → engine: the engine resolves the controller lazily and never calls it (or `onIdle`) under its
+  own lock. `UploadService` takes only manual extras and is not exported; only the debug manifest overlay
+  (`app/src/debug/AndroidManifest.xml`) exports it for the adb trigger, and `ManifestTest` guards that.
+- Notification access is asked for only through the disclosure panel in "Permissions and features"
+  (`PosterSwitch.press` → `DISCLOSE`, `confirm`); a new way into the grant goes through it too. The privacy
+  policy is `PRIVACY.md`, shown as `settings_privacy_url`; a TV never launches a browser.
 - Share → InkEasel (`ShareActivity`, rules in `ShareRules`): only `content://` URIs of other apps; the copy is
   capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
   with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on

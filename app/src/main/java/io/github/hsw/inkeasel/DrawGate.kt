@@ -6,8 +6,8 @@ package io.github.hsw.inkeasel
  * on the link says when the drawing is over (docs/device-api.md §14.3), and a picture sent meanwhile is not
  * drawn properly, so the next upload starts no earlier than [gapMs] after the last image was handed over.
  *
- * That time lives in a [Store] (shared prefs in the app), so the gap holds across uploads in one service
- * run, across service starts and across process restarts. Times come from [clock]
+ * That time lives in a [Store] (shared prefs in the app), so the gap holds across uploads in one process
+ * and across process restarts. Times come from [clock]
  * (`SystemClock.elapsedRealtime`); a stored time later than now means the TV rebooted since, and counts as
  * no upload. Free of Android types.
  */
