@@ -33,8 +33,10 @@ sent to the developer.**
   [Wikimedia Commons](https://commons.wikimedia.org/). A poster whose artwork the playing app gives as a web
   link is downloaded from that link. All of these go over https: the app refuses unencrypted connections,
   also when a server redirects to one. These are ordinary downloads: the server that answers sees your
-  device's IP address and the request, as with any web page, under its own privacy policy. The app sends
-  nothing of its own with them.
+  device's IP address and the request, as with any web page, under its own privacy policy. Besides the
+  address it asks for, each request names the app and its version in its User-Agent header (for example
+  `InkEasel/0.1 (+https://github.com/hsw/inkeasel)`, as Wikimedia asks of every client); it carries no
+  identifier, account or personal data.
 
 Nothing else is sent: no titles, no pictures, no device or usage data, to the developer or to anyone else.
 
