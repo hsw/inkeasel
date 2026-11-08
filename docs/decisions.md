@@ -3,6 +3,23 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The catalog database holds only data that can be downloaded again
+The catalog database (`CatalogDb`, separate from the frame and feature preferences) stores the release's
+rows, the live sources' rows, the labels of the stored languages and the state of the release files: nothing
+the user made. So any other schema version, older or newer (a downgrade included), drops it and creates it
+empty (Room's destructive fallback both ways), and the starter set imports and the files download again.
+The order is stored, not computed when the list reads it: every row has a unique `rank` and a `hidden` flag,
+set in the write transaction after each import or live refresh (`CatalogRank`, pure; only the rows that
+change are written), so the paging query is `WHERE hidden = 0 ORDER BY rank` on one index and the viewer
+steps by the neighbour ranks. Wikidata rows go in `core` order; a live row that duplicates one (the same
+Commons file, or the same accession number) is hidden; the other live rows take turns by source as every
+10th card. Titles, artists and collections are resolved by the query for the rows of a page only, over the
+language chain, then any stored language; artists come back as a list and are joined only at the edge. The
+SQL keeps to what SQLite 3.18 (Android 8.0) has: no window functions, no UPSERT.
+Rejected: Room migrations for this database (code to keep for data that downloads again), ranking in the
+paging query (`ROW_NUMBER` needs SQLite 3.25; a sort per page), joining the artists with a visible separator
+in SQL.
+
 ## 2026-11-09 — Catalog labels follow a language chain; release rows are read leniently
 The catalog's labels are looked up along a chain of Wikidata language codes built from the UI language's tag
 (`LanguageChain`, pure): the regional or script variant first where Wikidata has one, then the language, then
