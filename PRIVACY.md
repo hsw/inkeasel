@@ -71,7 +71,8 @@ settings, deletes all of them.
 - **Notification access** (optional): to read what plays for the now-playing poster, as described above. The
   app shows what the access covers before it opens the system screen or tells you where to grant it. The
   poster can be switched off without revoking the access; the reading then goes on (see above) until the
-  access is revoked.
+  access is revoked. Low-memory devices with Android 10 or older do not allow this access at all: there the
+  app has no poster and asks for nothing.
 - **Internet**: the catalog downloads and poster artwork above.
 - **Foreground service** (connected device): keeps a picture upload to the frame running for the few seconds
   it takes when you leave the app. Now-playing posters normally run without it; it keeps one running only

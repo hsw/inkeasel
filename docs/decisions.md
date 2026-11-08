@@ -3,6 +3,19 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — No poster on low-RAM devices with Android 10 or older
+Android neither grants nor binds a notification listener on a low-RAM device (`isLowRamDevice()`) up to
+Android 10 (`NotificationListenerService` reference), not even through adb, so the menu path, the adb command
+and "Grant access" cannot work there. `ListenerAccessUi` has an unavailable state for it, checked before the
+granted one: "The now-playing poster is not available on this device", the switch disabled and shown off,
+and no way to the grant, so no disclosure. The stored wish (`FeatureStore.posterEnabled`, on by default) is
+left untouched: with no listener bound nothing reports what plays, so `FrameController` schedules no poster
+anyway, and nothing else has to keep a second flag in step. Low-RAM devices with Android 11+
+may bind the listener (only the TV menu item is missing), so they keep the adb fallback.
+Rejected: hiding the poster row (the user would not learn why there is no poster), forcing the stored wish
+off on such devices (it would change stored data for what the system already prevents), the adb command
+there (the system refuses that grant too).
+
 ## 2026-11-08 — Bluetooth is asked for in context, through one panel
 The app no longer opens the system permission dialog in `onCreate`. Google asks to request a permission when
 the user starts the feature and not all at startup (developer.android.com/training/permissions/requesting,

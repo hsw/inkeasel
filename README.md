@@ -95,6 +95,10 @@ How the app asks for Bluetooth (`BleAsk`, pure):
 
         adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
 
+  - low-RAM devices with Android 10 or older (e.g. 1–1.5 GB TV boxes) cannot have the poster: Android grants
+    no notification access there at all, not even with adb, so the section says the poster is not available
+    on this device and offers no way to grant it.
+
   The poster can be switched off in the same section without revoking the access; what plays is still
   followed while the access is granted (see Privacy).
 - **Internet**: the catalogs and the posters (see Privacy).
@@ -324,9 +328,14 @@ Below the frame list, **Settings → Permissions and features** collects what th
     cannot reach the rows of that list);
   - Android TV 9–11 (the Shield): no such screen; "Continue" opens Settings → Apps (the Settings home
     where that is missing), and the panel (then the section) names the same menu path;
-  - Android TV 8, a low-RAM TV without the list screen (they hide the menu item), or any device where no
-    settings screen resolves: the adb command (see "Now playing → poster"), in small print in the disclosure
-    panel only.
+  - Android TV 8, a low-RAM TV with Android 11+ without the list screen (they hide the menu item), or any
+    device where no settings screen resolves: the adb command (see "Now playing → poster"), in small print in
+    the disclosure panel only;
+  - a low-RAM device with Android 10 or older (`ActivityManager.isLowRamDevice()`), where the system neither
+    grants nor binds a notification listener: "The now-playing poster is not available on this device", the
+    switch disabled and shown off, no "Grant access", no menu path, no adb command and so no disclosure. The
+    stored wish is left as it is; with no listener bound nothing reports what plays, so no poster is
+    scheduled.
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
 - **Privacy policy**: the address of [PRIVACY.md](PRIVACY.md) as text (`settings_privacy_url`). A tap opens
   it in the browser on a phone or tablet; on TV the row only shows it (a TV app must not launch a browser),
@@ -360,7 +369,8 @@ frame now advertises other properties, the upload fails and the next one uses th
 Needs notification access, granted once, so the system binds the MediaSession reader: from **Settings →
 Permissions and features** (see there), which leads to the system screen or, on Android TV 9–11 (the
 Shield), to the menu Settings → Apps → Special app access → Notification access; on Android TV 8 only with
-adb, as below. The system rebinds a granted listener after a
+adb, as below. Low-RAM devices with Android 10 or older cannot grant it at all (not even with adb), so they
+have no poster. The system rebinds a granted listener after a
 force-stop (verified on the Shield) and is expected to do the same after a reboot (platform behaviour, not
 yet tested here); the binding keeps the process alive, also through HDMI-CEC standby, so no
 `BOOT_COMPLETED` receiver is needed:

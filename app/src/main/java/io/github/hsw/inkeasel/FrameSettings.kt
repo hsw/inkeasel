@@ -296,7 +296,8 @@ private fun FrameSettings(
  * (`MainViewModel.confirmDisclosure`) and starts the grant flow: the system screen [ListenerAccessUi.grant]
  * names. The menu path on TV and the adb command (where no screen leads to the switch) are shown in the
  * disclosure; the menu path also under the switch once the poster waits for the access ([pending]), so no way
- * to the grant appears before the disclosure.
+ * to the grant appears before the disclosure. Where the poster cannot work at all
+ * ([ListenerAccessUi.unavailable]) the row says so, the switch is disabled and nothing leads to the grant.
  * The access itself is read again by the view model on resume, the screens here. Last, the [PrivacyRow].
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
@@ -332,7 +333,9 @@ private fun FeaturesSection(
         refocus = disclosedFrom
         disclosedFrom = null
     }
-    val pressPoster: () -> Unit = { if (onPoster() == PosterSwitch.Press.DISCLOSE) disclosedFrom = DisclosureOpener.SWITCH }
+    val pressPoster: () -> Unit = {
+        if (ui.switchEnabled && onPoster() == PosterSwitch.Press.DISCLOSE) disclosedFrom = DisclosureOpener.SWITCH
+    }
     val pressGrant: () -> Unit = { disclosedFrom = DisclosureOpener.BUTTON }
     val confirm: () -> Unit = { // offered only with a screen to open
         ui.grant?.let {
@@ -365,6 +368,8 @@ private fun FeaturesSection(
     ListItem(
         selected = false,
         onClick = pressPoster,
+        // disabled where the poster cannot work (tv-material keeps it focusable, so the D-pad still reaches the text)
+        enabled = ui.switchEnabled,
         modifier = Modifier.focusRequester(posterFocus).onTap(pressPoster),
         headlineContent = { Text(stringResource(R.string.feature_poster)) },
         supportingContent = {
@@ -373,7 +378,7 @@ private fun FeaturesSection(
                 ui.rowMenuHint(pending)?.let { Text(ListenerAccessUi.menuText(it).text(), style = MaterialTheme.typography.bodyMedium) }
             }
         },
-        trailingContent = { Switch(checked = poster, onCheckedChange = null) },
+        trailingContent = { Switch(checked = ui.switchChecked(poster), onCheckedChange = null, enabled = ui.switchEnabled) },
     )
     if (ui.openButton) {
         Spacer(Modifier.height(8.dp))

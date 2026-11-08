@@ -21,6 +21,12 @@ package io.github.hsw.inkeasel
  *   info (⋮ menu), or the switch there stays greyed out. Not on Android TV (its App info has no such menu;
  *   Google TV 14 granted an adb-installed app in one press) nor with [adbHint] (adb grants are not affected).
  *
+ * - [unavailable]: a low-RAM device with Android 10 or older ([LOW_RAM_LISTENER_SINCE]), where the system never
+ *   grants nor binds a notification listener (not even through adb): the status says the poster is not
+ *   available on this device, with no grant screen, no menu path and no adb command, so no disclosure either,
+ *   and the poster switch is disabled and shown off ([switchChecked]). The stored wish stays as it is; with no
+ *   listener bound nothing reports what plays, so no poster is scheduled.
+ *
  * Every way to the grant (the screen, the menu path, the adb command) thus appears only in or after the
  * prominent disclosure.
  */
@@ -30,9 +36,16 @@ data class ListenerAccessUi(
     val menuHint: MenuHint?,
     val adbHint: Boolean,
     val restrictedHint: Boolean,
+    val unavailable: Boolean = false,
 ) {
     /** "Grant access" is shown: there is a screen to open. */
     val openButton: Boolean get() = grant != null
+
+    /** The poster switch can be pressed: the poster can work on this device at all. */
+    val switchEnabled: Boolean get() = !unavailable
+
+    /** What the poster switch shows, given what `PosterSwitch.checked` says ([poster]): never on while [unavailable]. */
+    fun switchChecked(poster: Boolean): Boolean = poster && !unavailable
 
     /**
      * The menu path under the poster switch: only once the disclosure was confirmed and the poster waits for
@@ -59,7 +72,17 @@ data class ListenerAccessUi(
         /** First Android TV version whose Special app access menu has Notification access (9). */
         const val MENU_SINCE = 28
 
+        /**
+         * First Android version (11) whose low-RAM devices may grant and bind a notification listener; before
+         * it the system refuses both ("Notification listeners cannot get notification access or be bound by the
+         * system on low-RAM devices running Android Q (and below)", `NotificationListenerService` reference).
+         */
+        const val LOW_RAM_LISTENER_SINCE = 30
+
         private val missing = Txt(R.string.access_missing)
+
+        private val unavailableUi =
+            ListenerAccessUi(Txt(R.string.access_unavailable), null, null, adbHint = false, restrictedHint = false, unavailable = true)
 
         /**
          * [enabled]: the access is granted; [direct]: a direct screen resolves; [apps]: the Apps (or Settings)
@@ -74,6 +97,8 @@ data class ListenerAccessUi(
             lowRam: Boolean,
             sideloaded: Boolean,
         ): ListenerAccessUi {
+            // first: even an access reported as granted is never bound there
+            if (lowRam && sdk < LOW_RAM_LISTENER_SINCE) return unavailableUi
             if (enabled) return ListenerAccessUi(Txt(R.string.access_granted), null, null, adbHint = false, restrictedHint = false)
             val menu = tv && apps && sdk >= MENU_SINCE && !lowRam
             return when {

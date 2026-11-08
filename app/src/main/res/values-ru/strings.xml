@@ -64,6 +64,7 @@
     <string name="feature_poster">Постер того, что играет</string>
     <string name="access_granted">Доступ к уведомлениям выдан: приложение видит, что играет.</string>
     <string name="access_missing">Нужен доступ к уведомлениям, чтобы видеть, что играет.</string>
+    <string name="access_unavailable">Постер того, что играет, на этом устройстве недоступен.</string>
     <string name="access_open">Выдать доступ</string>
     <string name="access_adb">Его можно выдать с компьютера:\n%1$s</string>
     <string name="access_menu_path">Настройки → Приложения → Специальный доступ → Доступ к уведомлениям → %1$s</string>

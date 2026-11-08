@@ -151,7 +151,59 @@ class ListenerAccessUiTest {
         for (direct in listOf(true, false)) for (apps in listOf(true, false)) for (tv in listOf(true, false))
             for (lowRam in listOf(true, false)) for (sdk in listOf(26, 28, 30, 33, 34, 36)) {
                 val ui = of(direct = direct, apps = apps, sdk = sdk, tv = tv, lowRam = lowRam)
-                assertEquals(ui.grant == null, ui.adbHint)
+                assertEquals(ui.grant == null && !ui.unavailable, ui.adbHint)
             }
+    }
+
+    @Test
+    fun lowRam_android10AndOlder_posterUnavailable() {
+        // the system neither grants nor binds a listener there: no way to the grant at all, not even adb
+        for (sdk in listOf(26, 28, 29)) for (tv in listOf(true, false)) for (direct in listOf(true, false))
+            for (apps in listOf(true, false)) for (enabled in listOf(true, false)) for (sideloaded in listOf(true, false)) {
+                val ui = of(enabled = enabled, direct = direct, apps = apps, sdk = sdk, tv = tv, lowRam = true, sideloaded = sideloaded)
+                assertEquals(
+                    ListenerAccessUi(Txt(R.string.access_unavailable), null, null, adbHint = false, restrictedHint = false, unavailable = true),
+                    ui,
+                )
+                assertFalse(ui.openButton)
+                assertNull(ui.rowMenuHint(pending = true))
+                assertFalse(ui.switchEnabled)
+                assertFalse(ui.switchChecked(poster = true))
+                assertFalse(ui.switchChecked(poster = false))
+            }
+    }
+
+    @Test
+    fun lowRam_android11_keepsTheAdbFallback() {
+        // the listener works there; only the TV menu item is missing
+        val tv = of(direct = false, sdk = 30, tv = true, lowRam = true)
+        assertFalse(tv.unavailable)
+        assertEquals(Txt(R.string.access_missing), tv.status)
+        assertTrue(tv.adbHint)
+        assertTrue(tv.switchEnabled)
+        val phone = of(sdk = 30, lowRam = true)
+        assertFalse(phone.unavailable)
+        assertEquals(GrantScreen.DIRECT, phone.grant)
+        assertEquals(Txt(R.string.access_granted), of(enabled = true, sdk = 30, lowRam = true).status)
+    }
+
+    @Test
+    fun notLowRam_android10AndOlder_available() {
+        for (sdk in listOf(26, 28, 29)) for (tv in listOf(true, false)) {
+            val ui = of(direct = false, sdk = sdk, tv = tv)
+            assertFalse(ui.unavailable)
+            assertEquals(Txt(R.string.access_missing), ui.status)
+            assertTrue(ui.switchEnabled)
+            assertTrue(ui.grant != null || ui.adbHint)
+        }
+        assertEquals(Txt(R.string.access_granted), of(enabled = true, sdk = 29).status)
+    }
+
+    @Test
+    fun switchChecked_followsThePosterWhereAvailable() {
+        for (ui in listOf(of(), of(enabled = true), of(direct = false, sdk = 30, tv = true, lowRam = true))) {
+            assertTrue(ui.switchChecked(poster = true))
+            assertFalse(ui.switchChecked(poster = false))
+        }
     }
 }

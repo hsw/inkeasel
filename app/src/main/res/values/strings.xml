@@ -76,6 +76,8 @@
     <string name="feature_poster">Now-playing poster</string>
     <string name="access_granted">Notification access is granted: the app sees what plays.</string>
     <string name="access_missing">Needs notification access to see what plays.</string>
+    <!-- a low-RAM device with Android 10 or older, where the system allows no notification access at all -->
+    <string name="access_unavailable">The now-playing poster is not available on this device.</string>
     <string name="access_open">Grant access</string>
     <string name="access_adb">It can be granted from a computer:\n%1$s</string>
     <!-- %1$s the app name -->
