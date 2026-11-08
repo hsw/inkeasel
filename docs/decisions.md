@@ -3,6 +3,33 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The catalog syncs at app start, file by file, from the fixed release address
+One process-wide `CatalogStore` owns the catalog database, a coroutine scope of its own (not a screen's) and
+the one write lock every catalog write takes. The app's start (`MainActivity.onCreate`, also after a change
+of the UI language, which re-creates it) wakes it: once per process the starter set goes into an empty
+database, and every start runs a pass that checks only the release files that are due (`CatalogSyncPlan`,
+pure): `core` and `labels-<lang>` for the chain's languages, English and `mul`, each a week after its own
+last check, a language new to the chain at once, a 404 again a week later. A pass with nothing due makes no
+request, so passes run at every start rather than once per process: on a TV the notification listener keeps
+the process alive for weeks. A check always starts at
+`https://github.com/hsw/inkeasel/releases/download/catalog/<file>` (the signed address it redirects to
+expires and is never stored) with `If-None-Match`, streams a 200 to a temporary file while hashing it, and
+skips the import when the SHA-256 is the one imported last (a re-upload gets a new ETag even for the same
+bytes). The changed files go into one swap (`CatalogImport.release`), and their ETag and hash are written in
+that transaction, so a failed import, a body cut short or no network leaves both the list and the state as
+they were, and the files are asked for again at the next start; one file's failure does not hold back the
+others. A language that leaves the chain loses its labels at the next swap, and its file's state goes in the
+same transaction, so a return downloads it again instead of getting a 304 for labels no longer stored. A
+language that joins the chain gets the starter set's labels at once (offline too), looked for once per
+process. The UI language is the configuration's first locale: the per-app language where Android 13+ sets
+one, else the system's. The tabs do not show the catalog yet, so the delivery entry below stays *planned*
+for the list itself and the weekly export job.
+Rejected: WorkManager (a scheduler and a dependency for a check that only matters while the app is used;
+periodic work would wake a TV for a list nobody looks at), `releases/latest` (it is the newest APK release),
+recording the ETag as soon as the answer arrives (a 304 would then hide a failed import), checking once per
+process only (weeks without a check on a TV), a check with a HEAD request first (a second request per file;
+the conditional GET already costs nothing when the file is unchanged).
+
 ## 2026-11-09 — The starter set is cut from the published release
 The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of the release `core` and their
 labels in the UI languages plus `mul`, 1.1 MB gzipped) is cut from the published release files by
@@ -36,7 +63,7 @@ cleared then and at the next start. In a `core` the first row of an id wins. Lab
 referenced stay until their language's file is imported again: removing them by reference would lose labels
 when a new `core` arrives after an unchanged labels file that is not imported again. No UPSERT (SQLite 3.18):
 `INSERT OR REPLACE` keeps the rank by reading it from the row it replaces. The delivery entry below stays
-*planned*: the starter import at first launch and the download with its weekly check are not built yet.
+*planned* (the starter import and the download came with the sync entry above; no list shows them yet).
 Rejected: per-batch upserts into the live tables (a list mixing two releases while it imports, no sweep of
 absent rows, a paging invalidation per batch), staging the starter set too (it goes into an empty database,
 where one transaction already is all or nothing).

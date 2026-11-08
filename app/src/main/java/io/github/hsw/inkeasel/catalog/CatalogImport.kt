@@ -94,9 +94,15 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
      * every language of the [chain]; a single-language file outside the chain is not read. Labels outside the
      * chain (and English and `mul`) are dropped at the swap. Throws on a broken file (an [IOException]) or a
      * `core` with no valid row, leaving the live tables as they were; the staging tables are cleared then
-     * and again at the start of the next import.
+     * and again at the start of the next import. [commit] runs last inside the swap transaction, so what it
+     * writes (the files' state) is stored together with the rows or not at all.
      */
-    suspend fun release(core: ImportFile?, labels: List<ImportFile>, chain: List<String>): ImportResult =
+    suspend fun release(
+        core: ImportFile?,
+        labels: List<ImportFile>,
+        chain: List<String>,
+        commit: suspend (ImportResult) -> Unit = {},
+    ): ImportResult =
         withContext(Dispatchers.IO) {
             require(core != null || labels.isNotEmpty()) { "nothing to import" }
             val langs = languages(chain)
@@ -117,18 +123,49 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
                     files += readLabels(file, langs) { rows -> dao.stageLabels(rows) }
                     if (file.lang != null) replacedLangs += file.lang else replacedLangs += langs
                 }
-                swap(files, core != null, replacedLangs, langs)
+                swap(files, core != null, replacedLangs, langs, commit)
             } catch (e: Throwable) {
                 withContext(NonCancellable) { runCatching { dao.clearStage() } }
                 throw e
             }
         }
 
+    /**
+     * Adds the labels of the languages [add] (those of them the [chain] stores) from [labels], a file whose
+     * rows carry their language (the starter's), each replacing that language: the starter set as the offline
+     * source of a language that joined the chain later. Staged and swapped like [release] (labels outside the
+     * chain are dropped, [commit] runs inside the swap); `null` when the file has no row in those languages,
+     * and then nothing is swapped.
+     */
+    suspend fun addLabels(
+        labels: ImportFile,
+        add: Collection<String>,
+        chain: List<String>,
+        commit: suspend (ImportResult) -> Unit = {},
+    ): ImportResult? = withContext(Dispatchers.IO) {
+        val langs = languages(chain)
+        val wanted = add.filter { it in langs }.toSet()
+        if (wanted.isEmpty()) return@withContext null
+        dao.clearStage()
+        try {
+            val read = readLabels(labels, wanted) { rows -> dao.stageLabels(rows) }
+            if (dao.stagedLabels() == 0) {
+                dao.clearStage()
+                return@withContext null
+            }
+            swap(listOf(read), false, wanted, langs, commit)
+        } catch (e: Throwable) {
+            withContext(NonCancellable) { runCatching { dao.clearStage() } }
+            throw e
+        }
+    }
+
     private suspend fun swap(
         files: List<FileRead>,
         newCore: Boolean,
         replacedLangs: Set<String>,
         langs: List<String>,
+        commit: suspend (ImportResult) -> Unit,
     ): ImportResult = db.withTransaction {
         var added = 0
         var replaced = 0
@@ -147,7 +184,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         val dropped = dao.dropLabelsOutside(CatalogRow.chainKey(langs))
         catalog.rerank()
         dao.clearStage()
-        ImportResult(files, added, replaced, removed, labels, dropped)
+        ImportResult(files, added, replaced, removed, labels, dropped).also { commit(it) }
     }
 
     /**
@@ -246,7 +283,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
 
 private const val WD = "'${CatalogRank.WIKIDATA}'"
 
-/** The staging tables and the swap's statements; only [CatalogImport] uses them. */
+/** The staging tables, the swap's statements and the release files' state ([CatalogImport], [CatalogSync]). */
 @Dao
 abstract class ImportDao {
     @Query("SELECT EXISTS(SELECT 1 FROM picture WHERE source = $WD)")
@@ -254,6 +291,23 @@ abstract class ImportDao {
 
     @Query("SELECT MIN(rank) FROM picture")
     abstract suspend fun lowestRank(): Long?
+
+    /** Whether any label in [lang] is stored. */
+    @Query("SELECT EXISTS(SELECT 1 FROM label WHERE lang = :lang)")
+    abstract suspend fun hasLabels(lang: String): Boolean
+
+    /** The state of every release file checked so far ([CatalogSync]). */
+    @Query("SELECT * FROM catalog_file")
+    abstract suspend fun files(): List<CatalogFileEntity>
+
+    @Query("SELECT name FROM catalog_file")
+    abstract suspend fun fileNames(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    abstract suspend fun saveFiles(files: List<CatalogFileEntity>)
+
+    @Query("DELETE FROM catalog_file WHERE name IN (:names)")
+    abstract suspend fun forgetFiles(names: List<String>)
 
     @Query("DELETE FROM picture_stage")
     protected abstract suspend fun clearPictureStage()

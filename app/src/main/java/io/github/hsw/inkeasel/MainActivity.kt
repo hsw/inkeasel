@@ -71,6 +71,7 @@ import androidx.tv.material3.darkColorScheme
 import coil.Coil
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import io.github.hsw.inkeasel.catalog.CatalogStore
 import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.FeatureStore
 import io.github.hsw.inkeasel.nowplaying.FrameController
@@ -376,6 +377,9 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
+        // the catalog database fills and syncs in the background, process-wide; a new UI language re-creates
+        // the activity and so reaches the store here too
+        CatalogStore.get(this).start(CatalogStore.chainOf(resources.configuration))
         readBle()
         // a fresh start asks for nothing by itself: without the permission it shows the first-run panel (until
         // answered once), with it and no frame chosen the frame settings ([BleAsk.atStart]); a share comes after

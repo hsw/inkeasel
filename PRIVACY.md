@@ -1,6 +1,6 @@
 # InkEasel privacy policy
 
-Last updated: 2026-11-08
+Last updated: 2026-11-09
 
 InkEasel is an open-source Android app that sends pictures to your own e-paper frame over Bluetooth Low
 Energy. It has no account, no analytics, no ads, no crash reporting and no server of its own. **Nothing is
@@ -30,7 +30,12 @@ sent to the developer.**
   device you own; nothing goes through the internet on the way.
 - **Downloads from public addresses:** the built-in catalogs load their lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
-  [Wikimedia Commons](https://commons.wikimedia.org/). A poster whose artwork the playing app gives as a web
+  [Wikimedia Commons](https://commons.wikimedia.org/). The painting catalog's files come from the app's
+  public GitHub release (`github.com`, which redirects to `release-assets.githubusercontent.com`): when the
+  app starts, it asks for each file at most once a week, sending the label (ETag) of the copy it already
+  has so that an unchanged file is not sent again. The names of the files it asks for include the codes of
+  the label languages it needs (your UI language, English and `mul`, Wikidata's language-independent labels),
+  so GitHub can tell your UI language from them. A poster whose artwork the playing app gives as a web
   link is downloaded from that link. All of these go over https: the app refuses unencrypted connections,
   also when a server redirects to one. These are ordinary downloads: the server that answers sees your
   device's IP address and the request, as with any web page, under its own privacy policy. Besides the
@@ -52,6 +57,9 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
   each time it stores a new picture there, the app deletes the oldest ones down to the 20 most recent, but
   never one that a current session or a poster still waiting for the frame needs, so until the next new
   picture there can be more;
+- the catalog database: the paintings of the catalog with their labels in the languages above, and for
+  each catalog file when it was last checked and the label (ETag) and fingerprint (SHA-256) of the copy that
+  was imported; a file being downloaded is kept in the app's cache only until it is imported;
 - the last good catalog lists and cached catalog images;
 - the pictures you shared, and pictures you copied into "My pictures" yourself.
 
@@ -73,7 +81,8 @@ settings, deletes all of them.
   poster can be switched off without revoking the access; the reading then goes on (see above) until the
   access is revoked. Low-memory devices with Android 10 or older do not allow this access at all: there the
   app has no poster and asks for nothing.
-- **Internet**: the catalog downloads and poster artwork above.
+- **Internet**: the catalog downloads (the catalog files and the lists and images of the catalogs) and
+  poster artwork above.
 - **Foreground service** (connected device): keeps a picture upload to the frame running for the few seconds
   it takes when you leave the app. Now-playing posters normally run without it; it keeps one running only
   while Android has not (yet) connected the app's notification listener, or has just disconnected it.

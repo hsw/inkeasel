@@ -382,6 +382,66 @@ class CatalogImportTest {
         assertEquals(bytes.size.toLong(), read.bytes)
     }
 
+    // --- the commit hook and labels added from the starter ---
+
+    @Test
+    fun theCommitRunsInsideTheSwapSoItsFailureUndoesTheSwap() = runTest {
+        starter()
+        val before = visible()
+        val e = assertFails {
+            CatalogImport(db).release(coreFile(listOf(core(7))), emptyList(), ruChain) { result ->
+                assertEquals(1, result.added)
+                db.imports().saveFiles(listOf(CatalogFileEntity("core.jsonl.gz", sha256 = "abc")))
+                throw IOException("commit failed")
+            }
+        }
+        assertEquals("commit failed", e.message)
+        assertEquals(before, visible())
+        assertEquals(emptyList<String>(), query("SELECT * FROM catalog_file"))
+        assertEquals(emptyList<String>(), staged())
+
+        CatalogImport(db).release(coreFile(listOf(core(7))), emptyList(), ruChain) {
+            db.imports().saveFiles(listOf(CatalogFileEntity("core.jsonl.gz", sha256 = "abc")))
+        }
+        assertEquals(listOf("wd:Q7"), ids())
+        assertEquals(listOf("core.jsonl.gz"), query("SELECT name FROM catalog_file"))
+    }
+
+    @Test
+    fun addedLabelsReplaceOnlyTheirLanguageAndDropLanguagesOutsideTheChain() = runTest {
+        starter()
+        val deChain = LanguageChain.of("de")
+        val starterLabels = file(
+            "labels.jsonl",
+            gzip(listOf(label(1, "Eins", "de"), label(2, "Zwei", "de"), label(1, "One again", "en"), label(3, "Trois", "fr"))),
+        )
+        var committed = 0
+        val result = CatalogImport(db).addLabels(starterLabels, listOf("de", "fr"), deChain) { committed++ }!!
+
+        assertEquals(1, committed)
+        assertEquals(2, result.labels) // French is not in the chain, English was not asked for
+        assertEquals(listOf("de", "en", "mul"), langs()) // Russian left the chain
+        assertEquals("Eins", dao.row("wd:Q1", CatalogRow.chainKey(deChain))!!.title)
+        assertEquals("One", query("SELECT label FROM label WHERE entityId = 'Q1' AND lang = 'en'").single())
+        assertEquals(emptyList<String>(), staged())
+    }
+
+    @Test
+    fun noAddedLabelMeansNoSwap() = runTest {
+        starter()
+        val before = visible()
+        settled()
+        invalidations.set(0)
+        val none = file("labels.jsonl", gzip(listOf(label(1, "Un", "fr"))))
+
+        assertNull(CatalogImport(db).addLabels(none, listOf("de"), LanguageChain.of("de")))
+        assertNull(CatalogImport(db).addLabels(none, listOf("it"), ruChain)) // not in the chain: nothing read
+        settled()
+        assertEquals(0, invalidations.get())
+        assertEquals(before, visible())
+        assertEquals(emptyList<String>(), staged())
+    }
+
     // --- failures change nothing visible ---
 
     @Test

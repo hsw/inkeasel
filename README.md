@@ -118,9 +118,13 @@ tablet).
   a debug build does, for development (`MediaLog`).
 - Network traffic is limited to the picture sources: the catalog lists and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
-  [Wikimedia Commons](https://commons.wikimedia.org/), a picture URL given to the upload service from adb
-  (debug builds only), and the poster artwork, downloaded over https from the address the playing app publishes.
-- Pictures are sent to the frame over BLE only. The chosen frame, the saved catalog lists and images, your
+  [Wikimedia Commons](https://commons.wikimedia.org/), the painting catalog's files from the project's
+  GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at app start, each file
+  at most once a week, and the names of the labels files asked for show the UI language), a picture URL
+  given to the upload service from adb (debug builds only), and the poster artwork, downloaded over https
+  from the address the playing app publishes.
+- Pictures are sent to the frame over BLE only. The chosen frame, the catalog database (the painting
+  catalog and the state of its release files), the saved catalog lists and images, your
   pictures, the artwork of recent now-playing sessions (in the app's cache, pruned to the 20 most recent each
   time a new one is stored, sparing any a tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
   artwork address or a hash of its artwork) stay in the app's storage on the device. "My pictures" is the
@@ -140,10 +144,11 @@ tablet).
   code, check it with `zipalign -c -P 16 -v 4 app-release.apk` (SDK build-tools) and that every `.so` has 16
   KB-aligned LOAD segments.
 - **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
-- **Catalog export** (planned delivery, not used by the app yet): `uv run --script tools/catalog-export.py
-  <outdir>` exports famous paintings from Wikidata and Commons as gzipped JSON Lines for the GitHub release
-  `catalog`. The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with labels in the UI
-  languages) is cut from that release with `--starter-from <dir of the downloaded release files>`.
+- **Catalog export**: `uv run --script tools/catalog-export.py <outdir>` exports famous paintings from
+  Wikidata and Commons as gzipped JSON Lines for the GitHub release `catalog`, which the app downloads (see
+  "Catalog"; the tabs do not show it yet). The APK's starter set (`app/src/main/assets/catalog/`, the top
+  1,000 with labels in the UI languages) is cut from that release with `--starter-from <dir of the
+  downloaded release files>`.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -253,6 +258,22 @@ master's pixel size; Commons the author, the date taken, the file's page (its sh
 licence with its link and the original's size; a picture in "My pictures" only its name and pixel size.
 The saved lists keep these fields (format 2); a list saved by an older version still reads, without them,
 until the next good load replaces it.
+
+The painting catalog (not shown in the tabs yet) lives in a Room database, `catalog.db`, owned by one
+process-wide `CatalogStore` that the app's start (`MainActivity`) wakes. On the first start the APK's starter
+set (the top 1,000) goes into the empty database with the labels of the UI language's chain, English and
+`mul`. Then, at every start, the store checks the files of the GitHub release `catalog` that are due:
+`core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
+week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
+later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
+copy imported last (`If-None-Match`; github.com redirects to a signed address, which answers 304 when the
+file is unchanged); a downloaded file whose SHA-256 is the one imported last is not imported again. Changed
+files are imported together in one swap, and their ETag and hash are stored in that same transaction, so a
+failed import (or no network) leaves the list as it was and the files are asked for again at the next start.
+A language that joins the chain gets the starter set's labels at once, also offline; a language that leaves
+it loses its labels at the next import. To watch it:
+
+    adb logcat -s CatalogStore CatalogSync
 
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
 than 20 s every time, "Paintings" fails each time and its saved list fills only after a fast answer;
@@ -486,6 +507,10 @@ Code:
   and when a tab reloads (pure)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
 - `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
+- `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
+  rows (`CatalogRows`) and their import (`CatalogImport`), the label languages (`LanguageChain`), and its
+  process-wide owner `CatalogStore`, which runs the starter import and the release sync (`CatalogSync`; which
+  files are due and what is recorded: `CatalogSyncPlan`, pure)
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`, or draw
   the dithered picture in the frame's inks for the details panel's preview
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
