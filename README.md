@@ -28,7 +28,8 @@ from its advertisement and renders each picture for that panel:
   not yet seen on a real frame; the settings say "not verified on hardware", and they can still be chosen.
 - **BW, BP, E7, BWY**, a rotated panel or panel type A: listed with the reason and not selectable.
 
-Details per resolution: "Choosing the frame" below. Other e-paper protocols are not supported yet.
+Details per resolution: "Choosing the frame" below. Other e-paper protocols are not supported yet. The BLE
+protocol and the image formats are described in [docs/protocol.md](docs/protocol.md).
 
 ## Install
 
@@ -446,7 +447,8 @@ Code:
 - `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
   `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
   the poster switch shows and does, and the wish kept until the access is granted (pure)
-- `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
+- `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name (protocol:
+  [docs/protocol.md](docs/protocol.md))
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
   next upload waits until 35 s after the previous one was handed over (kept in prefs, so also across

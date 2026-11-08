@@ -95,7 +95,8 @@ class FrameClient(private val ctx: Context) {
                 lastError = e
             } finally {
                 session.close() // also on cancellation
-                if (session.endSent) gate.ended() // the frame draws once the link drops (docs/device-api.md §14.3)
+                // the frame draws once the link drops (docs/protocol.md#drawing-and-timing)
+                if (session.endSent) gate.ended()
             }
             delay(2_000) // let the stack tear down the old link before reconnecting
         }
@@ -137,8 +138,9 @@ class FrameClient(private val ctx: Context) {
         private const val KEY_ENDED = "endedAt" // SystemClock.elapsedRealtime when the last image was handed over
 
         /**
-         * The start frame's payload (docs/device-api.md §5.1): `00 MK ST=00 00 CF=00 01`, with the format's content
-         * marker [marker] (§5.4.4) and CF 0: the payload is sent raw, never LZO-compressed.
+         * The start frame's payload (docs/protocol.md#start-frame): `00 MK ST=00 00 CF=00 01`, with the format's
+         * content marker [marker] (docs/protocol.md#content-marker) and CF 0: the payload is sent raw, never
+         * LZO-compressed.
          */
         fun startPayload(marker: Int): ByteArray = byteArrayOf(0, marker.toByte(), 0, 0, 0, 1)
 

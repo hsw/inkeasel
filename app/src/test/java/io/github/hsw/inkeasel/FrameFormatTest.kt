@@ -73,7 +73,7 @@ class FrameFormatTest {
         assertFalse(split.verified)
     }
 
-    /** docs/device-api.md §5.4.7, columns "BWR (both)", "E4" and "E6/E7", by resolution code. */
+    /** docs/protocol.md#payload-size, columns "BWR", "E4" and "E6, E7", by resolution code. */
     private val docSizes = mapOf(
         0x01 to Triple(10_240, 10_000, 20_000),
         0x02 to Triple(8_192, 7_625, 15_250),

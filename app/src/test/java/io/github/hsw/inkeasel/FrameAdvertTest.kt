@@ -13,7 +13,7 @@ class FrameAdvertTest {
 
     @Test
     fun realFrame() {
-        // the advertisement of a real frame (docs/device-api.md §14)
+        // the advertisement of a real frame (docs/protocol.md#advertising)
         val a = FrameAdvert.parse(bytes(0x43, 0x13, 0x64, 0x15))!!
         assertEquals(ColourScheme.E6, a.colour)
         assertEquals(Panel.TA, a.panel)

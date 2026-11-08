@@ -3,7 +3,7 @@ package io.github.hsw.inkeasel
 /**
  * Keeps uploads apart while the frame draws. The frame acks the image end frame (op 0x04) within ~25 ms and
  * apparently draws the image once the link drops: for ~27 s after that it does not even advertise. Nothing
- * on the link says when the drawing is over (docs/device-api.md §14.3), and a picture sent meanwhile is not
+ * on the link says when the drawing is over (docs/protocol.md#drawing-and-timing), and a picture sent meanwhile is not
  * drawn properly, so the next upload starts no earlier than [gapMs] after the last image was handed over.
  *
  * That time lives in a [Store] (shared prefs in the app), so the gap holds across uploads in one process
@@ -30,7 +30,7 @@ class DrawGate(private val clock: () -> Long, private val store: Store, private 
     }
 
     companion object {
-        /** Busy time after an upload (~27 s from the link drop, docs/device-api.md §14.3) plus a margin. */
+        /** Busy time after an upload (~27 s from the link drop, docs/protocol.md#drawing-and-timing) plus a margin. */
         const val GAP_MS = 35_000L
     }
 }

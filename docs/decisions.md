@@ -3,6 +3,14 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — The frame protocol is described in the repository
+Code comments cite `docs/protocol.md`: the BLE protocol (advertising, GATT, framing, chunking, acks, timing)
+and the image formats, each statement checked against the code, with what was only seen on a real frame or
+only in the vendor's app marked as such. It leaves out the vendor app's internals, firmware updates and real
+device identifiers.
+Rejected: comments that cite a document outside the repository (a reader cannot follow them), rewording every
+comment to stand alone (the byte layouts would be scattered over many files).
+
 ## 2026-11-08 — Text to read at TV distance is at least 14 sp
 Google asks for text readable at about 3 m and gives no minimum size. Everything the user must read
 (settings descriptions, the poster's access state and menu path, the disclosure panel including its adb

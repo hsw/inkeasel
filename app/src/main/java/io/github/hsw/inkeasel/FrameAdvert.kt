@@ -2,7 +2,7 @@ package io.github.hsw.inkeasel
 
 /**
  * What a frame advertises in its manufacturer data (company ID [COMPANY_ID], the bytes after the ID;
- * docs/device-api.md §2, verified in §14): colour and panel type, resolution, rotation, safe mode, battery
+ * docs/protocol.md#manufacturer-data): colour and panel type, resolution, rotation, safe mode, battery
  * and the optional firmware version. [raw] keeps the bytes as received, so a later reading of a bit we do not
  * decode yet needs no new scan. Unknown colour and panel codes decode the way the vendor app does (BWR, AB);
  * an unknown resolution or rotation code leaves [width]/[height] or [rotation] `null`. Free of Android types.
@@ -18,7 +18,7 @@ class FrameAdvert private constructor(
     /** Degrees (0, 90, 180, 270); `null` for a code the vendor app does not know. */
     val rotation: Int?,
     val safeMode: Boolean,
-    /** Percent (b2 bits 6..0; 100 on a full frame, §14). */
+    /** Percent (b2 bits 6..0; 100 on a full frame). */
     val battery: Int,
     /** Firmware/protocol version (b3 bits 6..0); `null` if the frame sends no b3. */
     val firmware: Int?,
@@ -34,7 +34,7 @@ class FrameAdvert private constructor(
      */
     val rejection: Txt?
         get() = when {
-            // the vendor album app drops panel type A as well (§2): not a photo frame
+            // the vendor's photo app ignores panel type A as well (docs/protocol.md#manufacturer-data)
             panel == Panel.A -> Txt(R.string.reason_panel_a)
             width == null || height == null -> Txt(R.string.reason_unknown_size_code, size)
             else -> null
@@ -71,7 +71,7 @@ class FrameAdvert private constructor(
         fun lookup(a: FrameAdvert?): FormatLookup =
             a?.rejection?.let { FormatLookup.Unsupported(it) } ?: FrameFormats.find(a?.caps)
 
-        /** Resolution codes (b1 bits 4..0) to width × height (§2). */
+        /** Resolution codes (b1 bits 4..0) to width × height (docs/protocol.md#resolution-codes). */
         val SIZES: Map<Int, Pair<Int, Int>> = mapOf(
             0x01 to (200 to 200), 0x02 to (122 to 250), 0x03 to (128 to 296), 0x04 to (152 to 296),
             0x05 to (184 to 384), 0x06 to (400 to 300), 0x07 to (648 to 480), 0x08 to (800 to 480),

@@ -29,8 +29,8 @@ data class SeenFrame(
 }
 
 /**
- * The frame chosen in the settings: uploads go to it only. [name] is its identity (docs/device-api.md §2: the
- * vendor app keys frames by name, the MAC may change); [address] is where it was last seen, [advert] what it
+ * The frame chosen in the settings: uploads go to it only. [name] is its identity (docs/protocol.md#advertising:
+ * the vendor app keys frames by name, the MAC may change); [address] is where it was last seen, [advert] what it
  * advertised then, [seenAt] when (wall clock, ms).
  */
 data class SelectedFrame(

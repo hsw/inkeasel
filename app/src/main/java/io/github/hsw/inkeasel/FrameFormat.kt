@@ -10,28 +10,28 @@ data class Palette(val name: String, val inks: List<Ink>)
 
 /**
  * How palette indices (one per pixel, row-major from the top-left) become the whole payload the frame
- * expects (`imageData` before LZO, docs/device-api.md §5.4.3): bit depth, planes, padding and split layout.
+ * expects (before any LZO, docs/protocol.md#packing): bit depth, planes, padding and split layout.
  */
 interface Packing {
     /** Whether a [w]×[h] image can be laid out this way at all. */
     fun fits(w: Int, h: Int): Boolean = true
 
-    /** Payload bytes for a [w]×[h] image (§5.4.7). */
+    /** Payload bytes for a [w]×[h] image (docs/protocol.md#payload-size). */
     fun size(w: Int, h: Int): Int
 
     fun pack(indices: ByteArray, palette: Palette, w: Int, h: Int): ByteArray
 }
 
-/** `P(n)` of §5.4.7: [n] rounded up to a multiple of 512. */
+/** `P(n)` of docs/protocol.md#payload-size: [n] rounded up to a multiple of 512. */
 internal fun pad512(n: Int) = (n + 511) / 512 * 512
 
 /**
  * 4 bits per pixel (E6, E7), `byte = c(x) << 4 | c(x+1)`, row-major from the top-left, no rotation, no
- * padding (§5.2, verified on a 1024×600 E6 frame in §14).
+ * padding (docs/protocol.md#packing, verified on a 1024×600 E6 frame).
  *
- * [split] (§5.4.5, the vendor app's layout for image width 1200 or 1600): each row is cut at its middle and
- * all left halves (x < W/2, rows 0..H−1) are sent first, then all right halves; same nibbles, no padding.
- * Needs a width that is a multiple of 4, so a half row is whole bytes.
+ * [split] (docs/protocol.md#split-layouts, the vendor app's layout for image width 1200 or 1600): each row
+ * is cut at its middle and all left halves (x < W/2, rows 0..H−1) are sent first, then all right halves; same
+ * nibbles, no padding. Needs a width that is a multiple of 4, so a half row is whole bytes.
  *
  * Unsplit, an odd pixel count would leave the last low nibble 0; every resolution in the table has an even
  * width, so rows never share a byte.
@@ -67,7 +67,8 @@ data class Nibbles4(val split: Boolean = false) : Packing {
 
 /**
  * 2 bits per pixel (E4): `byte = c0 << 6 | c1 << 4 | c2 << 2 | c3`, first pixel in the top bits, one stream
- * over the whole image (rows may share a byte), no padding (§5.4.3). W·H must be a multiple of 4.
+ * over the whole image (rows may share a byte), no padding (docs/protocol.md#packing). W·H must be a multiple
+ * of 4.
  */
 data object Crumbs2 : Packing {
     override fun fits(w: Int, h: Int) = (w * h) % 4 == 0
@@ -90,14 +91,14 @@ data object Crumbs2 : Packing {
 /**
  * [planes] 1-bit planes (BW/BP: 1, BWR: 2), sent in plane order; bit `p` of an ink's code is its pixel in plane
  * `p` (BWR: bit 0 = black plane, bit 1 = red plane). Each plane is one continuous bit stream, first pixel in
- * the MSB, rows not byte-aligned (§5.4.3); every plane is sent, even an empty one (MK 0).
+ * the MSB, rows not byte-aligned (docs/protocol.md#packing); every plane is sent, even an empty one (MK 0).
  *
- * Unsplit, each plane is padded with 0x00 to `P(ceil(W·H/8))` (§5.4.7). [split] (§5.4.5, the vendor app's BWR
- * layout at width 1360 and 1440): the parts are left half of every plane, then right half of every plane
- * (BWR: left black, left red, right black, right red), each part the half rows (x < W/2, then x ≥ W/2) of
- * rows 0..H−1 and padded by `512 − (len mod 512)` bytes, as the vendor code does (a full 512 if `len` is
- * already a multiple, which no real size hits). Needs a width that is a multiple of 16, so a half row is
- * whole bytes.
+ * Unsplit, each plane is padded with 0x00 to `P(ceil(W·H/8))` (docs/protocol.md#payload-size). [split]
+ * (docs/protocol.md#split-layouts, the vendor app's BWR layout at width 1360 and 1440): the parts are left
+ * half of every plane, then right half of every plane (BWR: left black, left red, right black, right red),
+ * each part the half rows (x < W/2, then x ≥ W/2) of rows 0..H−1 and padded by `512 − (len mod 512)` bytes,
+ * as the vendor code does (a full 512 if `len` is already a multiple, which no real size hits). Needs a width
+ * that is a multiple of 16, so a half row is whole bytes.
  */
 data class BitPlanes(val planes: Int, val split: Boolean = false) : Packing {
     init {
@@ -151,7 +152,10 @@ data class FrameFormat(
     val height: Int,
     val palette: Palette,
     val packing: Packing,
-    /** MK of the start frame (§5.4.4); 0 = image data follows, for every format sent so far. */
+    /**
+     * MK of the start frame (docs/protocol.md#content-marker); 0 = image data follows, for every format sent
+     * so far.
+     */
     val marker: Int = 0,
     val verified: Boolean = false,
 ) {
@@ -165,9 +169,9 @@ data class FrameFormat(
 
     /**
      * Floyd–Steinberg of [px] (ARGB, [width]×[height], row-major) onto [palette], always the panel's own
-     * (§5.4.1: the vendor app dithers every type with the E6 inks, which breaks the others): plain raster
-     * order, nearest ink by squared RGB distance (the first wins a tie), the pixel plus its error clamped to
-     * 0..255. One ink index per pixel.
+     * (docs/protocol.md#dithering: the vendor app dithers every type with the E6 inks, which breaks the
+     * others): plain raster order, nearest ink by squared RGB distance (the first wins a tie), the pixel plus
+     * its error clamped to 0..255. One ink index per pixel.
      */
     fun dither(px: IntArray): ByteArray {
         val w = width
@@ -235,10 +239,13 @@ sealed interface FormatLookup {
  * that decides it: the frame list greys out the rest and does not let them be chosen, [FrameClient] refuses a
  * selected frame whose caps no longer qualify, and `UploadEngine` renders with the format found here. A
  * panel type is one or more [Entry]s (palette, packing, marker, sizes); a protocol's own rejections come first
- * (e.g. [FrameAdvert.lookup]). Formats from docs/device-api.md §5.4.
+ * (e.g. [FrameAdvert.lookup]). Formats from docs/protocol.md#image-formats.
  */
 object FrameFormats {
-    /** E6 (Spectra 6) inks, measured (`e6Palettes`): device codes 0 black, 1 white, 2 yellow, 3 red, 5 blue, 6 green (§5.2). */
+    /**
+     * E6 (Spectra 6) inks, measured: device codes 0 black, 1 white, 2 yellow, 3 red, 5 blue, 6 green
+     * (docs/protocol.md#palettes-and-device-codes).
+     */
     val E6 = Palette(
         "E6",
         listOf(
@@ -251,19 +258,22 @@ object FrameFormats {
         ),
     )
 
-    /** BWR (§5.4.2, in the vendor list order); codes are plane bits for [BitPlanes]: 1 = black plane, 2 = red plane. */
+    /**
+     * BWR (docs/protocol.md#palettes-and-device-codes, in the vendor list order); codes are plane bits for
+     * [BitPlanes]: 1 = black plane, 2 = red plane.
+     */
     val BWR = Palette("BWR", listOf(Ink(255, 255, 255, 0), Ink(0, 0, 0, 1), Ink(255, 0, 0, 2)))
 
-    /** E4 (§5.4.2, in the vendor list order), codes of `_pixel2C`: 0 black, 1 white, 2 yellow, 3 red. */
+    /** E4 (docs/protocol.md#palettes-and-device-codes, in the vendor list order): 0 black, 1 white, 2 yellow, 3 red. */
     val E4 = Palette("E4", listOf(Ink(255, 255, 255, 1), Ink(0, 0, 0, 0), Ink(255, 0, 0, 3), Ink(255, 255, 0, 2)))
 
-    /** BW (§5.4.2): plane bit 1 = black. */
+    /** BW (docs/protocol.md#palettes-and-device-codes): plane bit 1 = black. */
     val BW = Palette("BW", listOf(Ink(255, 255, 255, 0), Ink(0, 0, 0, 1)))
 
-    /** BP (§5.4.2): black and pink, no white; plane bit 1 = black. */
+    /** BP (docs/protocol.md#palettes-and-device-codes): black and pink, no white; plane bit 1 = black. */
     val BP = Palette("BP", listOf(Ink(0, 0, 0, 1), Ink(255, 192, 203, 0)))
 
-    /** E7 (§5.4.2), codes of `_pixel2C` with orange as 4 (the intended code, §5.4.2 notes). */
+    /** E7 (docs/protocol.md#palettes-and-device-codes), the vendor's codes with orange as 4 (inferred). */
     val E7 = Palette(
         "E7",
         listOf(
@@ -272,10 +282,13 @@ object FrameFormats {
         ),
     )
 
-    /** BWY: no vendor palette; a guess from the BWR packing, which carries (255,255,0) in the red plane (§5.4.2). */
+    /**
+     * BWY: no vendor palette; a guess from the BWR packing, which carries (255,255,0) in the red plane
+     * (docs/protocol.md#palettes-and-device-codes).
+     */
     val BWY = Palette("BWY", listOf(Ink(255, 255, 255, 0), Ink(0, 0, 0, 1), Ink(255, 255, 0, 2)))
 
-    /** The frame this app was built and verified with (§14); also the card shape while no frame is chosen. */
+    /** The frame this app was built and verified with; also the card shape while no frame is chosen. */
     val DEFAULT = FrameFormat(1024, 600, E6, Nibbles4(), marker = 0, verified = true)
 
     /**
@@ -293,15 +306,16 @@ object FrameFormats {
     )
 
     private val ALL = FrameAdvert.SIZES.values.toSet()
-    private val E6_SPLIT = setOf(1200 to 1600) // width 1200 or 1600; only 1200×1600 has a size code (§5.4.5)
-    private val BWR_SPLIT = setOf(1360 to 480, 1440 to 600) // width 1360 or 1440 (§5.4.5)
+    // width 1200 or 1600; only 1200×1600 has a size code (docs/protocol.md#split-layouts)
+    private val E6_SPLIT = setOf(1200 to 1600)
+    private val BWR_SPLIT = setOf(1360 to 480, 1440 to 600) // width 1360 or 1440 (docs/protocol.md#split-layouts)
 
     private val UNTESTED_FORMAT = Txt(R.string.reason_untested_format)
     private val VENDOR_CANNOT = Txt(R.string.reason_vendor_cannot)
 
     private val ENTRIES = listOf(
-        // verified at 1024×600 (§14); at the other unsplit sizes only W and H differ, and these bytes are what
-        // the vendor app sends (it renders E6 correctly, §5.4.1)
+        // verified at 1024×600; at the other unsplit sizes only W and H differ, and these bytes are what the
+        // vendor app sends (it renders E6 correctly, docs/protocol.md#dithering)
         Entry(ColourScheme.E6, E6, Nibbles4(), ALL - E6_SPLIT - BWR_SPLIT, verified = true),
         // the vendor app sends these unsplit too, but such a wide panel may well have two controllers
         Entry(ColourScheme.E6, E6, Nibbles4(), BWR_SPLIT),

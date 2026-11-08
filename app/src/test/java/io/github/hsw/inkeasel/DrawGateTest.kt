@@ -71,6 +71,7 @@ class DrawGateTest {
         val g = DrawGate({ now }, store)
         g.ended()
         assertEquals(DrawGate.GAP_MS, g.waitMs())
-        assertEquals(true, DrawGate.GAP_MS >= 30_000) // busy ~27 s after the link drop, docs/device-api.md §14.3
+        // busy ~27 s after the link drop, docs/protocol.md#drawing-and-timing
+        assertEquals(true, DrawGate.GAP_MS >= 30_000)
     }
 }

@@ -1,6 +1,6 @@
 package io.github.hsw.inkeasel
 
-/** Ink sets of e-paper panels (the vendor app's names, docs/device-api.md §2). */
+/** Ink sets of e-paper panels (the vendor app's names, docs/protocol.md#manufacturer-data). */
 enum class ColourScheme { BW, BWR, BWY, E4, E6, E7, BP }
 
 /**
@@ -16,7 +16,7 @@ data class FrameCaps(val width: Int?, val height: Int?, val colours: ColourSchem
  * kind of frame can be added next to this one. [id] is what goes into prefs.
  */
 enum class FrameKind(val id: String) {
-    /** BLE service 0xFFBB, manufacturer data 0xABC8 (docs/device-api.md). */
+    /** BLE service 0xFFBB, manufacturer data 0xABC8 (docs/protocol.md). */
     NOWMEAN("nowmean");
 
     companion object {
