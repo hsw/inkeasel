@@ -355,7 +355,7 @@ fun App(
             // the width outside the layout padding (inside the system bars) picks the columns and the padding
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
-                Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = 24.dp)) {
+                Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader)
                     Spacer(Modifier.height(16.dp))
                     LaunchedEffect(Unit) { vm.selectTab(vm.tab) }

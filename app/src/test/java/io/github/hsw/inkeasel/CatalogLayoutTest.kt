@@ -8,30 +8,39 @@ class CatalogLayoutTest {
 
     @Test
     fun phonePortrait_twoColumns_narrowPadding_splitHeader() {
-        assertEquals(CatalogLayout(columns = 2, sidePadding = 16, gap = 12, splitHeader = true), layout(411))
-        assertEquals(CatalogLayout(columns = 2, sidePadding = 16, gap = 12, splitHeader = true), layout(599))
+        val phone = CatalogLayout(columns = 2, sidePadding = 16, verticalPadding = 24, gap = 12, splitHeader = true)
+        assertEquals(phone, layout(411))
+        assertEquals(phone, layout(599))
     }
 
     @Test
     fun from600dp_threeColumns_splitBelow720dp() {
-        assertEquals(CatalogLayout(columns = 3, sidePadding = 32, gap = 16, splitHeader = true), layout(600))
-        assertEquals(CatalogLayout(columns = 3, sidePadding = 32, gap = 16, splitHeader = true), layout(719))
+        val split = CatalogLayout(columns = 3, sidePadding = 32, verticalPadding = 24, gap = 16, splitHeader = true)
+        assertEquals(split, layout(600))
+        assertEquals(split, layout(719))
     }
 
     @Test
     fun from720dp_oneHeaderRow_threeColumnsUntil840dp() {
-        assertEquals(CatalogLayout(columns = 3, sidePadding = 32, gap = 16, splitHeader = false), layout(720))
-        assertEquals(CatalogLayout(columns = 3, sidePadding = 32, gap = 16, splitHeader = false), layout(839))
+        val oneRow = CatalogLayout(columns = 3, sidePadding = 32, verticalPadding = 24, gap = 16, splitHeader = false)
+        assertEquals(oneRow, layout(720))
+        assertEquals(oneRow, layout(839))
     }
 
     @Test
     fun from840dp_fourColumns_tvPadding() {
-        assertEquals(CatalogLayout(columns = 4, sidePadding = 48, gap = 20, splitHeader = false), layout(840))
+        assertEquals(CatalogLayout(columns = 4, sidePadding = 48, verticalPadding = 27, gap = 20, splitHeader = false), layout(840))
     }
 
     @Test
-    fun tv_fourColumns_48dpPadding_oneHeaderRow() {
-        assertEquals(CatalogLayout(columns = 4, sidePadding = 48, gap = 20, splitHeader = false), layout(960))
+    fun tv_fourColumns_tvOverscanMargins_oneHeaderRow() {
+        assertEquals(CatalogLayout(columns = 4, sidePadding = 48, verticalPadding = 27, gap = 20, splitHeader = false), layout(960))
+    }
+
+    @Test
+    fun verticalPadding_24dpBelow840dp_27dpFrom840dp() {
+        listOf(0, 411, 599, 600, 719, 720, 839).forEach { assertEquals("width $it", 24, layout(it).verticalPadding) }
+        listOf(840, 960, 1280, 4000).forEach { assertEquals("width $it", 27, layout(it).verticalPadding) }
     }
 
     @Test

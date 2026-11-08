@@ -3,6 +3,18 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — TV overscan margins by window width, lint in CI
+The catalog keeps the Android TV overscan margins, 48 dp at the sides and 27 dp at the top and bottom, in the
+widest `CatalogLayout` bucket (840 dp and up); narrower windows keep 24 dp top and bottom. The bucket is chosen
+by width only, so a landscape tablet gets the TV margins too, which costs it 3 dp. The settings dialog already
+pads 48 dp at the sides and 32 dp at the top and bottom, so it keeps its own vertical padding. A focused row
+there grows by tv-material's default focus scale and its highlight reaches into the margin while it has focus;
+that is the library's focus indication, not content, and stays. CI runs `lintDebug` with the build, so a new
+lint error fails it; warnings are only reported.
+Rejected: detecting a TV (`UiModeManager`, the leanback feature) for the margins (a second layout input next
+to the width, for 3 dp on tablets), the 27 dp in the settings dialog as well (it would shrink a padding that
+already clears the margin), a lint baseline (there are no errors to freeze).
+
 ## 2026-11-08 — TV banner with the app name, vector adaptive launcher icon
 The TV banner keeps the original motif (a light frame line around the five e-paper colour stripes on dark
 grey) and its black label now reads "InkEasel" instead of "Frame". It is a 320×180 PNG in `drawable-xhdpi`,
