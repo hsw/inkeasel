@@ -3,6 +3,26 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — A release import is staged and swapped in one transaction
+The starter set goes straight into the live tables, in one transaction and only into a database with no
+Wikidata row (so a second run reads nothing), keeping labels of the language chain, English and `mul`. A
+release import (`CatalogImport`) first clears the `_stage` tables, then streams `core` and each labels file
+into them in batch transactions (one batch in memory), and only then swaps in one transaction: the staged
+pictures replace the Wikidata rows by id (a row already there keeps its rank, so the starter's top 1,000 do
+not move), rows absent from the new `core` are swept, its entity links replace all links, each imported
+labels file replaces its language (a file of every language replaces every chain language), labels outside
+the chain are dropped, and rank and dedupe are computed again. A broken file (a truncated gzip, a failed
+download) or a `core` with no valid row fails the whole import before the swap, so nothing visible changes
+and the paging source, which reads only live tables, is invalidated once, by the swap; leftover staging is
+cleared then and at the next start. In a `core` the first row of an id wins. Labels of entities no longer
+referenced stay until their language's file is imported again: removing them by reference would lose labels
+when a new `core` arrives after an unchanged labels file that is not imported again. No UPSERT (SQLite 3.18):
+`INSERT OR REPLACE` keeps the rank by reading it from the row it replaces. The delivery entry below stays
+*planned*: the starter asset in the APK and the download with its weekly check are not built yet.
+Rejected: per-batch upserts into the live tables (a list mixing two releases while it imports, no sweep of
+absent rows, a paging invalidation per batch), staging the starter set too (it goes into an empty database,
+where one transaction already is all or nothing).
+
 ## 2026-11-09 — The catalog database holds only data that can be downloaded again
 The catalog database (`CatalogDb`, separate from the frame and feature preferences) stores the release's
 rows, the live sources' rows, the labels of the stored languages and the state of the release files: nothing

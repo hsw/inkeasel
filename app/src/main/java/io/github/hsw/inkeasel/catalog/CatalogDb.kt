@@ -310,6 +310,9 @@ abstract class CatalogDao {
 abstract class CatalogDb : RoomDatabase() {
     abstract fun catalog(): CatalogDao
 
+    /** The staging tables and the swap ([CatalogImport]). */
+    abstract fun imports(): ImportDao
+
     companion object {
         const val NAME = "catalog.db"
 
