@@ -93,8 +93,9 @@ fun FrameSettingsDialog(
     ble: BleAccess,
     poster: Boolean,
     access: Boolean,
+    pending: Boolean,
     onPoster: () -> PosterSwitch.Press,
-    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
+    onDisclosureConfirmed: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -106,7 +107,7 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, ble, poster, access, onPoster, onDisclosureConfirmed, sidePadding, onSelect, onCancel)
+                FrameSettings(selected, ble, poster, access, pending, onPoster, onDisclosureConfirmed, sidePadding, onSelect, onCancel)
             }
         }
     }
@@ -137,8 +138,9 @@ private fun FrameSettings(
     ble: BleAccess,
     poster: Boolean,
     access: Boolean,
+    pending: Boolean,
     onPoster: () -> PosterSwitch.Press,
-    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
+    onDisclosureConfirmed: () -> Unit,
     sidePadding: Int,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
@@ -266,7 +268,7 @@ private fun FrameSettings(
             }
         }
         Spacer(Modifier.height(32.dp))
-        FeaturesSection(ble, poster, access, onPoster, onDisclosureConfirmed)
+        FeaturesSection(ble, poster, access, pending, onPoster, onDisclosureConfirmed)
     }
 }
 
@@ -277,7 +279,9 @@ private fun FrameSettings(
  * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`). Without the access, the switch
  * and "Grant access" both open the [Disclosure] first; its "Continue" calls [onDisclosureConfirmed]
  * (`MainViewModel.confirmDisclosure`) and starts the grant flow: the system screen [ListenerAccessUi.grant]
- * names, while the section says the menu path on TV (or the adb command where no screen leads to the switch).
+ * names. The menu path on TV and the adb command (where no screen leads to the switch) are shown in the
+ * disclosure; the menu path also under the switch once the poster waits for the access ([pending]), so no way
+ * to the grant appears before the disclosure.
  * The access itself is read again by the view model on resume, the screens here. Last, the [PrivacyRow].
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
@@ -287,8 +291,9 @@ private fun FeaturesSection(
     ble: BleAccess,
     poster: Boolean,
     access: Boolean,
+    pending: Boolean,
     onPoster: () -> PosterSwitch.Press,
-    onDisclosureConfirmed: (grantAvailable: Boolean) -> PosterSwitch.Confirm,
+    onDisclosureConfirmed: () -> Unit,
 ) {
     val ctx = LocalContext.current
     val tv = remember { ListenerAccess.tv(ctx) }
@@ -302,7 +307,6 @@ private fun FeaturesSection(
         onPauseOrDispose {}
     }
     val ui = ListenerAccessUi.of(access, direct, apps, Build.VERSION.SDK_INT, tv, lowRam, sideloaded)
-    val dim = MaterialTheme.colorScheme.onSurfaceVariant
 
     // The disclosure is open while it knows what opened it, and gives the focus back there when it closes.
     var disclosedFrom by remember { mutableStateOf<DisclosureOpener?>(null) }
@@ -315,10 +319,10 @@ private fun FeaturesSection(
     }
     val pressPoster: () -> Unit = { if (onPoster() == PosterSwitch.Press.DISCLOSE) disclosedFrom = DisclosureOpener.SWITCH }
     val pressGrant: () -> Unit = { disclosedFrom = DisclosureOpener.BUTTON }
-    val confirm: () -> Unit = {
-        val grant = ui.grant
-        if (onDisclosureConfirmed(grant != null) == PosterSwitch.Confirm.SET_PENDING_AND_GRANT && grant != null) {
-            ListenerAccess.open(ctx, grant, tv)
+    val confirm: () -> Unit = { // offered only with a screen to open
+        ui.grant?.let {
+            onDisclosureConfirmed()
+            ListenerAccess.open(ctx, it, tv)
         }
         closeDisclosure()
     }
@@ -351,14 +355,7 @@ private fun FeaturesSection(
         supportingContent = {
             Column {
                 Text(ui.status.text())
-                ui.menuHint?.let { Text(ListenerAccessUi.menuText(it).text()) }
-                if (ui.adbHint) {
-                    Text(
-                        stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = dim,
-                    )
-                }
+                ui.rowMenuHint(pending)?.let { Text(ListenerAccessUi.menuText(it).text()) }
             }
         },
         trailingContent = { Switch(checked = poster, onCheckedChange = null) },
@@ -372,7 +369,7 @@ private fun FeaturesSection(
     disclosedFrom?.let { from ->
         Spacer(Modifier.height(8.dp))
         // keyed by the opener, so opening it again from the other element moves the focus into it again
-        key(from) { Disclosure(PosterSwitch.confirm(ui.grant != null), confirm, closeDisclosure) }
+        key(from) { Disclosure(ui, confirm, closeDisclosure) }
     }
     if (ui.restrictedHint) {
         Spacer(Modifier.height(8.dp))
@@ -416,12 +413,13 @@ private enum class DisclosureOpener { SWITCH, BUTTON }
  * The prominent disclosure before notification access: what the system grant covers (all notifications),
  * what the app really reads (the playing app's media-session title and artwork) and what leaves the device
  * (only the poster, to the frame over Bluetooth). It takes the D-pad focus when it opens. "Continue"
- * ([onContinue]) is the affirmative action; where no system screen leads to the access ([confirm] is
- * [PosterSwitch.Confirm.SHOW_ADB_HINT]) the adb command takes its place. "Cancel" ([onCancel]) changes nothing.
+ * ([onContinue]) is the affirmative action; on TV the menu path to the switch comes before it ([ui]'s
+ * [ListenerAccessUi.menuHint]). Where no system screen leads to the access ([ListenerAccessUi.adbHint]) the adb
+ * command takes the place of "Continue". "Cancel" ([onCancel]) changes nothing.
  */
 @OptIn(ExperimentalFoundationApi::class) // BringIntoViewRequester
 @Composable
-private fun Disclosure(confirm: PosterSwitch.Confirm, onContinue: () -> Unit, onCancel: () -> Unit) {
+private fun Disclosure(ui: ListenerAccessUi, onContinue: () -> Unit, onCancel: () -> Unit) {
     val ctx = LocalContext.current
     val focus = remember { FocusRequester() }
     val inView = remember { BringIntoViewRequester() }
@@ -440,7 +438,11 @@ private fun Disclosure(confirm: PosterSwitch.Confirm, onContinue: () -> Unit, on
         Text(stringResource(R.string.access_disclosure_title), style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(8.dp))
         Text(Txt(R.string.access_disclosure_text, Txt(R.string.app_name)).text(), style = MaterialTheme.typography.bodyMedium)
-        val adb = confirm == PosterSwitch.Confirm.SHOW_ADB_HINT
+        ui.menuHint?.let {
+            Spacer(Modifier.height(8.dp))
+            Text(ListenerAccessUi.menuText(it).text(), style = MaterialTheme.typography.bodyMedium)
+        }
+        val adb = ui.grant == null
         if (adb) {
             Spacer(Modifier.height(8.dp))
             Text(

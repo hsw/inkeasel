@@ -12,9 +12,13 @@ package io.github.hsw.inkeasel
  *   that menu item). Low-RAM TVs hide the menu item, so they get no Apps route.
  * - [menuHint]: on TV with the menu route, that path as text: as the way to go ([MenuHint.ONLY]) when the
  *   button opens the Apps screen, or as a fallback ([MenuHint.FALLBACK]) when it opens the direct screen,
- *   whose rows the D-pad could not reach on Google TV 14.
+ *   whose rows the D-pad could not reach on Google TV 14. Shown in the disclosure, and under the poster switch
+ *   only once the disclosure has been confirmed ([rowMenuHint]).
  * - [adbHint]: the adb command, only when no screen leads to the switch at all (e.g. Android TV 8, which has
- *   no notification-access screen); shown as a secondary line.
+ *   no notification-access screen); shown in the disclosure only, as a secondary line.
+ *
+ * Every way to the grant (the screen, the menu path, the adb command) thus appears only in or after the
+ * prominent disclosure.
  * - [restrictedHint]: on a phone or tablet ([tv] false) with Android 13+ and a direct screen, for a
  *   [sideloaded] app (not installed by a store): it must first be allowed "restricted settings" in its App
  *   info (⋮ menu), or the switch there stays greyed out. Not on Android TV (its App info has no such menu;
@@ -29,6 +33,12 @@ data class ListenerAccessUi(
 ) {
     /** "Grant access" is shown: there is a screen to open. */
     val openButton: Boolean get() = grant != null
+
+    /**
+     * The menu path under the poster switch: only once the disclosure was confirmed and the poster waits for
+     * the access ([pending], `FeatureStore.posterPending`), so the user finds it again after the system screen.
+     */
+    fun rowMenuHint(pending: Boolean): MenuHint? = menuHint.takeIf { pending }
 
     /** The system screens the grant flow can open. */
     enum class GrantScreen {

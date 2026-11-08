@@ -132,4 +132,26 @@ class ListenerAccessUiTest {
         assertEquals(Txt(R.string.access_menu_only, path), ListenerAccessUi.menuText(MenuHint.ONLY))
         assertEquals(Txt(R.string.access_menu_fallback, path), ListenerAccessUi.menuText(MenuHint.FALLBACK))
     }
+
+    @Test
+    fun rowMenuHint_onlyAfterTheDisclosureWasConfirmed() {
+        // the menu path is a way to the grant: before the disclosure it appears only inside it
+        for (ui in listOf(of(direct = false, sdk = 30, tv = true), of(sdk = 34, tv = true))) {
+            assertNull(ui.rowMenuHint(pending = false))
+            assertEquals(ui.menuHint, ui.rowMenuHint(pending = true))
+        }
+        assertNull(of(sdk = 34).rowMenuHint(pending = true)) // no menu route on a phone
+        assertNull(of(enabled = true, tv = true).rowMenuHint(pending = true)) // granted: nothing to find
+    }
+
+    @Test
+    fun withoutAccess_theAdbHintStandsExactlyForAMissingGrantScreen() {
+        // the disclosure offers "Continue" (which keeps the poster wish pending) only with a screen to open,
+        // and the adb command in its place otherwise
+        for (direct in listOf(true, false)) for (apps in listOf(true, false)) for (tv in listOf(true, false))
+            for (lowRam in listOf(true, false)) for (sdk in listOf(26, 28, 30, 33, 34, 36)) {
+                val ui = of(direct = direct, apps = apps, sdk = sdk, tv = tv, lowRam = lowRam)
+                assertEquals(ui.grant == null, ui.adbHint)
+            }
+    }
 }

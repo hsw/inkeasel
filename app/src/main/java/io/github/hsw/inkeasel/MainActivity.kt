@@ -118,6 +118,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** What the poster switch shows: wanted and working ([PosterSwitch.checked]). */
     val posterOn: Boolean get() = PosterSwitch.checked(posterEnabled, listenerAccess)
 
+    /** The poster waits for the access: the disclosure was confirmed ([FeatureStore.posterPending]). */
+    var posterPending by mutableStateOf(features.posterPending)
+        private set
+
+    private fun setPending(pending: Boolean) {
+        features.posterPending = pending
+        posterPending = pending
+    }
+
     fun openSettings() {
         settingsOpen = true
     }
@@ -151,7 +160,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         Log.i(TAG, "poster switch pressed: $press")
         when (press) {
             PosterSwitch.Press.TURN_OFF -> {
-                features.posterPending = false
+                setPending(false)
                 setPoster(false)
             }
             PosterSwitch.Press.TURN_ON -> setPoster(true)
@@ -161,23 +170,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The disclosure's affirmative action ([PosterSwitch.confirm]): with a system screen for the grant
-     * ([grantAvailable]) the wish is kept as pending and [PosterSwitch.Confirm.SET_PENDING_AND_GRANT] tells
-     * the caller to open it. Cancelling the disclosure does not call this and changes nothing.
+     * The disclosure's affirmative action, "Continue" ([PosterSwitch]): the wish is kept as pending, and the
+     * caller opens the system screen. Cancelling the disclosure does not call this and changes nothing.
      */
-    fun confirmDisclosure(grantAvailable: Boolean): PosterSwitch.Confirm {
-        val confirm = PosterSwitch.confirm(grantAvailable)
-        Log.i(TAG, "notification access disclosure confirmed: $confirm")
-        if (confirm == PosterSwitch.Confirm.SET_PENDING_AND_GRANT) features.posterPending = true
-        return confirm
+    fun confirmDisclosure() {
+        Log.i(TAG, "notification access disclosure confirmed")
+        setPending(true)
     }
 
     /** The app is back in front: read the access again and switch on a poster that waited for it. */
     fun onResume() {
         listenerAccess = ListenerAccess.enabled(getApplication())
-        if (PosterSwitch.enableOnResume(listenerAccess, features.posterPending)) {
+        posterPending = features.posterPending
+        if (PosterSwitch.enableOnResume(listenerAccess, posterPending)) {
             Log.i(TAG, "notification access granted: switching on the poster that waited for it")
-            features.posterPending = false
+            setPending(false)
             setPoster(true)
         }
     }
@@ -379,6 +386,7 @@ fun App(
                     ble = ble,
                     poster = vm.posterOn,
                     access = vm.listenerAccess,
+                    pending = vm.posterPending,
                     onPoster = vm::pressPoster,
                     onDisclosureConfirmed = vm::confirmDisclosure,
                     onSelect = { f -> vm.select(f); onFrameSelected() },
