@@ -3,6 +3,22 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — TV banner with the app name, vector adaptive launcher icon
+The TV banner keeps the original motif (a light frame line around the five e-paper colour stripes on dark
+grey) and its black label now reads "InkEasel" instead of "Frame". It is a 320×180 PNG in `drawable-xhdpi`,
+the size and density Android TV asks for; in the densityless `drawable` folder it was taken as mdpi and
+scaled up twice on a TV. The text uses Pillow's bundled Aileron Regular (CC0), so no font licence comes
+along. The launcher icon is an adaptive icon in `mipmap-anydpi` (minSdk 26, so it serves every API level)
+with vector layers: a dark grey background colour, the same frame and stripes as the foreground, kept inside
+the 66 dp safe zone so no launcher mask cuts the frame's corners, and a monochrome layer for themed icons in
+which the stripes alternate full and half alpha. The old 192 px `mipmap-xhdpi/ic_launcher.png` is deleted:
+nothing uses it once the adaptive icon exists. Lint now warns `IconMissingDensityFolder` for the single
+banner density instead of `IconLocation` for a bitmap in `drawable`; it stays a warning, since Android TV specifies
+the banner at xhdpi only.
+Rejected: a 432 px bitmap foreground (the motif is plain rectangles, a vector is sharp at every size), banner
+copies for other densities (not asked for by Android TV, more files to keep in step), a `roundIcon` (the adaptive icon covers round
+masks).
+
 ## 2026-11-08 — Target API 36 with AGP 8.9.1
 compileSdk and targetSdk are 36 (Play's target requirement). AGP goes from 8.7.3 to 8.9.1, the oldest
 release that supports API 36; it still runs on Gradle 8.11.1 and Kotlin 2.0.21, so neither moves, and no

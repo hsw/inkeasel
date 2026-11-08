@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed (monochrome) icon layer: the foreground's shapes, the stripes told apart by alternating alpha -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M31,31H77V77H31Z M32.25,32.25V75.75H75.75V32.25Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37.5,37.5H44.1V70.5H37.5Z M50.7,37.5H57.3V70.5H50.7Z M63.9,37.5H70.5V70.5H63.9Z" />
+    <path
+        android:fillAlpha="0.5"
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M44.1,37.5H50.7V70.5H44.1Z M57.3,37.5H63.9V70.5H57.3Z" />
+</vector>

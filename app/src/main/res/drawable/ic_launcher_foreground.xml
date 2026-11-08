@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground (108 dp canvas): the frame stays inside the 66 dp safe zone, so no mask cuts it -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFE6E6E6"
+        android:fillType="evenOdd"
+        android:pathData="M31,31H77V77H31Z M32.25,32.25V75.75H75.75V32.25Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M37.5,37.5H44.1V70.5H37.5Z" />
+    <path
+        android:fillColor="#FFF0E050"
+        android:pathData="M44.1,37.5H50.7V70.5H44.1Z" />
+    <path
+        android:fillColor="#FFA02020"
+        android:pathData="M50.7,37.5H57.3V70.5H50.7Z" />
+    <path
+        android:fillColor="#FF5080B8"
+        android:pathData="M57.3,37.5H63.9V70.5H57.3Z" />
+    <path
+        android:fillColor="#FF5F824E"
+        android:pathData="M63.9,37.5H70.5V70.5H63.9Z" />
+</vector>
