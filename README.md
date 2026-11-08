@@ -175,6 +175,11 @@ moves the focus to the selected tab and scrolls the grid back to its first row; 
 A grid scrolled down by touch goes back to its first row the same way. The settings and the disclosure panel
 close with Back as before (`CatalogBack`).
 
+Text to read from the sofa is at least 14 sp (`bodyMedium`): the settings' descriptions, the poster's access
+state, the disclosure panel with its adb line, why a frame cannot be chosen, the privacy address. Only
+secondary metadata is 12 sp: a card's artist and date, a frame's address and properties. Checked on the TV
+emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan margins stay.
+
 The app draws behind the status and navigation bars
 (Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
 or button navigation; the settings dialog does the same. A TV has no bars, so nothing changes there.
@@ -258,7 +263,8 @@ one that can be chosen), unless the user has already moved onto the list.
   `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (taken from the
   advertisement here); a new panel type is one more entry there.
 - Without Bluetooth permission the screen asks for it ("Allow"); with Bluetooth off it says so and
-  offers the system Bluetooth settings. On Android 11 the scan also needs location on. Once the system no
+  offers the system Bluetooth settings. Before Android 12 the scan also needs location on, and only there does
+  the hint under the search say so. Once the system no
   longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
   so the button becomes "App info" and the text names the path: Settings → Apps → InkEasel → Permissions →
   Nearby devices (Location on Android 11 and older). The grant is picked up when the app comes back.

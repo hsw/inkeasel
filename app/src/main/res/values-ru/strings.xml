@@ -35,7 +35,8 @@
     <string name="bt_settings">Настройки Bluetooth</string>
     <string name="scan_failed">Поиск рамок не удался: %1$s</string>
     <string name="scanning">Поиск рамок…</string>
-    <string name="scanning_hint">Рамка должна быть рядом и не подключена к телефону. На Android 11 для поиска также нужна включённая геолокация.</string>
+    <string name="scanning_hint">Рамка должна быть рядом и не подключена к телефону.</string>
+    <string name="scanning_hint_location">Рамка должна быть рядом и не подключена к телефону, а для поиска нужна включённая геолокация.</string>
     <string name="frame_toast_unverified">Рамка %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Рамка %1$s не поддерживается: %2$s</string>
     <string name="frame_item_selected">%1$s — выбрана</string>

@@ -86,6 +86,10 @@ private const val TAG = "FrameSettings"
  *
  * Its window is drawn behind the system bars like the activity's, and the content pads itself with the
  * safe-drawing insets and the catalog's side padding for the width ([CatalogLayout]).
+ *
+ * Text the user must read at TV distance is `bodyMedium` (14 sp) or larger; a `ListItem`'s supporting text is
+ * `bodySmall` (12 sp) by default, so such text there sets `bodyMedium` itself, and only secondary metadata (a
+ * frame's address and properties) stays small.
  */
 @Composable
 fun FrameSettingsDialog(
@@ -250,7 +254,7 @@ private fun FrameSettings(
                     Text(stringResource(R.string.scanning), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        stringResource(R.string.scanning_hint),
+                        BlePermissions.scanHint.text(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -365,8 +369,8 @@ private fun FeaturesSection(
         headlineContent = { Text(stringResource(R.string.feature_poster)) },
         supportingContent = {
             Column {
-                Text(ui.status.text())
-                ui.rowMenuHint(pending)?.let { Text(ListenerAccessUi.menuText(it).text()) }
+                Text(ui.status.text(), style = MaterialTheme.typography.bodyMedium)
+                ui.rowMenuHint(pending)?.let { Text(ListenerAccessUi.menuText(it).text(), style = MaterialTheme.typography.bodyMedium) }
             }
         },
         trailingContent = { Switch(checked = poster, onCheckedChange = null) },
@@ -413,7 +417,7 @@ private fun PrivacyRow(tv: Boolean) {
         onClick = open,
         modifier = Modifier.onTap(open),
         headlineContent = { Text(stringResource(R.string.settings_privacy)) },
-        supportingContent = { Text(url) },
+        supportingContent = { Text(url, style = MaterialTheme.typography.bodyMedium) },
     )
 }
 
@@ -458,7 +462,7 @@ private fun Disclosure(ui: ListenerAccessUi, onContinue: () -> Unit, onCancel: (
             Spacer(Modifier.height(8.dp))
             Text(
                 stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)),
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -519,10 +523,12 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
                         stringResource(R.string.frame_signal, f.rssi),
                     ).joinToString(sep)
                 )
-                reason?.let { Text(Txt(R.string.frame_unsupported, it).text(), color = MaterialTheme.colorScheme.error) }
+                reason?.let {
+                    Text(Txt(R.string.frame_unsupported, it).text(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                }
                 // a supported format never seen working on a real panel ([FrameFormat.verified])
                 if (f.lookup.formatOrNull?.verified == false) {
-                    Text(stringResource(R.string.frame_unverified), color = MaterialTheme.colorScheme.tertiary)
+                    Text(stringResource(R.string.frame_unverified), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
                 }
             }
         },

@@ -21,6 +21,9 @@ object BlePermissions {
         if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
         else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
 
+    /** What a frame search needs besides the permission; before Android 12 a BLE scan also needs location on. */
+    val scanHint: Txt = Txt(if (Build.VERSION.SDK_INT >= 31) R.string.scanning_hint else R.string.scanning_hint_location)
+
     /** The name of the permission in the system's App info → Permissions screen. */
     val settingsName: Txt = Txt(if (Build.VERSION.SDK_INT >= 31) R.string.perm_name_nearby else R.string.perm_name_location)
 

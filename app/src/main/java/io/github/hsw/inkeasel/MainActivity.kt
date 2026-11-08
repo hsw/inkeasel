@@ -547,7 +547,7 @@ fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit) {
             ) {
                 Text(p.title, style = MaterialTheme.typography.labelLarge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (p.credit.isNotBlank()) {
-                    Text(p.credit, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(p.credit, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

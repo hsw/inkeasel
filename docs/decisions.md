@@ -3,6 +3,18 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — Text to read at TV distance is at least 14 sp
+Google asks for text readable at about 3 m and gives no minimum size. Everything the user must read
+(settings descriptions, the poster's access state and menu path, the disclosure panel including its adb
+command, why a frame cannot be chosen or is not verified, the privacy address) is `bodyMedium` (14 sp) or
+larger; tv-material's `ListItem` puts its supporting text in `bodySmall` (12 sp), so those texts set
+`bodyMedium` themselves. 12 sp stays for secondary metadata only: a card's credit (`labelMedium`, up from
+11 sp `labelSmall`) and a frame's address and advertised properties. The search hint names location only
+where a BLE scan needs it (before Android 12), which makes it one line on a TV.
+Rejected: a custom typography scale (every component would need checking against it), 14 sp for the
+metadata too (a frame's property line would wrap on phones), restructuring the settings for shorter text
+(a separate item).
+
 ## 2026-11-08 — Back from the catalog content goes to the tabs first
 Back with the focus on a card or a Retry button moves the focus to the selected tab and scrolls the grid to
 its first row; only the next Back leaves the app. That is Google's TV navigation guidance for a top

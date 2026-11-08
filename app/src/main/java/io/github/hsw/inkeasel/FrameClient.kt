@@ -118,7 +118,7 @@ class FrameClient(private val ctx: Context) {
         } finally {
             stop()
         }
-            ?: throw TxtException(Txt(R.string.frame_err_not_found, name, Txt(R.string.scanning_hint)))
+            ?: throw TxtException(Txt(R.string.frame_err_not_found, name, BlePermissions.scanHint))
         Log.i(TAG, "found $name at ${seen.address}: ${seen.advert}")
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout

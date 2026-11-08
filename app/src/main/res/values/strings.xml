@@ -41,7 +41,9 @@
     <string name="bt_settings">Bluetooth settings</string>
     <string name="scan_failed">Frame search failed: %1$s</string>
     <string name="scanning">Searching for frames…</string>
-    <string name="scanning_hint">The frame must be nearby and not connected to a phone. On Android 11 the search also needs location turned on.</string>
+    <string name="scanning_hint">The frame must be nearby and not connected to a phone.</string>
+    <!-- before Android 12 a BLE scan also needs location turned on -->
+    <string name="scanning_hint_location">The frame must be nearby and not connected to a phone, and the search needs location turned on.</string>
     <string name="frame_toast_unverified">Frame %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Frame %1$s is not supported: %2$s</string>
     <string name="frame_item_selected">%1$s — selected</string>
