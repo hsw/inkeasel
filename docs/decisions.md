@@ -3,6 +3,36 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — A full-screen viewer, opened from the details panel
+**View full screen** (second in the details panel's action row; **Send to frame** keeps the first focus)
+opens the picture letterboxed on black, fitted, never cropped, in a dialog that hides the system bars. A
+plain press on a card still sends at once. The viewer replaces the details panel (dialogs never stack), and
+Back brings that panel back for the picture then shown, not the grid: Back returns one step, and after
+Left/Right the details of what is on screen are the useful ones. Left/Right go through the list of the tab it
+was opened from and stop at its ends (no wrap). Any other key shows the action row with the credit line; its
+CENTER only shows it (its release is swallowed, so it never also presses **Send to frame**); volume, Home and
+Back stay the system's. With no frame chosen the row says so instead of a button. Back closes the viewer even
+while the row is up, rather than hiding the row first: the row hides by itself, and two presses to leave would
+cost more. The credit line (title; artist, source, licence) shows for 5 s on open, on every picture change
+and with the row: the Commons licences (CC BY, BY-SA) ask for attribution wherever the picture is shown.
+Touch: a swipe of 64 dp or more goes to the next or previous picture, a tap toggles the row. **Send to frame**
+takes the card's path and keeps the viewer open; only the Bluetooth panel, when it is needed, replaces it.
+The rendition is sized to the window in pixels (on a 4K TV whose UI runs at 1920 × 1080 a larger image could
+not be drawn sharper) taken landscape, so a rotation loads and decodes nothing again (`ViewerRules`, pure):
+Commons the smallest standard thumbnail width (960, 1280, 1920, 3840; Wikimedia refuses any other, 2560
+included, with HTTP 400 or 429) that covers the fitted width or the original's, or the original as listed
+when it is narrower than 1920 px; Cleveland `web` (about 893 px high) up to a Full HD window and `print` (up
+to 3400 px wide) beyond, so a 2560 × 1600 tablet gets `print`; a local file as is. Coil decodes it to at most
+the window's size, so a 10 000 px original costs one screen of bitmap memory. The card's thumbnail (in the
+cache from the grid) stands in while it loads and stays if it fails, with the reason in the credit area. The
+screen is not kept on (no `FLAG_KEEP_SCREEN_ON`): a still picture is static imagery, and Google's TV
+guidance lets the screen saver or Ambient Mode start over it.
+Rejected: CENTER on a card opening the viewer (one more press per upload), keeping the details panel under the
+viewer (two dialogs and their focus), Back to the grid (skips the step the user came from), Cleveland `print`
+on a Full HD screen (about 5 MB per picture for a modest gain over a 1.2× enlargement), a 2560 px Commons
+width (refused), the display mode's size instead of the window's (decodes pixels the window cannot show),
+pinch-zoom and a timed slideshow (left for later).
+
 ## 2026-11-08 — A long press on a card opens its details; a press still sends
 A plain press (CENTER or a tap) keeps the one-press send. A long press (tv-material `Card.onLongClick`, which
 takes CENTER held; a long touch through `onTap(action, onLongPress)`) opens a full-screen details panel laid
@@ -14,7 +44,7 @@ with its download when the panel closes; without a frame, or with one that canno
 so instead. Send closes the panel and takes the card's path (`BleAsk.onSend`: a toast without a frame, the
 Bluetooth panel without the permission), so dialogs never stack. Links are text: a TV launches no browser,
 and a QR code would need an encoder (a dependency or several hundred lines) for little gain over a short
-link (Commons gets its `curid` link). The place of [View full screen] is marked `HOOK fullscreen-viewer`.
+link (Commons gets its `curid` link).
 No footer with the focused card's details under the grid for now (Google's "immersive list"): on a TV
 (960 × 540 dp, 4 columns, one header row, 48 × 27 dp margins) two lines at 14 sp or more take about 56 dp,
 which cuts the visible full rows from three to two; it would repeat the card's own two lines; and touch

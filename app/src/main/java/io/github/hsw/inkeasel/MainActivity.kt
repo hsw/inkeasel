@@ -146,12 +146,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
         settingsOpen = false
         details = null
+        viewer = null
         blePanel = BlePanelState(stage, picture)
     }
 
     /**
      * The picture whose details panel is open ([DetailsPanel], a long press on its card); `null` while it is
-     * closed. Never open with the settings or the Bluetooth panel.
+     * closed. Never open with the settings, the Bluetooth panel or the viewer.
      */
     var details by mutableStateOf<Picture?>(null)
         private set
@@ -165,6 +166,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         details = null
     }
 
+    /**
+     * The open full-screen viewer ([FullscreenViewer], from "View full screen" in the details panel), on the
+     * list of the tab it was opened from; `null` while it is closed. It replaces the details panel, and Back
+     * brings that back for the picture then shown ([closeViewer]). Never open with the settings or the
+     * Bluetooth panel.
+     */
+    var viewer by mutableStateOf<ViewerState?>(null)
+        private set
+
+    fun openViewer(p: Picture) {
+        val items = (catalogs[tab] as? CatalogState.Loaded)?.items.orEmpty()
+        viewer = ViewerState.of(p, items).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.items.size})") }
+        details = null
+    }
+
+    /** Left/Right in the viewer: the picture [delta] places on, or nothing past either end of the list. */
+    fun stepViewer(delta: Int) {
+        viewer = viewer?.step(delta) ?: viewer
+    }
+
+    fun closeViewer() {
+        details = viewer?.picture
+        viewer = null
+    }
+
     fun closeBlePanel() {
         blePanel = null
     }
@@ -172,6 +198,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openSettings() {
         blePanel = null
         details = null
+        viewer = null
         settingsOpen = true
     }
 
@@ -514,12 +541,21 @@ fun App(
             } else {
                 val panel = vm.blePanel
                 val details = vm.details
+                val viewer = vm.viewer
                 if (panel != null) {
                     BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
+                } else if (viewer != null) {
+                    // "Send to frame" keeps the viewer open (a toast), unless the Bluetooth panel replaces it
+                    FullscreenViewer(viewer, vm.selected, onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer)
                 } else if (details != null) {
                     // "Send to frame" closes the panel and takes the card's own path (a toast, or the Bluetooth
-                    // panel). HOOK fullscreen-viewer: [View full screen] in DetailsPanel opens the viewer from here.
-                    DetailsPanel(details, vm.selected, onSend = { vm.closeDetails(); onSend(details) }, onClose = vm::closeDetails)
+                    // panel); "View full screen" replaces it with the viewer, and Back from there brings it back
+                    DetailsPanel(
+                        details, vm.selected,
+                        onSend = { vm.closeDetails(); onSend(details) },
+                        onView = { vm.openViewer(details) },
+                        onClose = vm::closeDetails,
+                    )
                 }
             }
         }

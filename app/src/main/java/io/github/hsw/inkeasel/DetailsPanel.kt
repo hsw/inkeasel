@@ -62,12 +62,18 @@ private sealed interface PreviewImage {
  * (the text and the actions on the left, the picture large on the right), with every field the source gave
  * ([PictureDetails.rows]; the web page as text, since a TV launches no browser) and a preview drawn as the
  * [selected] frame will show it ([EpdImage.previewOf]: its crop and its inks), or why there is none.
- * [onSend] ("Send to frame", focused first) takes the same path as a plain press on the card; Back closes
- * ([onClose]). A full-screen dialog over the catalog; on a narrow or portrait window everything is one
+ * [onSend] ("Send to frame", focused first) takes the same path as a plain press on the card; "View full
+ * screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). A full-screen dialog over the catalog; on a narrow or portrait window everything is one
  * scrolling column, the actions under the title.
  */
 @Composable
-fun DetailsPanel(p: Picture, selected: SelectedFrame?, onSend: () -> Unit, onClose: () -> Unit) {
+fun DetailsPanel(
+    p: Picture,
+    selected: SelectedFrame?,
+    onSend: () -> Unit,
+    onView: () -> Unit,
+    onClose: () -> Unit,
+) {
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -89,8 +95,9 @@ fun DetailsPanel(p: Picture, selected: SelectedFrame?, onSend: () -> Unit, onClo
                         Button(onClick = onSend, modifier = Modifier.focusRequester(focus).onTap(onSend)) {
                             Text(stringResource(R.string.details_send), maxLines = 1)
                         }
-                        // HOOK fullscreen-viewer: the second action, [View full screen], goes here, after
-                        // "Send to frame" (which keeps the first focus); it opens the viewer for p.
+                        Button(onClick = onView, modifier = Modifier.onTap(onView)) {
+                            Text(stringResource(R.string.details_view), maxLines = 1)
+                        }
                     }
                 }
                 if (maxWidth >= 600.dp && maxWidth >= maxHeight) {

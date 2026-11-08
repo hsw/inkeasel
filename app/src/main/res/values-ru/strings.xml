@@ -35,12 +35,17 @@
     <string name="details_size_px">%1$d × %2$d пикс.</string>
     <string name="details_page">Веб-страница</string>
     <string name="details_send">Отправить на рамку</string>
+    <string name="details_view">Во весь экран</string>
     <string name="details_original">Оригинал</string>
     <string name="details_preview">На рамке %1$s</string>
     <string name="details_preview_loading">Готовим предпросмотр…</string>
     <string name="details_preview_none">Рамка не выбрана: выберите её в настройках, чтобы увидеть картинку такой, какой её покажет рамка.</string>
     <string name="details_preview_unsupported">Рамка %1$s не поддерживается: %2$s</string>
     <string name="details_preview_failed">Нет предпросмотра: %1$s</string>
+
+    <!-- полноэкранный просмотр (FullscreenViewer), открывается из панели сведений -->
+    <string name="viewer_no_frame">Рамка не выбрана: выберите её в настройках, чтобы отправить эту картинку.</string>
+    <string name="viewer_failed">Не удалось загрузить картинку: %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>

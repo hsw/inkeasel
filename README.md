@@ -207,11 +207,21 @@ emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan m
 A press on a card (CENTER, or a tap) sends the picture at once. A long press (CENTER held, or a long touch)
 opens its details instead, in Google's "content details" layout: the title, every field the source gave
 (artist, date, collection, source, licence and its link, original size, web page; links as text, since a TV
-opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path) and, on the
-right, the picture larger above a preview drawn as the chosen frame will show it: the same crop and
-dithering onto the frame's inks as an upload. Without a frame, or with one the app cannot draw on, the panel
-says so instead of the preview. Back closes it. A narrow or portrait window stacks it into one scrolling
-column, the button under the title.
+opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path), **View
+full screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it:
+the same crop and dithering onto the frame's inks as an upload. Without a frame, or with one the app cannot
+draw on, the panel says so instead of the preview. Back closes it. A narrow or portrait window stacks it into
+one scrolling column, the buttons under the title.
+
+**View full screen** shows the picture on black, fitted to the screen and never cropped, with the system bars
+hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
+and stop at its ends; any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
+tap hides it again. The credit line (title; artist, source and licence) shows for 5 s on open, on each new
+picture and with the button. Back returns to the details panel of the picture on screen. The image is loaded
+in a size that fits the screen: for Commons a standard width (960, 1280, 1920 or 3840 px), for Cleveland the
+`web` image up to a Full HD screen and the `print` image on larger ones, your own pictures as they are;
+it is decoded to at most the screen's size, and the card's thumbnail shows while it loads. The screen is not
+kept on, so the screen saver starts as usual.
 
 The app draws behind the status and navigation bars
 (Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
@@ -509,6 +519,8 @@ Code:
   sends a waiting shared picture once the permission is granted and a frame chosen
 - `DetailsPanel.kt`: the details panel of a long-pressed card, with its frame preview; `PictureDetails.kt`:
   its lines, source names, which preview a selected frame gets and why one failed (pure)
+- `FullscreenViewer.kt`: the full-screen view opened from the details panel; `ViewerRules.kt`: which
+  rendition it loads for the window, its credit line, its list position, overlay and swipe rules (pure)
 - `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
 - `CatalogBack.kt`: what Back does on the catalog screen before it leaves the app (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the

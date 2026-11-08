@@ -42,6 +42,7 @@
     <string name="details_size_px">%1$d × %2$d px</string>
     <string name="details_page">Web page</string>
     <string name="details_send">Send to frame</string>
+    <string name="details_view">View full screen</string>
     <string name="details_original">Original</string>
     <!-- caption of the preview: %1$s the frame's name -->
     <string name="details_preview">On frame %1$s</string>
@@ -50,6 +51,13 @@
     <string name="details_preview_unsupported">Frame %1$s is not supported: %2$s</string>
     <!-- %1$s why (a lowercase reason) -->
     <string name="details_preview_failed">No preview: %1$s</string>
+
+    <!-- the full-screen viewer (FullscreenViewer), opened from the details panel -->
+    <!-- %1$d the picture's place in the list, %2$d the list's length -->
+    <string name="viewer_position" translatable="false">%1$d / %2$d</string>
+    <string name="viewer_no_frame">No frame selected: choose one in the settings to send this picture.</string>
+    <!-- %1$s why (a lowercase reason) -->
+    <string name="viewer_failed">Could not load the picture: %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Settings</string>
