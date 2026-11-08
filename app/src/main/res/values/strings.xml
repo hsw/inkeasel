@@ -61,7 +61,13 @@
     <string name="access_granted">Notification access is granted: the app sees what plays.</string>
     <string name="access_missing">Needs notification access to see what plays.</string>
     <string name="access_open">Grant access</string>
-    <string name="access_adb">This device has no settings screen for it. Grant it from a computer:\n%1$s</string>
+    <string name="access_adb">It can be granted from a computer:\n%1$s</string>
+    <!-- %1$s the app name -->
+    <string name="access_menu_path">Settings → Apps → Special app access → Notification access → %1$s</string>
+    <!-- %1$s the menu path (access_menu_path), as Android TV names its settings -->
+    <string name="access_menu_only">Turn it on under %1$s.</string>
+    <!-- %1$s the menu path (access_menu_path), as Android TV names its settings -->
+    <string name="access_menu_fallback">If the remote cannot reach the switch there, go back and use %1$s.</string>
     <string name="access_restricted">If the switch there is greyed out (\"Restricted setting\"), first open App info → ⋮ → \"Allow restricted settings\".</string>
 
     <!-- frame advertisement (FrameAdvert.describe) -->

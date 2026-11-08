@@ -1,43 +1,103 @@
 package io.github.hsw.inkeasel
 
+import io.github.hsw.inkeasel.ListenerAccessUi.GrantScreen
+import io.github.hsw.inkeasel.ListenerAccessUi.MenuHint
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ListenerAccessUiTest {
-    private fun of(enabled: Boolean = false, canOpen: Boolean = true, sdk: Int = 35, tv: Boolean = false, sideloaded: Boolean = true) =
-        ListenerAccessUi.of(enabled, canOpen, sdk, tv, sideloaded)
+    private fun of(
+        enabled: Boolean = false,
+        direct: Boolean = true,
+        apps: Boolean = true,
+        sdk: Int = 35,
+        tv: Boolean = false,
+        lowRam: Boolean = false,
+        sideloaded: Boolean = true,
+    ) = ListenerAccessUi.of(enabled, direct, apps, sdk, tv, lowRam, sideloaded)
 
     @Test
     fun enabled_statusOnly() {
-        for (canOpen in listOf(true, false)) for (sdk in listOf(26, 30, 33, 35)) {
-            assertEquals(
-                ListenerAccessUi(Txt(R.string.access_granted), openButton = false, adbHint = false, restrictedHint = false),
-                of(enabled = true, canOpen = canOpen, sdk = sdk),
-            )
+        for (direct in listOf(true, false)) for (tv in listOf(true, false)) for (sdk in listOf(26, 30, 33, 35)) {
+            val ui = of(enabled = true, direct = direct, sdk = sdk, tv = tv)
+            assertEquals(ListenerAccessUi(Txt(R.string.access_granted), null, null, adbHint = false, restrictedHint = false), ui)
+            assertFalse(ui.openButton)
         }
     }
 
     @Test
-    fun offWithAScreen_button_noAdbHint() {
+    fun phone_offWithAScreen_opensItDirectly() {
         val ui = of(sdk = 30)
         assertEquals(Txt(R.string.access_missing), ui.status)
+        assertEquals(GrantScreen.DIRECT, ui.grant)
         assertTrue(ui.openButton)
+        assertNull(ui.menuHint) // the menu path is a TV thing
         assertFalse(ui.adbHint)
         assertFalse(ui.restrictedHint) // Android 11-12: no restricted settings yet
     }
 
     @Test
-    fun offWithoutAScreen_adbHint_noButton() {
-        for (sdk in listOf(30, 34)) { // Android TV 11 (Shield), or a TV build without the screen
-            val ui = of(canOpen = false, sdk = sdk, tv = true)
+    fun phone_offWithoutAScreen_adbHint_noMenuRoute() {
+        val ui = of(direct = false, sdk = 30)
+        assertNull(ui.grant)
+        assertFalse(ui.openButton)
+        assertNull(ui.menuHint)
+        assertTrue(ui.adbHint)
+        assertFalse(ui.restrictedHint)
+    }
+
+    @Test
+    fun tv_withoutTheDirectScreen_opensApps_withTheMenuPath() {
+        for (sdk in listOf(28, 30)) { // Android TV 9-11 (the Shield)
+            val ui = of(direct = false, sdk = sdk, tv = true)
             assertEquals(Txt(R.string.access_missing), ui.status)
-            assertFalse(ui.openButton)
-            assertTrue(ui.adbHint)
-            assertFalse(ui.restrictedHint) // adb grants are not restricted
+            assertEquals(GrantScreen.APPS, ui.grant)
+            assertTrue(ui.openButton)
+            assertEquals(MenuHint.ONLY, ui.menuHint)
+            assertFalse(ui.adbHint)
+            assertFalse(ui.restrictedHint)
         }
-        assertFalse(of(canOpen = false, sdk = 34).restrictedHint)
+    }
+
+    @Test
+    fun tv_withTheDirectScreen_opensIt_menuPathAsFallback() {
+        val ui = of(sdk = 34, tv = true) // Android TV 14, Google TV 14
+        assertEquals(GrantScreen.DIRECT, ui.grant)
+        assertEquals(MenuHint.FALLBACK, ui.menuHint)
+        assertFalse(ui.adbHint)
+        assertFalse(ui.restrictedHint)
+    }
+
+    @Test
+    fun tv8_noMenuItem_adbHintOnly() {
+        for (sdk in listOf(26, 27)) {
+            val ui = of(direct = false, sdk = sdk, tv = true) // the Apps screen opens, but holds no such switch
+            assertNull(ui.grant)
+            assertNull(ui.menuHint)
+            assertTrue(ui.adbHint)
+        }
+    }
+
+    @Test
+    fun tv_noSettingsScreenAtAll_adbHint() {
+        val ui = of(direct = false, apps = false, sdk = 30, tv = true)
+        assertNull(ui.grant)
+        assertNull(ui.menuHint)
+        assertTrue(ui.adbHint)
+    }
+
+    @Test
+    fun tv_lowRam_hidesTheMenuItem() {
+        val withoutDirect = of(direct = false, sdk = 30, tv = true, lowRam = true)
+        assertNull(withoutDirect.grant)
+        assertTrue(withoutDirect.adbHint)
+        val withDirect = of(sdk = 34, tv = true, lowRam = true)
+        assertEquals(GrantScreen.DIRECT, withDirect.grant)
+        assertNull(withDirect.menuHint)
+        assertFalse(withDirect.adbHint)
     }
 
     @Test
@@ -49,6 +109,7 @@ class ListenerAccessUiTest {
             assertTrue(ui.openButton)
         }
         assertFalse(of(enabled = true).restrictedHint)
+        assertFalse(of(direct = false).restrictedHint)
     }
 
     @Test
@@ -59,10 +120,16 @@ class ListenerAccessUiTest {
     }
 
     @Test
-    fun androidTv_listScreen_buttonWithoutRestrictedHint() {
-        val ui = of(sdk = 34, tv = true) // Android TV 14
-        assertTrue(ui.openButton)
-        assertFalse(ui.adbHint)
-        assertFalse(ui.restrictedHint)
+    fun restrictedHint_notOnTv() {
+        assertFalse(of(sdk = 34, tv = true).restrictedHint)
+        assertFalse(of(direct = false, sdk = 34, tv = true).restrictedHint)
+    }
+
+    @Test
+    fun menuText_namesThePathEndingInTheApp() {
+        val path = Txt(R.string.access_menu_path, Txt(R.string.app_name))
+        assertEquals(path, ListenerAccessUi.menuPath())
+        assertEquals(Txt(R.string.access_menu_only, path), ListenerAccessUi.menuText(MenuHint.ONLY))
+        assertEquals(Txt(R.string.access_menu_fallback, path), ListenerAccessUi.menuText(MenuHint.FALLBACK))
     }
 }

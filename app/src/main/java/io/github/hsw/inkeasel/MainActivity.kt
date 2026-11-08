@@ -107,9 +107,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val features = FeatureStore(app)
 
-    /** The now-playing poster switch in the settings ([FeatureStore]). */
+    /** The now-playing poster as wanted ([FeatureStore]); the switch shows [posterOn]. */
     var posterEnabled by mutableStateOf(features.posterEnabled)
         private set
+
+    /** Notification access for the poster ([ListenerAccess]), read again on every resume ([onResume]). */
+    var listenerAccess by mutableStateOf(ListenerAccess.enabled(app))
+        private set
+
+    /** What the poster switch shows: wanted and working ([PosterSwitch.checked]). */
+    val posterOn: Boolean get() = PosterSwitch.checked(posterEnabled, listenerAccess)
 
     fun openSettings() {
         settingsOpen = true
@@ -133,6 +140,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         features.posterEnabled = on
         posterEnabled = on
         FrameControllers.get(getApplication()).onPosterSwitched()
+    }
+
+    /**
+     * The poster switch was pressed ([PosterSwitch.press]): switched off or on, or, without the access, the
+     * wish is kept as pending and [PosterSwitch.Press.GRANT] tells the caller to start the grant flow.
+     */
+    fun pressPoster(): PosterSwitch.Press {
+        val press = PosterSwitch.press(posterEnabled, listenerAccess)
+        Log.i(TAG, "poster switch pressed: $press")
+        when (press) {
+            PosterSwitch.Press.TURN_OFF -> {
+                features.posterPending = false
+                setPoster(false)
+            }
+            PosterSwitch.Press.TURN_ON -> setPoster(true)
+            PosterSwitch.Press.GRANT -> features.posterPending = true
+        }
+        return press
+    }
+
+    /** The app is back in front: read the access again and switch on a poster that waited for it. */
+    fun onResume() {
+        listenerAccess = ListenerAccess.enabled(getApplication())
+        if (PosterSwitch.enableOnResume(listenerAccess, features.posterPending)) {
+            Log.i(TAG, "notification access granted: switching on the poster that waited for it")
+            features.posterPending = false
+            setPoster(true)
+        }
     }
 
     fun selectTab(i: Int) {
@@ -278,12 +313,13 @@ class MainActivity : ComponentActivity() {
     }
 
     // Returning to the app re-scans the local folder, in case files changed while it was away.
-    // Permissions may also have been granted from the system settings meanwhile.
+    // Permissions and notification access may also have been granted from the system settings meanwhile.
     override fun onResume() {
         super.onResume()
         permitted = BlePermissions.granted(this)
         if (permitted) blocked = false
         vm.refreshLocal()
+        vm.onResume()
         sendPendingShare()
     }
 
@@ -329,8 +365,9 @@ fun App(
                 FrameSettingsDialog(
                     selected = vm.selected,
                     ble = ble,
-                    poster = vm.posterEnabled,
-                    onPoster = vm::setPoster,
+                    poster = vm.posterOn,
+                    access = vm.listenerAccess,
+                    onPoster = vm::pressPoster,
                     onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )

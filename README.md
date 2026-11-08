@@ -61,13 +61,18 @@ list and select it.
   start and from **Settings**; if the system no longer shows its dialog, the settings name the path in App
   info.
 - **Notification access** (optional, only for the now-playing poster): it lets the app read the
-  media sessions of other apps (title and artwork of what plays). The app does not read notifications. Grant
-  it from **Settings → Permissions and features → Grant access**:
+  media sessions of other apps (title and artwork of what plays). The app does not read notifications. There
+  is no permission dialog for it: pressing the poster switch (or **Grant access**) in **Settings →
+  Permissions and features** opens the system settings, and the poster turns on once you come back with the
+  access granted:
   - phones and tablets open the system screen for InkEasel; on Android 13+ an APK installed outside a store
     may first need App info → ⋮ → "Allow restricted settings", and the section says so;
-  - Android TV 14 opens the list of apps with notification access: select InkEasel there;
-  - older Android TV builds (e.g. Android TV 11 on the Shield) have no such screen; the section shows the adb
-    command instead:
+  - Android TV 12 and newer open the list of apps with notification access: select InkEasel there. The
+    section also names the menu path below, in case the remote cannot reach the list (seen on Google TV 14);
+  - Android TV 9–11 (e.g. the Shield) have the switch only in the menu: the app opens Settings → Apps and
+    shows the path **Settings → Apps → Special app access → Notification access → InkEasel** (one press on
+    InkEasel there grants it);
+  - Android TV 8 has no screen for it at all, so the section shows the adb command (pictures work without it):
 
         adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
 
@@ -228,16 +233,24 @@ Below the frame list, **Settings → Permissions and features** collects what th
 - **Bluetooth**: whether the permission is granted, with "Allow" (or "App info", as above) when it is not.
   One permission set everywhere (`BlePermissions`): Nearby devices (`BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`)
   on Android 12+, fine location before.
-- **Now-playing poster**: an on/off switch (on by default, prefs `features`, key `poster`) and the state of
-  the notification access it needs. With the access missing:
-  - phones and tablets: "Grant access" (and switching the poster on) opens the system screen: the app's
-    own page (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not
-    from a store) may find the switch there greyed out ("Restricted setting"): the section says so and
-    offers App info, where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed
-    the app);
-  - Android TV 14 has only the list (InkEasel is in it, one D-pad press grants it), and the button opens it;
-  - older Android TV builds (the Shield, Android TV 11) have no such screen: the section shows the adb
-    command instead (see "Now playing → poster").
+- **Now-playing poster**: an on/off switch and the state of the notification access it needs. The switch
+  shows the poster as it works: on only while the poster is wanted (on by default, prefs `features`, key
+  `poster`) **and** the access is granted (`PosterSwitch`). Pressing it while it is on switches the poster
+  off; while it is off with the access, on. Without the access the switch stays off: the press is remembered
+  (key `posterPending`) and starts the grant flow, and when the app comes back with the access granted the
+  poster is switched on. If the access is revoked from outside, the switch shows off but the stored wish
+  stays, so granting the access again brings the poster back. With the access missing (`ListenerAccessUi`):
+  - phones and tablets: "Grant access" (and the switch) open the system screen: the app's own page
+    (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not from a store)
+    may find the switch there greyed out ("Restricted setting"): the section says so and offers App info,
+    where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed the app);
+  - Android TV 12+: the list of apps (InkEasel is in it, one D-pad press grants it), plus the menu path as a
+    fallback: "If the remote cannot reach the switch there, go back and use Settings → Apps → Special app
+    access → Notification access → InkEasel" (on Google TV 14 the D-pad cannot reach the rows of that list);
+  - Android TV 9–11 (the Shield): no such screen; "Grant access" opens Settings → Apps (the Settings home
+    where that is missing) and the section names the same menu path;
+  - Android TV 8, a low-RAM TV without the list screen (they hide the menu item), or any device where no
+    settings screen resolves: the adb command, in small print (see "Now playing → poster").
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
 
 Switching the poster off stops new posters at once and puts the default picture back if a poster is on
@@ -263,9 +276,10 @@ frame now advertises other properties, the upload fails and the next one uses th
 
 ## Now playing → poster
 
-Needs notification access, granted once, so the system binds the MediaSession reader: on a phone, a tablet
-or Android TV 14 from **Settings → Permissions and features** (see there); on older Android TV builds
-without a screen for it (the Shield) with adb, as below. The system rebinds a granted listener after a
+Needs notification access, granted once, so the system binds the MediaSession reader: from **Settings →
+Permissions and features** (see there), which leads to the system screen or, on Android TV 9–11 (the
+Shield), to the menu Settings → Apps → Special app access → Notification access; on Android TV 8 only with
+adb, as below. The system rebinds a granted listener after a
 force-stop (verified on the Shield) and is expected to do the same after a reboot (platform behaviour, not
 yet tested here); the binding keeps the process alive, also through HDMI-CEC standby, so no
 `BOOT_COMPLETED` receiver is needed:
@@ -353,8 +367,9 @@ Code:
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
 - `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
   was seen: a dismissed dialog does not count), and App info
-- `ListenerAccess.kt`: notification access for the poster (granted?, the system screen, the adb command);
-  `ListenerAccessUi.kt` decides what the section shows (pure)
+- `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
+  `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
+  the poster switch shows and does, with the wish kept until the access is granted (pure)
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name
 - `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
   link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
@@ -387,7 +402,7 @@ Code:
     controller may still upload: what plays, a pending start, an upload without a result yet)
   - `FrameController.kt`: the state machine (debounce, dedup by key, revert, poster switch);
     `FrameControllers.kt` wires the process-wide instance
-  - `FeatureStore.kt`: the poster switch (prefs `features`)
+  - `FeatureStore.kt`: the poster switch and its pending wish (prefs `features`)
   - `DefaultStore.kt`: the default picture (prefs `default`) and the key on the frame (prefs `frame`)
   - `UploadOutcome.kt`: what `UploadService` does after an upload (toast, report to the controller,
     remember as the default)

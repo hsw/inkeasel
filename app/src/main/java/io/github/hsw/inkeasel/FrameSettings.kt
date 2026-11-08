@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -85,7 +84,8 @@ fun FrameSettingsDialog(
     selected: SelectedFrame?,
     ble: BleAccess,
     poster: Boolean,
-    onPoster: (Boolean) -> Unit,
+    access: Boolean,
+    onPoster: () -> PosterSwitch.Press,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -97,7 +97,7 @@ fun FrameSettingsDialog(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val sidePadding = CatalogLayout.forWidth(maxWidth.value.toInt()).sidePadding
-                FrameSettings(selected, ble, poster, onPoster, sidePadding, onSelect, onCancel)
+                FrameSettings(selected, ble, poster, access, onPoster, sidePadding, onSelect, onCancel)
             }
         }
     }
@@ -127,7 +127,8 @@ private fun FrameSettings(
     selected: SelectedFrame?,
     ble: BleAccess,
     poster: Boolean,
-    onPoster: (Boolean) -> Unit,
+    access: Boolean,
+    onPoster: () -> PosterSwitch.Press,
     sidePadding: Int,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
@@ -255,38 +256,37 @@ private fun FrameSettings(
             }
         }
         Spacer(Modifier.height(32.dp))
-        FeaturesSection(ble, poster, onPoster)
+        FeaturesSection(ble, poster, access, onPoster)
     }
 }
 
 /**
  * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
- * asks, "App info"; the frame list above names the path to it then), and the now-playing [poster]: a switch
- * ([onPoster], see `MainViewModel.setPoster`) with the notification access it needs ([ListenerAccessUi]). Turning the poster on without the access opens the
- * system screen, or shows the adb command where there is none. The access and the screen are read again
- * whenever the app comes back (e.g. from that screen).
+ * asks, "App info"; the frame list above names the path to it then), and the now-playing [poster] switch
+ * with the notification [access] it needs ([ListenerAccessUi]). The switch shows the poster as it works
+ * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`), and without the access that
+ * starts the grant flow: the system screen [ListenerAccessUi.grant] names, while the section says the menu
+ * path on TV (or the adb command where no screen leads to the switch). The access itself is read again by
+ * the view model on resume, the screens here.
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
  */
 @Composable
-private fun FeaturesSection(ble: BleAccess, poster: Boolean, onPoster: (Boolean) -> Unit) {
+private fun FeaturesSection(ble: BleAccess, poster: Boolean, access: Boolean, onPoster: () -> PosterSwitch.Press) {
     val ctx = LocalContext.current
-    var access by remember { mutableStateOf(ListenerAccess.enabled(ctx)) }
-    var hasScreen by remember { mutableStateOf(ListenerAccess.canOpen(ctx)) }
+    val tv = remember { ListenerAccess.tv(ctx) }
+    val lowRam = remember { ListenerAccess.lowRam(ctx) }
+    val sideloaded = remember { ListenerAccess.sideloaded(ctx) }
+    var direct by remember { mutableStateOf(ListenerAccess.canOpen(ctx, ListenerAccessUi.GrantScreen.DIRECT, tv)) }
+    var apps by remember { mutableStateOf(ListenerAccess.canOpen(ctx, ListenerAccessUi.GrantScreen.APPS, tv)) }
     LifecycleResumeEffect(Unit) {
-        access = ListenerAccess.enabled(ctx)
-        hasScreen = ListenerAccess.canOpen(ctx)
+        direct = ListenerAccess.canOpen(ctx, ListenerAccessUi.GrantScreen.DIRECT, tv)
+        apps = ListenerAccess.canOpen(ctx, ListenerAccessUi.GrantScreen.APPS, tv)
         onPauseOrDispose {}
     }
-    val tv = remember { ctx.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) }
-    val sideloaded = remember { ListenerAccess.sideloaded(ctx) }
-    val ui = ListenerAccessUi.of(access, hasScreen, Build.VERSION.SDK_INT, tv, sideloaded)
-    val openAccess = { ListenerAccess.open(ctx) }
-    val togglePoster = {
-        val on = !poster
-        onPoster(on)
-        if (on && !access && hasScreen) openAccess()
-    }
+    val ui = ListenerAccessUi.of(access, direct, apps, Build.VERSION.SDK_INT, tv, lowRam, sideloaded)
+    val openAccess: () -> Unit = { ui.grant?.let { ListenerAccess.open(ctx, it, tv) } }
+    val pressPoster: () -> Unit = { if (onPoster() == PosterSwitch.Press.GRANT) openAccess() }
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
 
     Text(stringResource(R.string.settings_features), style = MaterialTheme.typography.titleLarge)
@@ -301,13 +301,20 @@ private fun FeaturesSection(ble: BleAccess, poster: Boolean, onPoster: (Boolean)
     Spacer(Modifier.height(8.dp))
     ListItem(
         selected = false,
-        onClick = togglePoster,
-        modifier = Modifier.onTap(togglePoster),
+        onClick = pressPoster,
+        modifier = Modifier.onTap(pressPoster),
         headlineContent = { Text(stringResource(R.string.feature_poster)) },
         supportingContent = {
             Column {
                 Text(ui.status.text())
-                if (ui.adbHint) Text(stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)), color = dim)
+                ui.menuHint?.let { Text(ListenerAccessUi.menuText(it).text()) }
+                if (ui.adbHint) {
+                    Text(
+                        stringResource(R.string.access_adb, ListenerAccess.adbCommand(ctx)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = dim,
+                    )
+                }
             }
         },
         trailingContent = { Switch(checked = poster, onCheckedChange = null) },
