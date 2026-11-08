@@ -1,0 +1,66 @@
+{
+  "batchcomplete": true,
+  "continue": {"gcmcontinue": "20260909101556|199181121", "continue": "gcmcontinue||"},
+  "query": {
+    "pages": [
+      {
+        "pageid": 1001,
+        "ns": 6,
+        "title": "File:Example valley at dawn - 06.jpg",
+        "imageinfo": [
+          {
+            "size": 17283783,
+            "width": 6744,
+            "height": 4500,
+            "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/Example_valley_at_dawn_-_06.jpg/1920px-Example_valley_at_dawn_-_06.jpg",
+            "thumbwidth": 1920,
+            "thumbheight": 1281,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/0/0a/Example_valley_at_dawn_-_06.jpg",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Example_valley_at_dawn_-_06.jpg",
+            "descriptionshorturl": "https://commons.wikimedia.org/w/index.php?curid=1001",
+            "extmetadata": {
+              "ObjectName": {"value": "Example valley at dawn - 06", "source": "mediawiki-metadata"},
+              "DateTimeOriginal": {"value": "2026-09-21 11:26:06", "source": "commons-desc-page"},
+              "Artist": {"value": "<a href=\"//commons.wikimedia.org/wiki/User:Example\" title=\"User:Example\">Example Photographer &amp; Friend</a>", "source": "commons-desc-page"},
+              "LicenseShortName": {"value": "CC BY-SA 4.0", "source": "commons-desc-page", "hidden": ""},
+              "LicenseUrl": {"value": "https://creativecommons.org/licenses/by-sa/4.0", "source": "commons-desc-page"}
+            }
+          }
+        ]
+      },
+      {
+        "pageid": 1002,
+        "ns": 6,
+        "title": "File:Example pagebanner.jpg",
+        "imageinfo": [
+          {
+            "width": 8916,
+            "height": 1273,
+            "thumburl": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Example_pagebanner.jpg/1920px-Example_pagebanner.jpg",
+            "url": "https://upload.wikimedia.org/wikipedia/commons/9/92/Example_pagebanner.jpg",
+            "extmetadata": {"ObjectName": {"value": "Example pagebanner"}}
+          }
+        ]
+      },
+      {
+        "pageid": 1003,
+        "ns": 6,
+        "title": "File:Example lake.jpeg",
+        "imageinfo": [
+          {
+            "width": 3000,
+            "height": 2000,
+            "url": "https://upload.wikimedia.org/wikipedia/commons/1/1a/Example_lake.jpeg",
+            "descriptionurl": "https://commons.wikimedia.org/wiki/File:Example_lake.jpeg",
+            "extmetadata": {
+              "DateTimeOriginal": {"value": "<time class=\"dtstart\" datetime=\"1890\">1890</time>"},
+              "LicenseShortName": {"value": "Public domain"},
+              "LicenseUrl": {"value": "//example.org/pd"}
+            }
+          }
+        ]
+      },
+      {"pageid": 1004, "ns": 6, "title": "File:Missing info.jpg"}
+    ]
+  }
+}

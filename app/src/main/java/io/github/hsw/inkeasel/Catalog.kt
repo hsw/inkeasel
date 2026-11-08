@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel
 
 import android.app.Application
 import android.content.Context
+import android.graphics.BitmapFactory
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,12 @@ import java.util.concurrent.TimeUnit
 /**
  * One picture in the catalog. [thumbUrl] is for the grid, [fullUrl] is loaded for the frame.
  * When [local] is true both are absolute file paths on the device, read from disk instead of HTTP.
+ * [title] and [credit] are the card's two lines. The rest is what the source tells about the picture, each
+ * `null` when it does not (the details panel, [PictureDetails]); the names follow the planned one-catalog
+ * schema (docs/decisions.md, "One Catalog section"): [artist] (all creators, as one text), [date] (as the
+ * source writes it), [collection] (the museum that holds it), [pageUrl] (the picture's page at its source),
+ * [licence] (short name, e.g. "CC0", "CC BY-SA 4.0") and [licenceUrl], and the original's [width] × [height]
+ * in pixels. Stored as is in [CatalogCache]; never translated text.
  */
 data class Picture(
     val id: String,
@@ -31,7 +38,18 @@ data class Picture(
     val thumbUrl: String,
     val fullUrl: String,
     val local: Boolean = false,
+    val artist: String? = null,
+    val date: String? = null,
+    val collection: String? = null,
+    val pageUrl: String? = null,
+    val licence: String? = null,
+    val licenceUrl: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
 ) {
+    /** The [Source.id] the picture came from: the prefix of its [id] ("cma", "commons", "local"). */
+    val source: String get() = id.substringBefore(':')
+
     /** What to hand Coil for the grid card: a [File] for local pictures, the URL string otherwise. */
     fun thumbModel(): Any = if (local) File(thumbUrl) else thumbUrl
 
@@ -156,9 +174,6 @@ suspend fun collectPages(
 /** Source text as one line: line breaks and runs of whitespace (the Cleveland API sends titles ending in "\r\n") become one space. */
 fun oneLine(s: String): String = s.trim().replace(Regex("\\s+"), " ")
 
-/** Landscape orientation that survives the crop to a landscape frame (e.g. 1024×600, 800×480) without losing most of the picture. */
-private fun wide(w: Int, h: Int) = h > 0 && w.toFloat() / h in 1.25f..2.2f
-
 /** Cleveland Museum of Art Open Access: CC0 paintings, no API key. */
 object ClevelandPaintings : Source {
     override val id = "cma"
@@ -171,29 +186,9 @@ object ClevelandPaintings : Source {
             .addQueryParameter("has_image", "1")
             .addQueryParameter("cc0", "1")
             .addQueryParameter("limit", "200")
-            .addQueryParameter("fields", "id,title,creators,creation_date,images")
+            .addQueryParameter("fields", ClevelandMapping.FIELDS)
             .build().toString()
-        val data = Http.json(url).getJSONArray("data")
-        return Listing((0 until data.length()).mapNotNull { i ->
-            val a = data.getJSONObject(i)
-            val images = a.optJSONObject("images") ?: return@mapNotNull null
-            val web = images.optJSONObject("web") ?: return@mapNotNull null
-            if (!wide(web.optInt("width"), web.optInt("height"))) return@mapNotNull null
-            // "print" is ~3400 px wide; fall back to "web" (~1100 px) when it is missing
-            val full = images.optJSONObject("print")?.optString("url")?.takeIf { it.isNotEmpty() } ?: web.getString("url")
-            val creators = a.optJSONArray("creators")
-            val author = if (creators != null && creators.length() > 0) {
-                oneLine(creators.getJSONObject(0).optString("description").substringBefore(" ("))
-            } else ""
-            val date = oneLine(a.optString("creation_date"))
-            Picture(
-                id = "cma:${a.get("id")}",
-                title = oneLine(a.optString("title")),
-                credit = listOf(author, date).filter { it.isNotBlank() }.joinToString(", "),
-                thumbUrl = web.getString("url"),
-                fullUrl = full,
-            )
-        })
+        return Listing(ClevelandMapping.pictures(Http.json(url)))
     }
 }
 
@@ -225,32 +220,12 @@ object CommonsLandscapes : Source {
             .addQueryParameter("gcmdir", "desc")
             .addQueryParameter("prop", "imageinfo")
             .addQueryParameter("iiprop", "url|size|extmetadata")
-            .addQueryParameter("iiextmetadatafilter", "ObjectName|Artist|LicenseShortName")
-            .addQueryParameter("iiurlwidth", "1920")
+            .addQueryParameter("iiextmetadatafilter", CommonsMapping.EXTMETADATA)
+            .addQueryParameter("iiurlwidth", CommonsMapping.FULL_WIDTH.toString())
             .addQueryParameter("format", "json")
             .addQueryParameter("formatversion", "2")
         cont?.let { b.addQueryParameter("gcmcontinue", it).addQueryParameter("continue", "gcmcontinue||") }
-        val root = Http.json(b.build().toString())
-        val out = mutableListOf<Picture>()
-        val pages = root.optJSONObject("query")?.optJSONArray("pages")
-        if (pages != null) for (i in 0 until pages.length()) {
-            val p = pages.getJSONObject(i)
-            val info = p.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
-            if (!wide(info.optInt("width"), info.optInt("height"))) continue
-            val full = info.optString("thumburl").ifEmpty { info.getString("url") }
-            val meta = info.optJSONObject("extmetadata")
-            fun m(k: String) = meta?.optJSONObject(k)?.optString("value").orEmpty().replace(Regex("<[^>]*>"), "").let(::oneLine)
-            val title = m("ObjectName").ifEmpty { p.getString("title").removePrefix("File:").substringBeforeLast('.') }
-            out += Picture(
-                id = "commons:${p.optInt("pageid")}",
-                title = title,
-                credit = listOf(m("Artist"), m("LicenseShortName")).filter { it.isNotBlank() }.joinToString(", "),
-                // Commons serves standard thumbnail widths; 500 px is plenty for a grid card
-                thumbUrl = full.replace("/1920px-", "/500px-"),
-                fullUrl = full,
-            )
-        }
-        return Page(out, root.optJSONObject("continue")?.optString("gcmcontinue")?.takeIf { it.isNotEmpty() })
+        return CommonsMapping.page(Http.json(b.build().toString()))
     }
 }
 
@@ -283,6 +258,7 @@ class LocalImages(private val app: Application) : Source {
         Listing(dir().listFiles { f -> f.isFile && f.extension.lowercase() in EXTENSIONS }
             ?.sortedByDescending { it.lastModified() }
             ?.map { f ->
+                val size = pixelSize(f)
                 Picture(
                     id = "local:${f.name}",
                     title = f.nameWithoutExtension,
@@ -290,8 +266,17 @@ class LocalImages(private val app: Application) : Source {
                     thumbUrl = f.absolutePath,
                     fullUrl = f.absolutePath,
                     local = true,
+                    width = size?.first,
+                    height = size?.second,
                 )
             } ?: emptyList())
+    }
+
+    /** The pixel size of [f] from its header alone (nothing is decoded); `null` if it cannot be read. */
+    private fun pixelSize(f: File): Pair<Int, Int>? {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(f.absolutePath, o)
+        return if (o.outWidth > 0 && o.outHeight > 0) o.outWidth to o.outHeight else null
     }
 }
 

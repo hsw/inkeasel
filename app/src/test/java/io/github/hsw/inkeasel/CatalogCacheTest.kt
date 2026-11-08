@@ -23,6 +23,34 @@ class CatalogCacheTest {
         assertEquals(c, CatalogCache.decode(CatalogCache.encode(c)))
     }
 
+    private val full = Picture(
+        "commons:3", "Valley", "Someone, CC BY-SA 4.0", "https://example.org/c-500.jpg", "https://example.org/c-1920.jpg",
+        artist = "Someone", date = "2026-09-21", collection = "A museum", pageUrl = "https://example.org/c",
+        licence = "CC BY-SA 4.0", licenceUrl = "https://example.org/by-sa", width = 6744, height = 4500,
+    )
+
+    @Test
+    fun encodeDecode_everyField() {
+        val c = CachedCatalog(5, listOf(full, a))
+        val json = CatalogCache.encode(c)
+        assertTrue(json.contains("\"format\":${CatalogCache.FORMAT}"))
+        assertEquals(c, CatalogCache.decode(json))
+    }
+
+    @Test
+    fun formatOne_readsWithTheNewFieldsNull() {
+        // what the app wrote before the format had a number
+        val v1 = "{\"savedAt\": 5, \"items\": [{\"id\":\"cma:1\",\"title\":\"Lake\",\"credit\":\"Someone, 1890\"," +
+            "\"thumbUrl\":\"https://example.org/a-web.jpg\",\"fullUrl\":\"https://example.org/a-print.jpg\"}]}"
+        assertEquals(CachedCatalog(5, listOf(a)), CatalogCache.decode(v1))
+    }
+
+    @Test
+    fun newerFormat_noCache() {
+        val json = CatalogCache.encode(CachedCatalog(5, listOf(a))).replace("\"format\":2", "\"format\":3")
+        assertNull(CatalogCache.decode(json))
+    }
+
     @Test
     fun corruptOrForeignJson_noCache() {
         assertNull(CatalogCache.decode(""))

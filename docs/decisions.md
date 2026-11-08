@@ -3,6 +3,23 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — A picture carries its metadata, named after the one-catalog schema
+`Picture` keeps `title` and `credit` (the card's two lines) and gains what the sources tell: `artist` (all
+creators as one text), `date` (as the source writes it), `collection`, `pageUrl`, `licence`, `licenceUrl`,
+`width` and `height` of the original; `source` is the prefix of the id. A field a source does not give is
+`null`, never a guess. The names follow the planned one-catalog schema, so the Room move maps fields instead
+of redesigning them. Cleveland: the museum's name as the collection (data, not translated), the artwork page,
+`share_license_status` (CC0 with its deed link), the `full` master's size. Commons: the short `curid` page
+link (typable from a TV), `DateTimeOriginal` without the time of day, HTML in the metadata stripped and its
+entities decoded, only `https:` links kept. Local files: the pixel size from the file header; no date (the file
+time is when it was copied, not the picture's date). The mapping is pure (`SourceMapping.kt`) and tested
+against trimmed real answers. `CatalogCache` writes format 2 with the new fields left out when `null`; a
+format-1 file still reads with them `null` (the cache is only a fallback, and the next good load rewrites
+it), a newer format reads as no cache.
+Rejected: dropping old caches on the format change (a source that is down would show nothing until it
+recovers), a list of artists (the sources give one display text; the Room schema can split it), the Commons
+file page URL as the link (long and percent-encoded, hard to type).
+
 ## 2026-11-08 — No poster on low-RAM devices with Android 10 or older
 Android neither grants nor binds a notification listener on a low-RAM device (`isLowRamDevice()`) up to
 Android 10 (`NotificationListenerService` reference), not even through adb, so the menu path, the adb command

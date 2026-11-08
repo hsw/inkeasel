@@ -226,6 +226,13 @@ An empty answer never replaces a saved list, and a list cut short (by the 30 s l
 replaces it only when it is not smaller. Thumbnails of a saved list come from the image cache, so
 offline some may be missing; sending a picture still needs the network.
 
+Each picture carries what its source tells about it (`Picture`; a field the source does not give stays
+empty): Cleveland gives the artists, the date, the museum, the artwork's page, the licence (CC0) and the
+master's pixel size; Commons the author, the date taken, the file's page (its short `curid` link), the
+licence with its link and the original's size; a picture in "My pictures" only its name and pixel size.
+The saved lists keep these fields (format 2); a list saved by an older version still reads, without them,
+until the next good load replaces it.
+
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
 than 20 s every time, "Paintings" fails each time and its saved list fills only after a fast answer;
 asking for fewer results than `limit=200` would be the next step then.
@@ -452,6 +459,8 @@ Code:
 - `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
   list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`collectPages`, pure; a list
   cut short is marked incomplete)
+- `SourceMapping.kt`: the sources' JSON (Cleveland, Commons) mapped to `Picture`s with their metadata (pure,
+  tested against fixture answers in `app/src/test/resources/catalog/`)
 - `CatalogLoad.kt`: what a tab shows (`CatalogState`), one load of a tab and its cache rules (`loadCatalog`),
   and when a tab reloads (pure)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
