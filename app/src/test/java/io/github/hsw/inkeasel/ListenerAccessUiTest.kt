@@ -21,7 +21,7 @@ class ListenerAccessUiTest {
 
     @Test
     fun enabled_statusOnly() {
-        for (direct in listOf(true, false)) for (tv in listOf(true, false)) for (sdk in listOf(26, 30, 33, 35)) {
+        for (direct in listOf(true, false)) for (tv in listOf(true, false)) for (sdk in listOf(26, 30, 33, 35, 36)) {
             val ui = of(enabled = true, direct = direct, sdk = sdk, tv = tv)
             assertEquals(ListenerAccessUi(Txt(R.string.access_granted), null, null, adbHint = false, restrictedHint = false), ui)
             assertFalse(ui.openButton)
@@ -103,7 +103,7 @@ class ListenerAccessUiTest {
     @Test
     fun restrictedHint_fromAndroid13_onlyWhileOffWithAScreen() {
         assertFalse(of(sdk = 32).restrictedHint)
-        for (sdk in listOf(33, 34, 35)) {
+        for (sdk in listOf(33, 34, 35, 36)) {
             val ui = of(sdk = sdk)
             assertTrue(ui.restrictedHint)
             assertTrue(ui.openButton)

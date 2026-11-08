@@ -3,6 +3,19 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — Target API 36 with AGP 8.9.1
+compileSdk and targetSdk are 36 (Play's target requirement). AGP goes from 8.7.3 to 8.9.1, the oldest
+release that supports API 36; it still runs on Gradle 8.11.1 and Kotlin 2.0.21, so neither moves, and no
+library changes. The release APK already meets the 16 KB page-size rule: Compose's only native library
+(`libandroidx.graphics.path.so`) has 16 KB-aligned LOAD segments in all four ABIs and is stored 16 KB-aligned
+(`zipalign -c -P 16`), so no Compose bump is needed. The newer lint brings warnings only (mostly `UseKtx`);
+they are left for a separate cleanup. Android 16's changes were checked on an API 36 tablet emulator: the
+app already draws edge to edge, Back (key and gesture) closes the disclosure panel, then the settings, then
+leaves the app, and rotation or resizing does not recreate the activity (it declares no orientation or
+resizability limits, which Android 16 would ignore on large screens anyway).
+Rejected: AGP 8.10–8.13 or 9.x (newer than needed; 8.11+ also needs Gradle 8.13), keeping compileSdk 35
+with `android.suppressUnsupportedCompileSdk` (an untested combination).
+
 ## 2026-11-08 — Release build: R8 shrinking without obfuscation (*planned*)
 Release uses R8 (`isMinifyEnabled`, `isShrinkResources`) with `-dontobfuscate`. The code is public, so
 renaming protects nothing, while it would make crash traces from GitHub APKs unreadable without a published

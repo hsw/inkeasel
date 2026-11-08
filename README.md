@@ -7,7 +7,7 @@ built-in catalog, your own pictures, and the poster of whatever is playing. When
 goes to the frame; when playback ends, the frame returns to the last manually uploaded picture.
 Made for a TV and its remote (D-pad); it also runs on tablets and phones, by touch and in any orientation,
 where a picture can be shared to the frame from a gallery. Developed and tested on an NVIDIA Shield TV Pro
-2019 (Android 11), the Android TV 14 emulator and an Android 15 tablet emulator.
+2019 (Android 11), the Android TV 14 emulator and Android 15 and 16 tablet emulators.
 
 License: [Apache-2.0](LICENSE).
 
@@ -142,8 +142,8 @@ asked twice); the layout follows the window width:
 | 840 dp and up | 4       | 48 dp        | one row (a TV is 960 dp wide)              |
 
 The tabs scroll sideways when they do not fit. The app draws behind the status and navigation bars
-(Android 15 requires it) and keeps its content clear of them, with gesture or button navigation; the
-settings dialog does the same. A TV has no bars, so nothing changes there.
+(Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
+or button navigation; the settings dialog does the same. A TV has no bars, so nothing changes there.
 
 ## Catalog
 

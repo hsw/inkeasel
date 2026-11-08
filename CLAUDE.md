@@ -13,7 +13,8 @@ or deviation made in a change gets its entry in the same commit.
   add `-x packageDebugResources` for a test-only run. A clean `app/build` can fail once in
   `parseDebugLocalResources` ("!directory.isDirectory()"); rerunning passes.
 - Android SDK path is in `local.properties` (git-ignored).
-- Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play) and `inkeasel-tv` (Android TV 14).
+- Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
+  Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
   Emulator Bluetooth is virtual: uploads to a real frame need a real device.
 - The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
