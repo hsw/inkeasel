@@ -16,3 +16,14 @@ fun Modifier.onTap(action: () -> Unit): Modifier {
     val current by rememberUpdatedState(action)
     return pointerInput(Unit) { detectTapGestures(onTap = { current() }) }
 }
+
+/**
+ * [onTap] that also takes a long press ([onLongPress]; a long press is then not a tap): the touch twin of a
+ * tv-material `Card`'s `onLongClick`, which takes CENTER held on the D-pad.
+ */
+@Composable
+fun Modifier.onTap(action: () -> Unit, onLongPress: () -> Unit): Modifier {
+    val current by rememberUpdatedState(action)
+    val long by rememberUpdatedState(onLongPress)
+    return pointerInput(Unit) { detectTapGestures(onTap = { current() }, onLongPress = { long() }) }
+}

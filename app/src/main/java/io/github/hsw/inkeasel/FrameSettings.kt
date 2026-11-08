@@ -135,7 +135,7 @@ fun FrameSettingsDialog(
  * Older versions keep the platform's layout; the insets padding covers whatever the window overlaps.
  */
 @Composable
-private fun EdgeToEdgeDialogWindow() {
+internal fun EdgeToEdgeDialogWindow() {
     val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
     LaunchedEffect(window) {
         if (Build.VERSION.SDK_INT >= 30) {

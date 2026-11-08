@@ -204,6 +204,15 @@ state, the disclosure panel with its adb line, why a frame cannot be chosen, the
 secondary metadata is 12 sp: a card's artist and date, a frame's address and properties. Checked on the TV
 emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan margins stay.
 
+A press on a card (CENTER, or a tap) sends the picture at once. A long press (CENTER held, or a long touch)
+opens its details instead, in Google's "content details" layout: the title, every field the source gave
+(artist, date, collection, source, licence and its link, original size, web page; links as text, since a TV
+opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path) and, on the
+right, the picture larger above a preview drawn as the chosen frame will show it: the same crop and
+dithering onto the frame's inks as an upload. Without a frame, or with one the app cannot draw on, the panel
+says so instead of the preview. Back closes it. A narrow or portrait window stacks it into one scrolling
+column, the button under the title.
+
 The app draws behind the status and navigation bars
 (Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
 or button navigation; the settings dialog does the same. A TV has no bars, so nothing changes there.
@@ -465,7 +474,8 @@ Code:
   and when a tab reloads (pure)
 - `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
 - `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
-- `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`
+- `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`, or draw
+  the dithered picture in the frame's inks for the details panel's preview
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
   verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally
   split), `Crumbs2` (2 bpp) and `BitPlanes` (1-bpp planes, padded, optionally split), free of Android types)
@@ -497,6 +507,8 @@ Code:
   app restarts)
 - `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
   sends a waiting shared picture once the permission is granted and a frame chosen
+- `DetailsPanel.kt`: the details panel of a long-pressed card, with its frame preview; `PictureDetails.kt`:
+  its lines, source names, which preview a selected frame gets and why one failed (pure)
 - `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
 - `CatalogBack.kt`: what Back does on the catalog screen before it leaves the app (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the

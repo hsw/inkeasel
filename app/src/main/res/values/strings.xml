@@ -28,6 +28,29 @@
     <!-- secondary text under local_empty: %1$s the app's folder as adb sees it -->
     <string name="local_empty_advanced">For advanced users: pictures copied into the app\'s folder show up here too, for example from a computer:\nadb push picture.jpg %1$s</string>
 
+    <!-- the details panel (DetailsPanel), opened by a long press on a card -->
+    <string name="details_artist">Artist</string>
+    <string name="details_date">Date</string>
+    <string name="details_collection">Collection</string>
+    <string name="details_source">Source</string>
+    <string name="details_source_cma">Cleveland Museum of Art Open Access</string>
+    <string name="details_source_commons">Wikimedia Commons</string>
+    <string name="details_licence">Licence</string>
+    <string name="details_licence_link">Licence text</string>
+    <string name="details_size">Original size</string>
+    <!-- %1$d × %2$d: the original's width and height in pixels -->
+    <string name="details_size_px">%1$d × %2$d px</string>
+    <string name="details_page">Web page</string>
+    <string name="details_send">Send to frame</string>
+    <string name="details_original">Original</string>
+    <!-- caption of the preview: %1$s the frame's name -->
+    <string name="details_preview">On frame %1$s</string>
+    <string name="details_preview_loading">Preparing the preview…</string>
+    <string name="details_preview_none">No frame selected: choose one in the settings to see the picture as the frame will show it.</string>
+    <string name="details_preview_unsupported">Frame %1$s is not supported: %2$s</string>
+    <!-- %1$s why (a lowercase reason) -->
+    <string name="details_preview_failed">No preview: %1$s</string>
+
     <!-- settings: frame -->
     <string name="settings_title">Settings</string>
     <string name="settings_frame">Frame</string>

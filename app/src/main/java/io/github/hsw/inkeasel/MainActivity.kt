@@ -145,7 +145,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
         settingsOpen = false
+        details = null
         blePanel = BlePanelState(stage, picture)
+    }
+
+    /**
+     * The picture whose details panel is open ([DetailsPanel], a long press on its card); `null` while it is
+     * closed. Never open with the settings or the Bluetooth panel.
+     */
+    var details by mutableStateOf<Picture?>(null)
+        private set
+
+    fun openDetails(p: Picture) {
+        Log.i(TAG, "details of ${p.id}")
+        details = p
+    }
+
+    fun closeDetails() {
+        details = null
     }
 
     fun closeBlePanel() {
@@ -154,6 +171,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openSettings() {
         blePanel = null
+        details = null
         settingsOpen = true
     }
 
@@ -472,7 +490,10 @@ fun App(
                             }
                             is CatalogState.Loaded -> Column {
                                 if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
-                                CatalogGrid(st, aspect, layout, grid, local = vm.tab == vm.localTab, onRetry = { vm.load(vm.tab) }, onSend)
+                                CatalogGrid(
+                                    st, aspect, layout, grid, local = vm.tab == vm.localTab,
+                                    onRetry = { vm.load(vm.tab) }, onSend = onSend, onDetails = vm::openDetails,
+                                )
                             }
                         }
                     }
@@ -490,8 +511,16 @@ fun App(
                     onSelect = { f -> vm.select(f); onFrameSelected() },
                     onCancel = vm::closeSettings,
                 )
-            } else vm.blePanel?.let { panel ->
-                BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
+            } else {
+                val panel = vm.blePanel
+                val details = vm.details
+                if (panel != null) {
+                    BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
+                } else if (details != null) {
+                    // "Send to frame" closes the panel and takes the card's own path (a toast, or the Bluetooth
+                    // panel). HOOK fullscreen-viewer: [View full screen] in DetailsPanel opens the viewer from here.
+                    DetailsPanel(details, vm.selected, onSend = { vm.closeDetails(); onSend(details) }, onClose = vm::closeDetails)
+                }
             }
         }
     }
@@ -578,6 +607,7 @@ private fun CatalogGrid(
     local: Boolean,
     onRetry: () -> Unit,
     onSend: (Picture) -> Unit,
+    onDetails: (Picture) -> Unit,
 ) {
     if (st.items.isEmpty() && local) { // Share first; the folder and adb only for advanced users
         Column {
@@ -602,13 +632,18 @@ private fun CatalogGrid(
         horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
         verticalArrangement = Arrangement.spacedBy(layout.gap.dp),
     ) {
-        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect) { onSend(p) } }
+        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect, onClick = { onSend(p) }, onLongClick = { onDetails(p) }) }
     }
 }
 
+/** A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details ([onLongClick]). */
 @Composable
-fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit) {
-    Card(onClick = onClick, modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick)) {
+fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        onLongClick = onLongClick,
+        modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick, onLongPress = onLongClick),
+    ) {
         Box(Modifier.fillMaxSize()) {
             AsyncImage(
                 model = p.thumbModel(),

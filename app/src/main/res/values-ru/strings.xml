@@ -22,6 +22,26 @@
     <string name="local_empty">Здесь пока нет картинок. Поделитесь картинкой с InkEasel из галереи или файлового менеджера на этом устройстве: она сохранится здесь и отправится на рамку.</string>
     <string name="local_empty_advanced">Для опытных пользователей: картинки, скопированные в папку приложения, тоже появятся здесь, например с компьютера:\nadb push файл.jpg %1$s</string>
 
+    <!-- панель сведений (DetailsPanel), открывается долгим нажатием на карточку -->
+    <string name="details_artist">Автор</string>
+    <string name="details_date">Дата</string>
+    <string name="details_collection">Собрание</string>
+    <string name="details_source">Источник</string>
+    <string name="details_source_cma">Кливлендский музей искусства, Open Access</string>
+    <string name="details_source_commons">Викисклад</string>
+    <string name="details_licence">Лицензия</string>
+    <string name="details_licence_link">Текст лицензии</string>
+    <string name="details_size">Размер оригинала</string>
+    <string name="details_size_px">%1$d × %2$d пикс.</string>
+    <string name="details_page">Веб-страница</string>
+    <string name="details_send">Отправить на рамку</string>
+    <string name="details_original">Оригинал</string>
+    <string name="details_preview">На рамке %1$s</string>
+    <string name="details_preview_loading">Готовим предпросмотр…</string>
+    <string name="details_preview_none">Рамка не выбрана: выберите её в настройках, чтобы увидеть картинку такой, какой её покажет рамка.</string>
+    <string name="details_preview_unsupported">Рамка %1$s не поддерживается: %2$s</string>
+    <string name="details_preview_failed">Нет предпросмотра: %1$s</string>
+
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>
     <string name="settings_frame">Рамка</string>

@@ -3,6 +3,27 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-08 — A long press on a card opens its details; a press still sends
+A plain press (CENTER or a tap) keeps the one-press send. A long press (tv-material `Card.onLongClick`, which
+takes CENTER held; a long touch through `onTap(action, onLongPress)`) opens a full-screen details panel laid
+out after Google's TV "content details" template: the title, the fields as label and value lines, **Send to
+frame** first and focused, and the picture large on the right above a preview of it on the chosen frame.
+The preview runs the upload's own decode, crop and Floyd–Steinberg onto the frame's inks
+(`EpdImage.previewOf`) on the full image an upload would download, off the main thread, and is cancelled
+with its download when the panel closes; without a frame, or with one that cannot be drawn on, the panel says
+so instead. Send closes the panel and takes the card's path (`BleAsk.onSend`: a toast without a frame, the
+Bluetooth panel without the permission), so dialogs never stack. Links are text: a TV launches no browser,
+and a QR code would need an encoder (a dependency or several hundred lines) for little gain over a short
+link (Commons gets its `curid` link). The place of [View full screen] is marked `HOOK fullscreen-viewer`.
+No footer with the focused card's details under the grid for now (Google's "immersive list"): on a TV
+(960 × 540 dp, 4 columns, one header row, 48 × 27 dp margins) two lines at 14 sp or more take about 56 dp,
+which cuts the visible full rows from three to two; it would repeat the card's own two lines; and touch
+screens have no focused card, so it would stand empty there. The details panel shows all of it on demand.
+Rejected: CENTER opening the details and sending from there (one more press per upload), an overlay
+inside the catalog instead of a dialog (focus would leak to the grid behind it), rendering the preview from
+the card's thumbnail (Commons' is 500 px wide, smaller than the frame, so its dithering would not be the
+frame's), a disabled placeholder button for the viewer (a control that does nothing).
+
 ## 2026-11-08 — A picture carries its metadata, named after the one-catalog schema
 `Picture` keeps `title` and `credit` (the card's two lines) and gains what the sources tell: `artist` (all
 creators as one text), `date` (as the source writes it), `collection`, `pageUrl`, `licence`, `licenceUrl`,
