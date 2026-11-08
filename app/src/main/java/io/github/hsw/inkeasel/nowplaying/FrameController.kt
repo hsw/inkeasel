@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-/** Sends a picture to the frame (in production: starts `UploadService` with `auto=true`). */
+/** Sends a picture to the frame (in production: [AutoUploader], straight to the in-process upload engine). */
 fun interface Uploader {
     /**
      * Upload [art] ([title]: the film's, or empty for the default picture); the outcome comes back through

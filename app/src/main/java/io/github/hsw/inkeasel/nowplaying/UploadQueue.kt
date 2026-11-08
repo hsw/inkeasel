@@ -1,14 +1,16 @@
 package io.github.hsw.inkeasel.nowplaying
 
 /**
- * The pending requests of `UploadService`, which uploads one at a time. A newer request replaces a queued
- * one of the same kind (manual or automatic), so rapid taps send only the latest picture and only the
- * controller's latest decision is uploaded; an automatic request never replaces a manual one. A manual
- * request goes ahead of a queued automatic one (the user waits for it); otherwise first in, first out.
+ * The pending requests of the upload engine ([UploadEngineCore]), manual and automatic alike, uploaded one at
+ * a time. A newer request replaces a queued one of the same kind (manual or automatic), so rapid taps send
+ * only the latest picture and only the controller's latest decision is uploaded; an automatic request never
+ * replaces a manual one. A manual request goes ahead of a queued automatic one (the user waits for it);
+ * otherwise first in, first out.
  *
  * A polled request stays in flight until [settle]; [takeAll] hands over every request still owed a result
- * (in flight and queued) when the service goes away. Each request is settled exactly once, by [settle] or
- * by [takeAll], whichever comes first, so its result is reported once even when the two race.
+ * (in flight and queued) to an owner that gives the queue up (the process-wide engine never does). Each
+ * request is settled exactly once, by [settle] or by [takeAll], whichever comes first, so its result is
+ * reported once even when the two race.
  * Thread-safe. Free of Android types.
  */
 class UploadQueue<T>(private val isAuto: (T) -> Boolean) {

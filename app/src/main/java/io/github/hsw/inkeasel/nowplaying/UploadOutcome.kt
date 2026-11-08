@@ -5,7 +5,7 @@ import io.github.hsw.inkeasel.Txt
 import io.github.hsw.inkeasel.userText
 
 /**
- * What `UploadService` does after one upload: [toast] to show (`null` = log only), whether to [report] the
+ * What the upload engine (`UploadEngine`) does after one upload: [toast] to show (`null` = log only), whether to [report] the
  * result to `FrameController.onUploadResult`, and whether to [remember] the source as the new default
  * (`FrameController.onManualUpload`).
  */

@@ -13,17 +13,14 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import io.github.hsw.inkeasel.nowplaying.Art
-import io.github.hsw.inkeasel.nowplaying.FrameController
-import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import io.github.hsw.inkeasel.nowplaying.Source
 import io.github.hsw.inkeasel.nowplaying.UploadOutcome
-import io.github.hsw.inkeasel.nowplaying.Uploader
 import java.io.File
 
 /**
  * Keeps the process in the foreground while an upload runs, so playback in another app (e.g. a video player)
  * is not interrupted — the upload is Bluetooth only and never brings UI forward. Start it with
- * `startForegroundService`; it is a transient foreground service: it hands the request to the in-process
+ * `startForegroundService`; it is a transient foreground service: it hands a manual request to the in-process
  * [UploadEngine] as held work, and stops once the engine has reported the last held request
  * ([UploadEngine.onIdle]), so nothing stays resident when idle. The queue, the worker, the toasts and the
  * reports live in the engine, not here.
@@ -32,19 +29,18 @@ import java.io.File
  *   adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo seaworld-abudhabi
  * Extras (first usable wins): `path` = an existing absolute file path, `photo` = file name that resolves in
  * the pictures folder (extension optional), `url` = remote image; optional `title` for the toast and
- * notification, for any of them.
+ * notification, for any of them. Every request it takes is manual: it toasts and, on success, becomes the
+ * frame's default picture (`FrameController.onManualUpload`).
  *
- * A manual upload (the default) toasts and, on success, becomes the frame's default picture
- * (`FrameController.onManualUpload`). `auto=true` (boolean) marks an upload started by the
- * `FrameController` (a now-playing poster or the revert to the default): no toast, log only, and the
- * result goes to `FrameController.onUploadResult(key, ok)` with the `key` extra. An automatic request carries
- * the controller's `stamp` ([FrameController.manualUploads] when it was decided). The engine's queue rules
- * ([io.github.hsw.inkeasel.nowplaying.UploadEngineCore]) decide what is replaced or dropped as stale.
+ * Automatic uploads (a now-playing poster, the revert to the default) do not come through here: the
+ * `FrameController` submits them to the engine itself (`AutoUploader`). Only while the notification listener
+ * is not bound, so nothing keeps the process alive, it also starts this service with [ACTION_HOLD]: no
+ * payload, the service only goes foreground and stays until the engine's held work is done.
  *
- * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): every request is refused at
- * once, before Bluetooth is touched ([refuseNoFrame]). Without the Bluetooth permissions ([BlePermissions])
- * it is not started at all: the app asks for them before a manual upload, and [autoUploader] reports an
- * automatic one as failed.
+ * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): a manual request is refused at
+ * once, before Bluetooth is touched, with a toast. Without the Bluetooth permissions ([BlePermissions]) it is
+ * not started at all: the app asks for them before a manual upload, and `AutoUploader` reports an automatic
+ * one as failed.
  *
  * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]); a manual request
  * that has to wait toasts how long.
@@ -57,7 +53,6 @@ class UploadService : Service() {
     private var lastStartId = 0 // the latest start delivered to onStartCommand; main thread only
     private val engine by lazy { UploadEngine.get(this) }
     private val frames by lazy { FrameStore(this) }
-    private val controller by lazy { FrameControllers.get(applicationContext) }
     private val idle: () -> Unit = { stopIfIdle() }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -74,49 +69,33 @@ class UploadService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
-        val auto = intent?.getBooleanExtra(EXTRA_AUTO, false) == true
-        val key = intent?.getStringExtra(EXTRA_KEY)
-        val stamp = intent?.getLongExtra(EXTRA_STAMP, -1L)?.takeIf { it >= 0 } ?: controller.manualUploads
-        val req = intent?.let { parse(it, auto, key, stamp) }
+        if (intent?.action == ACTION_HOLD) {
+            startForeground(NOTIF_ID, notification(null)) // must be called within 5 s of start
+            stopIfIdle() // the held work may already be done
+            return START_NOT_STICKY
+        }
+        val req = intent?.let { parse(it) }
         // must be called within 5 s of start; a picture without a title is named by UploadOutcome.untitled
-        startForeground(NOTIF_ID, notification(req?.let { it.source.title.ifBlank { UploadOutcome.untitled(key).resolve(this) } }))
-        if (frames.selected() == null) {
-            refuseNoFrame(auto, key, req?.source?.title)
+        startForeground(NOTIF_ID, notification(req?.let { it.source.title.ifBlank { UploadOutcome.untitled(null).resolve(this) } }))
+        if (frames.selected() == null) { // refuse without touching Bluetooth
+            Log.w(TAG, "no frame selected: manual upload refused: ${req?.source?.title}")
+            toast(getString(R.string.upload_no_frame))
             stopIfIdle()
             return START_NOT_STICKY
         }
         if (req == null) {
-            if (auto) {
-                Log.w(TAG, "auto upload: no picture (key=$key)")
-                key?.let { controller.onUploadResult(it, false) }
-            } else {
-                toast(getString(R.string.upload_no_picture))
-            }
+            toast(getString(R.string.upload_no_picture))
             stopIfIdle()
             return START_NOT_STICKY
         }
-        if (!auto) engine.drawWaitMs().takeIf { it > 0 }?.let { // known only when no upload is in flight
+        engine.drawWaitMs().takeIf { it > 0 }?.let { // known only when no upload is in flight
             toast(getString(R.string.upload_wait, ((it + 999) / 1000).toInt()))
         }
         engine.submit(req, hold = true) // a replaced request is reported by the engine
         return START_NOT_STICKY
     }
 
-    /**
-     * No frame is chosen: refuse without touching Bluetooth. A manual request toasts where to choose one. An
-     * automatic one is reported as failed rather than dropped: the controller keeps its key pending until a
-     * result comes, and a silently dropped request would block that key for good. The controller itself
-     * schedules nothing without a frame, so this happens only in a race, and its retries are bounded anyway
-     * (a failed revert at most [FrameController.MAX_REVERT_ATTEMPTS] times, 60 s apart; a poster only on the
-     * next transition into PLAYING).
-     */
-    private fun refuseNoFrame(auto: Boolean, key: String?, title: String?) {
-        Log.w(TAG, "no frame selected: ${if (auto) "auto" else "manual"} upload refused: $title (key=$key)")
-        if (auto) key?.let { controller.onUploadResult(it, false) }
-        else toast(getString(R.string.upload_no_frame))
-    }
-
-    private fun parse(intent: Intent, auto: Boolean, key: String?, stamp: Long): UploadEngine.Req? {
+    private fun parse(intent: Intent): UploadEngine.Req? {
         val resolve = { name: String -> resolvePhoto(this, name) }
         val picked = Source.fromExtras(
             path = intent.getStringExtra(EXTRA_PATH),
@@ -125,7 +104,8 @@ class UploadService : Service() {
             title = intent.getStringExtra(EXTRA_TITLE),
             resolvePhoto = resolve,
         ) ?: return null
-        return UploadEngine.Req(picked.source, picked.art, auto, key, stamp)
+        // no key and no stamp: a manual request is never stale (FrameController.isStale)
+        return UploadEngine.Req(picked.source, picked.art, auto = false, key = null, stamp = 0)
     }
 
     /**
@@ -167,9 +147,9 @@ class UploadService : Service() {
         const val EXTRA_PATH = "path"
         const val EXTRA_URL = "url"
         const val EXTRA_TITLE = "title"
-        const val EXTRA_AUTO = "auto"
-        const val EXTRA_KEY = "key"
-        const val EXTRA_STAMP = "stamp"
+
+        /** Internal: hold the process in the foreground for the engine's held work; no payload, no upload. */
+        const val ACTION_HOLD = "io.github.hsw.inkeasel.action.HOLD"
 
         /** Start a manual upload of [art] ([title] for the toast and notification; a file is named by itself). */
         fun startManual(context: Context, art: Art, title: String? = null) {
@@ -194,29 +174,12 @@ class UploadService : Service() {
         }
 
         /**
-         * The production [Uploader] of the `FrameController`: starts this service with `auto=true`, `key` and
-         * `stamp` (called under the controller's lock, so the stamp matches the decision). Without the Bluetooth
-         * permissions it reports the upload as failed at once instead.
+         * Hold the process in the foreground until the engine's held work is done ([ACTION_HOLD]), for an
+         * automatic upload submitted while the notification listener is not bound (`AutoUploader`). Throws
+         * if the system refuses the start (a background start on Android 12+).
          */
-        fun autoUploader(context: Context) = Uploader { art, title, key ->
-            // without them the service could not even go foreground (connectedDevice type, Android 14+)
-            if (!BlePermissions.granted(context)) {
-                Log.w(TAG, "no Bluetooth permission: auto upload not started: $key")
-                FrameControllers.get(context).onUploadResult(key, false)
-                return@Uploader
-            }
-            val i = Intent(context, UploadService::class.java)
-                .putExtra(EXTRA_AUTO, true)
-                .putExtra(EXTRA_KEY, key)
-                .putExtra(EXTRA_STAMP, FrameControllers.get(context).manualUploads)
-                .putExtra(EXTRA_TITLE, title)
-                .putArt(art)
-            try {
-                context.startForegroundService(i)
-            } catch (e: RuntimeException) { // e.g. a background start refused by the system
-                Log.w(TAG, "auto upload not started: $key", e)
-                FrameControllers.get(context).onUploadResult(key, false)
-            }
+        fun startHold(context: Context) {
+            context.startForegroundService(Intent(context, UploadService::class.java).setAction(ACTION_HOLD))
         }
     }
 }

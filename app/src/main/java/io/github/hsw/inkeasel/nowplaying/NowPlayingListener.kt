@@ -25,7 +25,7 @@ import java.nio.ByteBuffer
  * screen the settings open ("Permissions and features", `ListenerAccess`), or where there is none with
  * `adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener`;
  * the system rebinds it (verified after a force-stop, expected after boot), which also keeps the process (and
- * the controller's timers) alive. Sessions are followed also while the poster is switched off
+ * the controller's timers and automatic uploads, see [connected]) alive. Sessions are followed also while the poster is switched off
  * ([FeatureStore]); the [FrameController] then only schedules nothing.
  *
  * Threading: the session map and the callbacks live on the main thread. Everything else (reading the
@@ -51,6 +51,7 @@ class NowPlayingListener : NotificationListenerService() {
         MediaSessionManager.OnActiveSessionsChangedListener { list -> sync(list.orEmpty()) }
 
     override fun onListenerConnected() {
+        connected = true // first: from now on automatic uploads need no foreground service
         release()
         val m = getSystemService(MediaSessionManager::class.java) ?: return
         val component = ComponentName(this, NowPlayingListener::class.java)
@@ -66,9 +67,13 @@ class NowPlayingListener : NotificationListenerService() {
         }
     }
 
-    override fun onListenerDisconnected() = release()
+    override fun onListenerDisconnected() {
+        connected = false // first: an upload requested from now on is held by UploadService
+        release()
+    }
 
     override fun onDestroy() {
+        connected = false
         release()
         scope.cancel()
         super.onDestroy()
@@ -192,6 +197,15 @@ class NowPlayingListener : NotificationListenerService() {
 
     companion object {
         private const val TAG = "NowPlayingListener"
+
+        /**
+         * The system has this listener bound, which keeps the process alive: an automatic upload then runs in
+         * the process without a foreground service ([AutoUploader]). Set first thing on connect, cleared
+         * first thing on disconnect and destroy.
+         */
+        @Volatile
+        var connected = false
+            private set
 
         /** The text metadata the mapper looks at: titles and art URIs. */
         private val TEXT_KEYS = listOf(MetaKeys.TITLE, MetaKeys.DISPLAY_TITLE) + MetaKeys.URIS

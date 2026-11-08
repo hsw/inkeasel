@@ -270,8 +270,9 @@ frame now advertises other properties, the upload fails and the next one uses th
 
 **No frame chosen**: the catalog browses normally, but nothing is uploaded:
 - a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing;
-- `UploadService` refuses every request before touching Bluetooth: a manual one (adb) toasts the same, an
-  automatic one is reported to `FrameController` as failed (so its key does not stay pending);
+- `UploadService` refuses a manual request (adb) before touching Bluetooth and toasts the same; the upload
+  engine fails an automatic one before any download or Bluetooth and reports it to `FrameController` (so its
+  key does not stay pending);
 - `FrameController` schedules no poster and no revert, and logs `no frame selected: …`.
 
 ## Now playing → poster
@@ -316,15 +317,18 @@ How it works:
 - **Switched off** in the settings: what plays is still followed, but no poster is scheduled or uploaded
   (`poster off: not scheduled` in the log). Switching off cancels a pending start and reverts a poster on
   the frame at once; a poster whose upload was already under way is reverted at once when it lands, and
-  one still queued in `UploadService` is dropped. Reverts work as usual; if the process restarts before the
+  one still queued in the upload engine is dropped. Reverts work as usual; if the process restarts before the
   switch's revert ran, the poster is reverted once the listener has reported the sessions again, even while
   the film plays. Switching on acts on what plays now: a film already playing gets its poster 60 s after
-  the switch; a revert still queued in `UploadService` while its poster is on the frame is dropped (as when
+  the switch; a revert still queued in the upload engine while its poster is on the frame is dropped (as when
   the film resumes before a queued revert), and one already uploading is followed by the poster 60 s later.
-- **Default picture = the last manual upload** (catalog tap or `UploadService` without `auto`). There is
+- **Default picture = the last manual upload** (catalog tap, share or `UploadService` from adb). There is
   no separate setting. Until the first manual upload there is no default, so a poster stays on the frame
   after playback ends: do one manual upload (catalog tap or the adb command below) after installing.
-- Automatic uploads run through `UploadService` with `auto=true`: no toast over the film, only a log line.
+- Automatic uploads run in the app process, in the same upload engine as manual ones, without a foreground
+  service: the bound listener keeps the process alive. Only while it is not bound (access granted but not
+  bound yet, the binding lost) a request also starts `UploadService` with an internal hold action that keeps
+  the process in the foreground until the upload is done. No toast over the film, only a log line.
 - Uploads are at least 35 s apart, also across app restarts: the frame draws for ~27 s after an upload and
   a picture sent meanwhile is not drawn properly. A later request waits (a manual one toasts how long);
   while it waits, a newer request of the same kind replaces it and a manual one goes first.
@@ -333,7 +337,7 @@ How it works:
   app does not permit cleartext traffic); the artwork bitmap is used instead, if the session has one.
 
 Manual upload from adb (extras, first usable wins: `path` = an existing file, `photo` = file name in the
-pictures folder, `url`; plus an optional `title` for any of them; `auto`, `key` and `stamp` are internal):
+pictures folder, `url`; plus an optional `title` for any of them):
 
     adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
 
@@ -381,15 +385,18 @@ Code:
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
   permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
   (`save`), the size cap and the pending-share rule (pure)
-- `UploadService.kt`: transient foreground service, one upload at a time (a newer request replaces a queued
-  one of the same kind, a manual one goes first; `nowplaying/UploadQueue.kt`); manual uploads toast and
-  become the default picture, `auto` uploads report the result to `FrameController` and are dropped if a
-  manual upload succeeded after they were decided (`stamp` = `FrameController.manualUploads`), if a
-  poster's turn comes while the poster is switched off, or if a revert's turn comes while the playing film's
-  poster is on the frame; it stops
-  with `stopSelfResult`, so a start arriving as it finishes is not lost, and a request it never finishes
-  is reported as failed; it waits for the frame to finish drawing before the next upload (`DrawGate.kt`).
-  Without the Bluetooth permissions it is not started: an `auto` upload is reported as failed at once
+- `UploadEngine.kt`: the process-wide upload engine (`nowplaying/UploadEngineCore.kt`, pure), one upload at
+  a time (a newer request replaces a queued one of the same kind, a manual one goes first;
+  `nowplaying/UploadQueue.kt`); manual uploads toast and become the default picture, automatic uploads
+  report the result to `FrameController` and are dropped if a manual upload succeeded after they were
+  decided (`stamp` = `FrameController.manualUploads`), if a poster's turn comes while the poster is switched
+  off, or if a revert's turn comes while the playing film's poster is on the frame; it waits for the frame
+  to finish drawing before the next upload (`DrawGate.kt`)
+- `UploadService.kt`: transient foreground service for manual uploads (and the hold of automatic ones while
+  the listener is not bound); it stops with `stopSelfResult` once the engine has reported its held work, so
+  a start arriving as it finishes is not lost
+- `nowplaying/AutoUploader.kt`: the controller's uploader: straight to the engine, held only while the
+  listener is not bound; without the Bluetooth permissions an automatic upload is reported as failed at once
 - `nowplaying/`:
   - `Playing.kt`: the `Playing`/`Art`/`State` model and pure mappers from metadata
     (art priority `ART_URI` → `ALBUM_ART_URI` → `DISPLAY_ICON_URI` → bitmap; only https URIs are used)
@@ -404,5 +411,5 @@ Code:
     `FrameControllers.kt` wires the process-wide instance
   - `FeatureStore.kt`: the poster switch and its pending wish (prefs `features`)
   - `DefaultStore.kt`: the default picture (prefs `default`) and the key on the frame (prefs `frame`)
-  - `UploadOutcome.kt`: what `UploadService` does after an upload (toast, report to the controller,
+  - `UploadOutcome.kt`: what the upload engine does after an upload (toast, report to the controller,
     remember as the default)

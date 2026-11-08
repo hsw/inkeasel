@@ -11,7 +11,7 @@ import org.junit.Test
 import java.io.IOException
 import java.net.SocketTimeoutException
 
-/** What `UploadService` does after an upload. */
+/** What the upload engine does after an upload. */
 class UploadOutcomeTest {
     @Test
     fun autoSuccessReportsOnlyNoToastNoRemember() {

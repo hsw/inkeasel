@@ -19,7 +19,9 @@
     <!-- Android 12+ -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Background upload service (so playback in another app is not interrupted) -->
+    <!-- UploadService: manual uploads and shares run in it, so playback in another app is not interrupted;
+         automatic (now-playing) uploads run in the process and use it only to hold the process while the
+         notification listener is not bound -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
@@ -85,7 +87,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Transient foreground service: one background upload, then it stops itself.
+        <!-- Transient foreground service: a manual upload (or a hold for automatic ones), then it stops itself.
              exported so it can be triggered from adb: am start-foreground-service -n .../.UploadService -e photo <name> -->
         <service
             android:name=".UploadService"

@@ -23,7 +23,7 @@ playing app's media-session title and artwork; notifications are ignored), and t
 the device, to the user's frame over Bluetooth. "Continue" is the affirmative action Play's User Data policy
 requires; "Cancel" and Back change nothing.
 
-## 2026-11-08 — Uploads: poster in-process, manual uploads in a foreground service (*planned*)
+## 2026-11-08 — Uploads: poster in-process, manual uploads in a foreground service
 Automatic uploads (now-playing poster, revert to the default picture) run in the app process without a
 foreground service: while notification access is granted the system keeps `NowPlayingListener` bound, which
 keeps the process alive for a 10–30 s BLE transfer. Android TV forbids foreground services once the user
@@ -32,7 +32,11 @@ hidden on Android 13+ anyway. One in-process engine keeps the single queue and i
 When the listener is not connected (access granted but not yet bound, or the binding lost while a controller
 timer fires) the engine still takes the request, and a payload-free "hold" start of `UploadService` keeps the
 process in the foreground until that work is done. Manual uploads and shares stay on the short
-`connectedDevice` foreground service, which may outlive the app for a few seconds.
+`connectedDevice` foreground service, which may outlive the app for a few seconds. The listener's binding is
+read from a flag it sets first on connect and clears first on disconnect; the controller's uploader
+(`AutoUploader`, pure, so the hold fallback and a refused hold start are unit-tested) submits every request
+before it starts the hold, so a refused start (a background start on Android 12+) is only logged and the
+engine still uploads and reports the request once.
 Rejected:
 - expedited WorkManager — on Android 11 and older (the Shield) it runs as a foreground service with a
   notification anyway, has quotas and would split the queue rules;

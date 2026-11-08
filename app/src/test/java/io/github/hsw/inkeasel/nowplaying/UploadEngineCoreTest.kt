@@ -201,6 +201,27 @@ class UploadEngineCoreTest {
     }
 
     @Test
+    fun heldAndUnheldAutoMixedWithManual_idleOnlyAfterTheLastHeld() = runTest {
+        // a poster while the listener is bound (unheld), a revert after it unbound (held), and a manual tap
+        val r = Rig(this)
+        r.submit(auto("a1"))
+        r.submit(manual("m1"))
+        assertEquals(1, r.core.heldCount)
+        r.finish("a1")
+        r.submit(auto("h1"), hold = true)
+        assertEquals(2, r.core.heldCount)
+        assertEquals(listOf("a1", "m1"), r.started) // the manual one goes ahead of the held automatic one
+        r.finish("m1")
+        assertEquals(listOf("done a1 ok", "done m1 ok"), r.events) // h1 is still held
+        r.submit(auto("a2")) // unheld, queued behind h1
+        r.finish("h1")
+        assertEquals(listOf("done a1 ok", "done m1 ok", "done h1 ok", "idle"), r.events)
+        r.finish("a2")
+        assertEquals(1, r.events.count { it == "idle" })
+        assertEquals(0, r.core.heldCount)
+    }
+
+    @Test
     fun onIdle_rightAfterTheLastReport_noLinger() = runTest {
         val r = Rig(this)
         r.submit(manual("m1"))

@@ -51,15 +51,18 @@ class FrameControllerTest {
         }
     }
 
-    /** A request in the upload engine ([Rig.service]). */
+    /** A request in the upload engine ([Rig.viaEngine]). */
     private data class Req(val key: String, val auto: Boolean, val stamp: Long, val source: Source? = null)
 
     /**
      * Test rig: uploads are recorded; by default each one reports success at once (`result = true`). With
-     * [service] set, automatic uploads go instead into the real [UploadEngineCore] (one upload at a time,
-     * automatic requests stamped with [FrameController.manualUploads] and dropped before upload once
-     * superseded), driven step by step by [manual], [startNext] and [complete]: the worker waits at the
-     * DrawGate until [startNext] lets it take the next request.
+     * [viaEngine] set, automatic uploads go instead through the production [AutoUploader] into the real
+     * [UploadEngineCore] (one upload at a time, automatic requests stamped with [FrameController.manualUploads]
+     * and dropped before upload once superseded), driven step by step by [manual], [startNext] and [complete]:
+     * the worker waits at the DrawGate until [startNext] lets it take the next request. [bound] is the
+     * listener's binding: while it is off, a request is held and [holds] counts the hold-service starts
+     * ([holdRefused]: the start throws, as a refused background start does). [reports] counts each key's
+     * reports to the controller.
      */
     private inner class Rig(scope: TestScope, onFrame: String? = null, default: Art? = Art.File(photo)) {
         val ts = scope
@@ -68,7 +71,11 @@ class FrameControllerTest {
         val uploads = mutableListOf<Upload>()
         val logs = mutableListOf<String>()
         var result: Boolean? = true
-        var service = false
+        var viaEngine = false
+        var bound = true // NowPlayingListener.connected
+        var holds = 0
+        var holdRefused = false
+        val reports = mutableMapOf<String, Int>()
         var inFlight: Req? = null
         val dropped = mutableListOf<String>()
         var frame = true // a frame is chosen in the settings
@@ -76,10 +83,20 @@ class FrameControllerTest {
         private val gate = Channel<Unit>() // startNext lets the worker past its DrawGate wait
         private var atGate = false
         private var finished: CompletableDeferred<Boolean>? = null
+        private val auto = AutoUploader(
+            permitted = { true },
+            listenerBound = { bound },
+            submit = { _, _, key, hold -> engine.submit(Req(key, auto = true, stamp = c.manualUploads), hold) },
+            startHold = {
+                holds++
+                if (holdRefused) throw IllegalStateException("background start not allowed")
+            },
+            refuse = { key -> c.onUploadResult(key, false) },
+        )
         val c: FrameController = FrameController(scope.backgroundScope, { art, title, key ->
             uploads += Upload(scope.testScheduler.currentTime, art, title, key)
-            if (service) {
-                engine.submit(Req(key, auto = true, stamp = c.manualUploads), hold = true)
+            if (viaEngine) {
+                auto.upload(art, title, key)
             } else {
                 result?.let { ok -> c.onUploadResult(key, ok) }
             }
@@ -102,13 +119,18 @@ class FrameControllerTest {
                 if (!ok) error("upload failed")
             },
             isStale = { c.isStale(it.auto, it.stamp, it.key) },
-            onDone = { req, ok, _ -> if (req.auto) c.onUploadResult(req.key, ok) else if (ok) c.onManualUpload(req.source!!) },
+            onDone = { req, ok, _ -> if (req.auto) toController(req.key, ok) else if (ok) c.onManualUpload(req.source!!) },
             onDropped = { req, why ->
                 if (why == UploadEngineCore.Drop.STALE) dropped += req.key
-                if (req.auto) c.onUploadResult(req.key, false)
+                if (req.auto) toController(req.key, false)
             },
             onIdle = {},
         )
+
+        private fun toController(key: String, ok: Boolean) {
+            reports.merge(key, 1, Int::plus)
+            c.onUploadResult(key, ok)
+        }
 
         /** The user taps a picture: a manual request joins the engine's queue. */
         fun manual(src: Source) = assertNull(engine.submit(Req(src.manualKey(), auto = false, stamp = 0, source = src), hold = true))
@@ -220,7 +242,7 @@ class FrameControllerTest {
 
     @Test
     fun noFrame_refusedRevertsAreBounded() = runTest {
-        // the service refuses (reports failure) if the frame disappears between scheduling and upload
+        // the engine refuses (reports failure) if the frame disappears between scheduling and upload
         val r = Rig(this, onFrame = k1)
         r.result = false
         r.stop()
@@ -306,10 +328,59 @@ class FrameControllerTest {
         assertTrue(r.uploads.isEmpty())
     }
 
+    // --- listener binding: unheld or held automatic uploads ---
+
+    @Test
+    fun listenerBound_posterRunsUnheld_noHoldStart() = runTest {
+        val r = Rig(this)
+        r.viaEngine = true
+        r.play()
+        r.advance(60)
+        assertEquals(0, r.engine.heldCount) // the bound listener keeps the process alive
+        assertEquals(k1, r.startNext())
+        r.complete()
+        assertEquals(k1, r.c.onFrame)
+        assertEquals(0, r.holds)
+    }
+
+    @Test
+    fun listenerNotBound_posterHeldUntilReported() = runTest {
+        val r = Rig(this, onFrame = k1)
+        r.viaEngine = true
+        r.bound = false // e.g. a revert timer firing after the binding was lost
+        r.stop(session = null)
+        r.c.onSessionsSynced(emptyList())
+        r.advance(60)
+        assertEquals(listOf(defaultKey), r.keys())
+        assertEquals(1, r.holds)
+        assertEquals(1, r.engine.heldCount)
+        assertEquals(defaultKey, r.startNext())
+        r.complete()
+        assertEquals(0, r.engine.heldCount)
+        assertEquals(defaultKey, r.c.onFrame)
+    }
+
+    @Test
+    fun holdStartRefused_posterStillUploads_andIsReportedOnceByTheEngine() = runTest {
+        val r = Rig(this)
+        r.viaEngine = true
+        r.bound = false
+        r.holdRefused = true // a background start refused on Android 12+
+        r.play()
+        r.advance(60)
+        assertEquals(1, r.holds)
+        assertTrue(r.reports.isEmpty()) // the refused start is not reported as a failure
+        assertEquals(k1, r.startNext()) // the request is in the engine all the same
+        r.complete(ok = false)
+        assertEquals(mapOf(k1 to 1), r.reports)
+        assertNull(r.c.onFrame)
+        assertEquals(0, r.engine.heldCount)
+    }
+
     @Test
     fun posterLandsAfterTheSwitchWentOff_revertedAtOnce() = runTest {
         val r = Rig(this)
-        r.service = true
+        r.viaEngine = true
         r.play()
         r.advance(60)
         assertEquals(k1, r.startNext()) // the poster's upload is under way
@@ -328,9 +399,9 @@ class FrameControllerTest {
     @Test
     fun posterQueuedWhenSwitchedOff_droppedAtTakeTime() = runTest {
         val r = Rig(this)
-        r.service = true
+        r.viaEngine = true
         r.play()
-        r.advance(60) // requested, still queued in the service
+        r.advance(60) // requested, still queued in the engine
         r.switchPoster(false)
         assertNull(r.startNext()) // dropped before upload, reported as failed
         assertEquals(listOf(k1), r.dropped)
@@ -341,7 +412,7 @@ class FrameControllerTest {
     @Test
     fun posterOff_queuedRevertNotDropped() = runTest {
         val r = Rig(this, onFrame = k1) // a poster from before the switch
-        r.service = true
+        r.viaEngine = true
         r.switchPoster(false)
         assertEquals(listOf(defaultKey), r.keys())
         assertEquals(defaultKey, r.startNext()) // a revert is not a poster: it goes through
@@ -381,8 +452,8 @@ class FrameControllerTest {
     fun switchedOnAgainWhileTheRevertIsQueued_revertDropped_posterStays() = runTest {
         val r = Rig(this)
         r.posterUp(k1)
-        r.service = true
-        r.switchPoster(false) // the revert waits in the service's queue
+        r.viaEngine = true
+        r.switchPoster(false) // the revert waits in the engine's queue
         assertEquals(listOf(k1, defaultKey), r.keys())
         r.switchPoster(true) // the film still plays and its poster is still on the frame
         assertNull(r.startNext()) // the revert is dropped before upload
@@ -397,7 +468,7 @@ class FrameControllerTest {
     fun switchedOnAgainWhileTheRevertUploads_posterOnceAfterItLands() = runTest {
         val r = Rig(this)
         r.posterUp(k1)
-        r.service = true
+        r.viaEngine = true
         r.switchPoster(false)
         assertEquals(defaultKey, r.startNext()) // the revert is already uploading: it cannot be stopped
         r.switchPoster(true)
@@ -420,9 +491,9 @@ class FrameControllerTest {
     fun filmResumedWhileTheRevertIsQueued_revertDropped() = runTest {
         val r = Rig(this)
         r.posterUp(k1)
-        r.service = true
+        r.viaEngine = true
         r.stop()
-        r.advance(60) // the revert waits in the service's queue
+        r.advance(60) // the revert waits in the engine's queue
         r.play() // resumed: its poster is still on the frame
         assertNull(r.startNext())
         assertEquals(listOf(defaultKey), r.dropped)
@@ -545,12 +616,12 @@ class FrameControllerTest {
     @Test
     fun artKeysInUse_currentPendingStartAndOutstandingUploads() = runTest {
         val r = Rig(this)
-        r.service = true
+        r.viaEngine = true
         assertEquals(emptySet<String>(), r.c.artKeysInUse())
         r.play(k1)
         assertEquals(setOf(k1), r.c.artKeysInUse()) // playing, start pending: its PNG must survive 60 s
         r.advance(60)
-        assertEquals(setOf(k1), r.c.artKeysInUse()) // requested, queued in the service
+        assertEquals(setOf(k1), r.c.artKeysInUse()) // requested, queued in the engine
         r.play(k2) // the next film starts while k1's upload still waits
         assertEquals(setOf(k1, k2), r.c.artKeysInUse())
         assertEquals(k1, r.startNext())
@@ -1126,7 +1197,7 @@ class FrameControllerTest {
     fun manualInFlight_whenRevertFires_revertIsDroppedAndManualStays() = runTest {
         val r = Rig(this)
         r.posterUp()
-        r.service = true
+        r.viaEngine = true
         r.stop()
         r.advance(50)
         val m = Source(Source.Type.PHOTO, "sea")
@@ -1148,7 +1219,7 @@ class FrameControllerTest {
     @Test
     fun manualInFlightAndAnotherQueued_whenStartFires_posterIsDroppedUntilNextTransition() = runTest {
         val r = Rig(this, onFrame = defaultKey)
-        r.service = true
+        r.viaEngine = true
         r.play()
         r.advance(40)
         val m1 = Source(Source.Type.PHOTO, "sea")
@@ -1182,9 +1253,9 @@ class FrameControllerTest {
     fun autoQueuedBeforeManualTap_manualGoesFirstAndTheAutoIsDropped() = runTest {
         val r = Rig(this)
         r.posterUp()
-        r.service = true
+        r.viaEngine = true
         r.stop()
-        r.advance(60) // the revert is queued (the service is still busy with something else)
+        r.advance(60) // the revert is queued (the engine is still busy with something else)
         val m = Source(Source.Type.PHOTO, "sea")
         r.manual(m)
         assertEquals(m.manualKey(), r.startNext())
@@ -1198,7 +1269,7 @@ class FrameControllerTest {
     fun manualFailsInFlight_queuedRevertStillRuns() = runTest {
         val r = Rig(this)
         r.posterUp()
-        r.service = true
+        r.viaEngine = true
         r.stop()
         r.advance(50)
         r.manual(Source(Source.Type.PHOTO, "sea"))

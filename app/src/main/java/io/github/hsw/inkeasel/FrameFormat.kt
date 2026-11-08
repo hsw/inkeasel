@@ -233,7 +233,7 @@ sealed interface FormatLookup {
 /**
  * The frames this app can draw on, by their [FrameCaps] (whatever protocol reported them), and the one place
  * that decides it: the frame list greys out the rest and does not let them be chosen, [FrameClient] refuses a
- * selected frame whose caps no longer qualify, and `UploadService` renders with the format found here. A
+ * selected frame whose caps no longer qualify, and `UploadEngine` renders with the format found here. A
  * panel type is one or more [Entry]s (palette, packing, marker, sizes); a protocol's own rejections come first
  * (e.g. [FrameAdvert.lookup]). Formats from docs/device-api.md §5.4.
  */
