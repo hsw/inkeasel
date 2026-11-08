@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+        <!-- Debug builds only: export UploadService so a manual upload can be triggered from adb
+             (am start-foreground-service -n .../.UploadService -e photo <name>). It accepts only manual extras,
+             so the export cannot touch automatic (now-playing) work; release builds keep it unexported.
+             The foreground service type repeats the main manifest's: lint's ForegroundServiceType check reads
+             this element too. -->
+        <service
+            android:name=".UploadService"
+            android:exported="true"
+            android:foregroundServiceType="connectedDevice"
+            tools:replace="android:exported" />
+    </application>
+</manifest>

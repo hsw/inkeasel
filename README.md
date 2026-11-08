@@ -270,9 +270,9 @@ frame now advertises other properties, the upload fails and the next one uses th
 
 **No frame chosen**: the catalog browses normally, but nothing is uploaded:
 - a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing;
-- `UploadService` refuses a manual request (adb) before touching Bluetooth and toasts the same; the upload
-  engine fails an automatic one before any download or Bluetooth and reports it to `FrameController` (so its
-  key does not stay pending);
+- `UploadService` refuses a manual request (adb, debug build) before touching Bluetooth and toasts the same;
+  the upload engine fails an automatic one before any download or Bluetooth and reports it to
+  `FrameController` (so its key does not stay pending);
 - `FrameController` schedules no poster and no revert, and logs `no frame selected: …`.
 
 ## Now playing → poster
@@ -322,9 +322,10 @@ How it works:
   the film plays. Switching on acts on what plays now: a film already playing gets its poster 60 s after
   the switch; a revert still queued in the upload engine while its poster is on the frame is dropped (as when
   the film resumes before a queued revert), and one already uploading is followed by the poster 60 s later.
-- **Default picture = the last manual upload** (catalog tap, share or `UploadService` from adb). There is
-  no separate setting. Until the first manual upload there is no default, so a poster stays on the frame
-  after playback ends: do one manual upload (catalog tap or the adb command below) after installing.
+- **Default picture = the last manual upload** (catalog tap, share or `UploadService` from adb in a debug
+  build). There is no separate setting. Until the first manual upload there is no default, so a poster stays
+  on the frame after playback ends: do one manual upload (a catalog tap, or the adb command below in a debug
+  build) after installing.
 - Automatic uploads run in the app process, in the same upload engine as manual ones, without a foreground
   service: the bound listener keeps the process alive. Only while it is not bound (access granted but not
   bound yet, the binding lost) a request also starts `UploadService` with an internal hold action that keeps
@@ -336,8 +337,9 @@ How it works:
   artwork once yuliskov/SmartTube#6423 is merged. A plain `http://` art URI is not used (the
   app does not permit cleartext traffic); the artwork bitmap is used instead, if the session has one.
 
-Manual upload from adb (extras, first usable wins: `path` = an existing file, `photo` = file name in the
-pictures folder, `url`; plus an optional `title` for any of them):
+Manual upload from adb, **debug builds only** (release builds do not export `UploadService`, so no other
+app can send a picture to the frame; extras, first usable wins: `path` = an existing file, `photo` = file
+name in the pictures folder, `url`; plus an optional `title` for any of them):
 
     adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
 

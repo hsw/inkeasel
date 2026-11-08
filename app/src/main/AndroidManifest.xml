@@ -88,10 +88,11 @@
         </activity>
 
         <!-- Transient foreground service: a manual upload (or a hold for automatic ones), then it stops itself.
-             exported so it can be triggered from adb: am start-foreground-service -n .../.UploadService -e photo <name> -->
+             Not exported: another app must not make it upload a picture of its choosing to the user's frame. The
+             debug build exports it for the adb trigger (src/debug/AndroidManifest.xml). -->
         <service
             android:name=".UploadService"
-            android:exported="true"
+            android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
         <!-- Reads MediaSession metadata of any app (now playing → poster on the frame). Bound by the system

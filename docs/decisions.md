@@ -46,11 +46,14 @@ Rejected:
 - `shortService` for manual uploads — Android 14+ only; may be revisited if the Play foreground-service
   declaration becomes a problem.
 
-## 2026-11-08 — `UploadService` is not exported in release builds (*planned*)
+## 2026-11-08 — `UploadService` is not exported in release builds
 Any installed app could otherwise make InkEasel upload a file or URL of its choosing to the user's frame. The
 service is exported only by a debug manifest overlay, for the documented adb trigger, and it accepts only
 manual uploads (no automatic-upload extras), so even the debug export cannot touch now-playing work.
-A JVM test guards the manifests.
+A JVM test guards the manifests. The overlay repeats `foregroundServiceType`, because lint's
+`ForegroundServiceType` check reads the overlay's `<service>` element on its own.
+Rejected: keeping it exported behind a custom signature permission (adb's shell cannot hold it), or a
+runtime check of the caller (a `Service` start carries no caller identity).
 
 ## 2026-11-08 — `bluetooth_le` stays required
 BLE is the app's only transport, so the feature stays `required="true"`; lint's `UnsupportedTvHardware` is
