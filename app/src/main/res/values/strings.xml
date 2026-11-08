@@ -75,6 +75,9 @@
     <string name="access_disclosure_text">Android grants this access to all of your notifications. %1$s ignores the notifications: it reads only what the playing app reports about what plays, its title and artwork (artwork given as a web link is downloaded from there). Only the poster leaves the device, over Bluetooth to your frame.</string>
     <string name="access_disclosure_continue">Continue</string>
     <string name="access_disclosure_cancel">Cancel</string>
+    <string name="settings_privacy">Privacy policy</string>
+    <!-- shown as text in the settings; opened on a tap on phones and tablets, never launched on TV -->
+    <string name="settings_privacy_url" translatable="false">https://github.com/hsw/inkeasel/blob/main/PRIVACY.md</string>
 
     <!-- frame advertisement (FrameAdvert.describe) -->
     <string name="advert_colour_panel">%1$s, panel %2$s</string>

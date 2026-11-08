@@ -81,7 +81,9 @@ list and select it.
 
 ## Privacy
 
-InkEasel has no account, no analytics, no ads and no server of its own.
+InkEasel has no account, no analytics, no ads and no server of its own. The full policy, with each
+permission and why: [PRIVACY.md](PRIVACY.md); the settings show its address (a tap opens it on a phone or
+tablet).
 
 - What plays is read from the media sessions **on the device** and used only to pick and time the poster;
   it is not sent anywhere. The titles go to the device's own system log (logcat) for troubleshooting.
@@ -258,6 +260,9 @@ Below the frame list, **Settings → Permissions and features** collects what th
     settings screen resolves: the adb command, in small print (see "Now playing → poster"), and in the
     disclosure panel.
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
+- **Privacy policy**: the address of [PRIVACY.md](PRIVACY.md) as text (`settings_privacy_url`). A tap opens
+  it in the browser on a phone or tablet; on TV the row only shows it (a TV app must not launch a browser),
+  and stays focusable so the D-pad scrolls it into view.
 
 Switching the poster off stops new posters at once and puts the default picture back if a poster is on
 the frame; see "Now playing → poster".

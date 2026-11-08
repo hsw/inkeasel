@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
@@ -72,9 +73,9 @@ private const val TAG = "FrameSettings"
  * "Settings": a full-screen dialog over the catalog. Section "Frame": while the dialog is open it scans for
  * frames and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves
  * it and closes the dialog. Section "Permissions and features" ([FeaturesSection]): the Bluetooth permission
- * and the now-playing poster switch with its notification access; a change there applies at once. "Close"
- * and Back call [onCancel] and leave the frame as it was (Back closes the notification-access disclosure
- * first, while it is open). The scan stops when the dialog closes and while
+ * and the now-playing poster switch with its notification access (a change there applies at once), and the
+ * privacy policy link. "Close" and Back call [onCancel] and leave the frame as it was (Back closes the
+ * notification-access disclosure first, while it is open). The scan stops when the dialog closes and while
  * the app is in the background.
  *
  * The whole content scrolls as one column (a phone in landscape is about 380 dp tall), and "Close" sits at
@@ -277,7 +278,7 @@ private fun FrameSettings(
  * and "Grant access" both open the [Disclosure] first; its "Continue" calls [onDisclosureConfirmed]
  * (`MainViewModel.confirmDisclosure`) and starts the grant flow: the system screen [ListenerAccessUi.grant]
  * names, while the section says the menu path on TV (or the adb command where no screen leads to the switch).
- * The access itself is read again by the view model on resume, the screens here.
+ * The access itself is read again by the view model on resume, the screens here. Last, the [PrivacyRow].
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
  */
@@ -377,6 +378,35 @@ private fun FeaturesSection(
         Spacer(Modifier.height(8.dp))
         SectionRow(title = null, text = stringResource(R.string.access_restricted), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
     }
+    Spacer(Modifier.height(8.dp))
+    PrivacyRow(tv)
+}
+
+/**
+ * "Privacy policy" with its URL as text. A phone or tablet opens it in the browser on a tap; a TV app must
+ * not launch a browser (TV-WB), so on TV the row only shows the URL. It stays focusable there all the same,
+ * so the D-pad scrolls it into view (it is the last row of the settings) and moves on from it as from any row.
+ */
+@Composable
+private fun PrivacyRow(tv: Boolean) {
+    val ctx = LocalContext.current
+    val url = stringResource(R.string.settings_privacy_url)
+    val open: () -> Unit = {
+        if (!tv) {
+            try {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "no app to open the privacy policy", e)
+            }
+        }
+    }
+    ListItem(
+        selected = false,
+        onClick = open,
+        modifier = Modifier.onTap(open),
+        headlineContent = { Text(stringResource(R.string.settings_privacy)) },
+        supportingContent = { Text(url) },
+    )
 }
 
 /** What opened the [Disclosure]: the poster switch or "Grant access". */

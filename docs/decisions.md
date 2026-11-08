@@ -10,10 +10,12 @@ renaming protects nothing, while it would make crash traces from GitHub APKs unr
 Rejected: obfuscation with `mapping.txt` uploaded by `release.yml` (more moving parts, no benefit for an open
 project).
 
-## 2026-11-08 — Privacy policy link as plain text (*planned*)
-`PRIVACY.md` in the repository; the settings show its URL as text. Phones and tablets open it on a tap
-(`startActivity` in a try/catch, no `resolveActivity`, which needs `<queries>` on Android 11+); TV only shows
-it, since a TV app must not launch a browser (TV-WB).
+## 2026-11-08 — Privacy policy link as plain text
+`PRIVACY.md` in the repository; the settings show its URL as text, in the last row of "Permissions and
+features". Phones and tablets open it on a tap (`startActivity` in a try/catch, no `resolveActivity`, which
+needs `<queries>` on Android 11+); TV only shows it, since a TV app must not launch a browser (TV-WB). The
+row stays focusable on TV, with a click that does nothing: it is the last thing in the settings, and the
+D-pad scrolls only to focusable rows, so a plain text there could not be brought into view.
 Rejected: a QR code (needs a new dependency such as zxing), a WebView.
 
 ## 2026-11-08 — Prominent disclosure before notification access
