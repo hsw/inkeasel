@@ -76,6 +76,66 @@ class ViewerRulesTest {
     }
 
     @Test
+    fun credit_imageCreditAfterTheArtist_whereTheLicenceAsks() {
+        val p = wd("Guernica.jpg", 4520, 2060).copy(artist = "Pablo Picasso", licence = "CC BY-SA 4.0", attribution = "A photographer")
+        assertEquals(
+            listOf(
+                "Pablo Picasso", Txt(R.string.viewer_attribution, "A photographer"),
+                Txt(R.string.details_source_wikidata), "CC BY-SA 4.0",
+            ),
+            ViewerRules.credit(p),
+        )
+        assertEquals(listOf(Txt(R.string.details_source_wikidata)), ViewerRules.credit(wd("Guernica.jpg", 4520, 2060).copy(attribution = "")))
+    }
+
+    private val wdThumb = "https://upload.wikimedia.org/wikipedia/commons/thumb"
+
+    private fun wd(file: String, w: Int?, h: Int?) =
+        Picture("wd:Q1", "t", "", "unused-thumb", "unused-full", width = w, height = h, commonsFile = file)
+
+    @Test
+    fun wikidata_jpegThumbnailAtTheStepThatCovers() {
+        val p = wd("Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg", 7479, 11146)
+        val dir = "$wdThumb/e/ec/Mona_Lisa,_by_Leonardo_da_Vinci,_from_C2RMF_retouched.jpg"
+        // portrait 0.67 in a 1920 × 1080 window: 725 px needed, 960 the first viewer step
+        assertEquals("$dir/960px-Mona_Lisa,_by_Leonardo_da_Vinci,_from_C2RMF_retouched.jpg", ViewerRules.rendition(p, 1920, 1080))
+        // 3840 × 2160: 1450 px, so 1920
+        assertEquals("$dir/1920px-Mona_Lisa,_by_Leonardo_da_Vinci,_from_C2RMF_retouched.jpg", ViewerRules.rendition(p, 3840, 2160))
+        // never past 3840
+        val wide = wd("Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg", 20000, 5000)
+        assertEquals("$dir/3840px-Mona_Lisa,_by_Leonardo_da_Vinci,_from_C2RMF_retouched.jpg", ViewerRules.rendition(wide, 7680, 4320))
+    }
+
+    @Test
+    fun wikidata_narrowJpeg_theOriginal() {
+        // 1250 px wide, 3840 needed: Commons does not scale up, so the original
+        val p = wd("Rainbow.jpg", 1250, 700)
+        assertEquals("https://upload.wikimedia.org/wikipedia/commons/e/e8/Rainbow.jpg", ViewerRules.rendition(p, 3840, 2160))
+        // wide enough for the step: the thumbnail
+        assertEquals("$wdThumb/e/e8/Rainbow.jpg/960px-Rainbow.jpg", ViewerRules.rendition(p, 960, 540))
+    }
+
+    @Test
+    fun wikidata_tiffAlwaysAThumbnail() {
+        val name = "Paul Gauguin - Manaò tupapaú (Spirit of the Dead Watching) - 1965-1 - Albright–Knox Art Gallery.tiff"
+        val enc = "Paul_Gauguin_-_Mana%C3%B2_tupapa%C3%BA_(Spirit_of_the_Dead_Watching)_-_1965-1_-_Albright%E2%80%93Knox_Art_Gallery.tiff"
+        val p = wd(name, 3392, 2683)
+        assertEquals("$wdThumb/f/fe/$enc/lossy-page1-1920px-$enc.jpg", ViewerRules.rendition(p, 1920, 1080))
+        // 3840 needed but the original has 3392: the largest standard width it has
+        assertEquals("$wdThumb/f/fe/$enc/lossy-page1-1920px-$enc.jpg", ViewerRules.rendition(p, 3840, 2160))
+        // narrower than the first viewer step: still a thumbnail, never the TIFF itself
+        assertEquals("$wdThumb/f/fe/$enc/lossy-page1-500px-$enc.jpg", ViewerRules.rendition(wd(name, 900, 700), 1920, 1080))
+    }
+
+    @Test
+    fun wikidata_commonsFileWinsOverTheListedUrl_localStaysAFile() {
+        // a picture with a Commons file name gets its rendition from the name, whatever its fullUrl
+        assertEquals("$wdThumb/e/e8/Rainbow.jpg/1920px-Rainbow.jpg", ViewerRules.rendition(commons(4000, 2000).copy(commonsFile = "Rainbow.jpg"), 1920, 1080))
+        val local = Picture("local:a.jpg", "a", "", "/x/a.jpg", "/x/a.jpg", local = true, commonsFile = "Rainbow.jpg")
+        assertEquals("/x/a.jpg", ViewerRules.rendition(local, 1920, 1080))
+    }
+
+    @Test
     fun failure_downloadAsTheCatalogSaysIt_elseWithItsMessage() {
         assertEquals(Txt(R.string.catalog_err_offline), ViewerRules.failure(UnknownHostException("x")))
         assertEquals(Txt(R.string.catalog_err_http, 404), ViewerRules.failure(HttpStatusException(404, "u")))

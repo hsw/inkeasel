@@ -3,6 +3,29 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Catalog pictures build their Commons URLs from the file name
+A catalog row becomes a `Picture` by a pure mapping (`CatalogPicture`): id `wd:Q…`, title, artists and first
+collection from the labels (the file name without its extension when there is no title label), the inception
+year as the date, the Wikidata page (`https://www.wikidata.org/wiki/Q…`) as the web page, source "Wikidata".
+Its image URLs are built from the Commons file name with no API request (`CommonsUrls`, on
+`upload.wikimedia.org`, as MediaWiki names them): the MD5 hash path of the name with underscores, MediaWiki's
+percent-encoding (so the URLs match the API's and share its caches), only the standard thumbnail widths;
+a name over 160 bytes is `<W>px-thumbnail.<ext>`, a TIFF `lossy-page1-<W>px-<File>.jpg`, an SVG
+`<W>px-<File>.png`. Commons does not scale a picture up, so a JPEG, PNG, WebP or GIF no wider than the
+asked step is loaded as its original, a TIFF that narrow at the largest standard width it has (never the TIFF
+itself), an SVG at any width. The card takes a 500 px thumbnail by default, the frame the 1920 px step, the
+viewer the step that covers the window (`ViewerRules`, for any picture with a Commons file name). The
+licence link is the release's `licUrl`, else the Creative Commons deed for `CC0` and `CC BY`/`CC BY-SA`
+short names (with a jurisdiction port before 4.0); any other licence gets no link rather than a guess. Where
+the licence asks for attribution, the image's credit (the Commons author of the photo or scan, not the
+painter) is shown in the details panel ("Image credit") and in the viewer's credit line ("image: …"). The
+artists are joined with a separator the caller passes from a string resource, since they are labels in the
+UI language.
+Rejected: asking the Commons API for each picture's URLs (a request per card, and the export already has
+the file name), any width that is not a standard one (refused by Wikimedia), the original for every narrow
+file (a TIFF original is tens of megabytes and not decodable by Android), a deed URL for public-domain marks
+and other licences (not a Creative Commons deed; a wrong link is worse than none).
+
 ## 2026-11-09 — The catalog syncs at app start, file by file, from the fixed release address
 One process-wide `CatalogStore` owns the catalog database, a coroutine scope of its own (not a screen's) and
 the one write lock every catalog write takes. The app's start (`MainActivity.onCreate`, also after a change

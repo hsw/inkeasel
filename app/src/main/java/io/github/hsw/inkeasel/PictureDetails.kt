@@ -28,6 +28,7 @@ object PictureDetails {
 
     /** The name of a [Picture.source]; `null` for one this build does not know. */
     fun sourceName(source: String): Txt? = when (source) {
+        "wd" -> Txt(R.string.details_source_wikidata)
         "cma" -> Txt(R.string.details_source_cma)
         "commons" -> Txt(R.string.details_source_commons)
         "local" -> Txt(R.string.tab_local)
@@ -36,7 +37,7 @@ object PictureDetails {
 
     /**
      * The panel's lines for [p], in this order, each only when known: artist, date, collection, source,
-     * licence, licence text link, original size, web page. The title is the panel's heading, not a line.
+     * licence, licence text link, image credit (only where the licence asks for one), original size, web page. The title is the panel's heading, not a line.
      */
     fun rows(p: Picture): List<DetailRow> = buildList {
         fun add(label: Int, value: Any?) {
@@ -48,6 +49,7 @@ object PictureDetails {
         add(R.string.details_source, sourceName(p.source))
         add(R.string.details_licence, p.licence)
         add(R.string.details_licence_link, p.licenceUrl)
+        add(R.string.details_attribution, p.attribution?.takeIf { it.isNotBlank() })
         if (p.width != null && p.height != null) add(R.string.details_size, Txt(R.string.details_size_px, p.width, p.height))
         add(R.string.details_page, p.pageUrl)
     }

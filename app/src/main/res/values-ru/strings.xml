@@ -29,8 +29,10 @@
     <string name="details_source">Источник</string>
     <string name="details_source_cma">Кливлендский музей искусства, Open Access</string>
     <string name="details_source_commons">Викисклад</string>
+    <string name="details_source_wikidata">Викиданные</string>
     <string name="details_licence">Лицензия</string>
     <string name="details_licence_link">Текст лицензии</string>
+    <string name="details_attribution">Автор изображения</string>
     <string name="details_size">Размер оригинала</string>
     <string name="details_size_px">%1$d × %2$d пикс.</string>
     <string name="details_page">Веб-страница</string>
@@ -46,6 +48,7 @@
     <!-- полноэкранный просмотр (FullscreenViewer), открывается из панели сведений -->
     <string name="viewer_no_frame">Рамка не выбрана: выберите её в настройках, чтобы отправить эту картинку.</string>
     <string name="viewer_failed">Не удалось загрузить картинку: %1$s</string>
+    <string name="viewer_attribution">изображение: %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>

@@ -1,5 +1,6 @@
 package io.github.hsw.inkeasel
 
+import io.github.hsw.inkeasel.catalog.CommonsUrls
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -81,14 +82,17 @@ object ViewerRules {
     }
 
     /**
-     * What the viewer loads for [p] in a window of [w] × [h] px: the local file as is (its path); for Commons
-     * the smallest [COMMONS_WIDTHS] step that covers [neededWidth], or the original's width when that is
-     * smaller, 3840 at most, or the URL as given when it is the original itself (narrower than the frame's
-     * 1920 px rendition); for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
+     * What the viewer loads for [p] in a window of [w] × [h] px: the local file as is (its path); a picture
+     * with a [Picture.commonsFile] its [CommonsUrls.url] for [neededWidth], at least the [COMMONS_WIDTHS] first
+     * step (the original when that is a JPEG, PNG or WebP no wider, a TIFF always as a thumbnail); for the
+     * Commons source the smallest [COMMONS_WIDTHS] step that covers [neededWidth], or the original's width
+     * when that is smaller, 3840 at most, or the URL as given when it is the original itself (narrower than
+     * the frame's 1920 px rendition); for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
      * `print` ([Picture.fullUrl]) beyond; any other source its [Picture.fullUrl].
      */
     fun rendition(p: Picture, w: Int, h: Int): String = when {
         p.local -> p.fullUrl
+        p.commonsFile != null -> CommonsUrls.url(p.commonsFile, max(neededWidth(p, w, h), COMMONS_WIDTHS.first()), p.width)
         p.source == "commons" -> commons(p, w, h)
         p.source == "cma" -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
         else -> p.fullUrl
@@ -103,12 +107,17 @@ object ViewerRules {
     }
 
     /**
-     * The second line of the credit under the title: artist, source, licence, each only when known; joined
-     * with `list_separator` where shown. The licences of the sources (CC BY and BY-SA on Commons) ask for it
+     * The second line of the credit under the title: artist, the image's credit where its licence asks for one
+     * ([Picture.attribution], as "image: …"), source, licence, each only when known; joined with
+     * `list_separator` where shown. The licences of the sources (CC BY and BY-SA on Commons) ask for it
      * whenever the picture is shown.
      */
-    fun credit(p: Picture): List<Any> =
-        listOfNotNull(p.artist?.takeIf { it.isNotBlank() }, PictureDetails.sourceName(p.source), p.licence?.takeIf { it.isNotBlank() })
+    fun credit(p: Picture): List<Any> = listOfNotNull(
+        p.artist?.takeIf { it.isNotBlank() },
+        p.attribution?.takeIf { it.isNotBlank() }?.let { Txt(R.string.viewer_attribution, it) },
+        PictureDetails.sourceName(p.source),
+        p.licence?.takeIf { it.isNotBlank() },
+    )
 
     /**
      * Why the rendition did not load (the thumbnail stays): a download failure as the catalog says it

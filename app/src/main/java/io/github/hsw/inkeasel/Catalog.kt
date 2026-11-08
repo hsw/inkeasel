@@ -29,7 +29,9 @@ import java.util.concurrent.TimeUnit
  * schema (docs/decisions.md, "One Catalog section"): [artist] (all creators, as one text), [date] (as the
  * source writes it), [collection] (the museum that holds it), [pageUrl] (the picture's page at its source),
  * [licence] (short name, e.g. "CC0", "CC BY-SA 4.0") and [licenceUrl], and the original's [width] × [height]
- * in pixels. Stored as is in [CatalogCache]; never translated text.
+ * in pixels. [commonsFile] is the Commons file name its renditions are built from
+ * ([io.github.hsw.inkeasel.catalog.CommonsUrls]), [attribution] the credit its licence asks to show wherever
+ * it is shown (`null` when it asks for none). Stored as is in [CatalogCache]; never translated text.
  */
 data class Picture(
     val id: String,
@@ -46,8 +48,10 @@ data class Picture(
     val licenceUrl: String? = null,
     val width: Int? = null,
     val height: Int? = null,
+    val commonsFile: String? = null,
+    val attribution: String? = null,
 ) {
-    /** The [Source.id] the picture came from: the prefix of its [id] ("cma", "commons", "local"). */
+    /** The source the picture came from: the prefix of its [id] ("wd", "cma", "commons", "local"). */
     val source: String get() = id.substringBefore(':')
 
     /** What to hand Coil for the grid card: a [File] for local pictures, the URL string otherwise. */

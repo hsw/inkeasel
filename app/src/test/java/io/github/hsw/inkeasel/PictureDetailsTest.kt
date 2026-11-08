@@ -33,6 +33,27 @@ class PictureDetailsTest {
     }
 
     @Test
+    fun rows_imageCreditAfterTheLicence_onlyWhereAsked() {
+        val p = Picture(
+            "wd:Q175036", "Guernica", "", "t", "f", artist = "Pablo Picasso", licence = "CC BY-SA 4.0",
+            licenceUrl = "https://creativecommons.org/licenses/by-sa/4.0/", attribution = "A photographer",
+            pageUrl = "https://www.wikidata.org/wiki/Q175036",
+        )
+        assertEquals(
+            listOf(
+                DetailRow(Txt(R.string.details_artist), "Pablo Picasso"),
+                DetailRow(Txt(R.string.details_source), Txt(R.string.details_source_wikidata)),
+                DetailRow(Txt(R.string.details_licence), "CC BY-SA 4.0"),
+                DetailRow(Txt(R.string.details_licence_link), "https://creativecommons.org/licenses/by-sa/4.0/"),
+                DetailRow(Txt(R.string.details_attribution), "A photographer"),
+                DetailRow(Txt(R.string.details_page), "https://www.wikidata.org/wiki/Q175036"),
+            ),
+            PictureDetails.rows(p),
+        )
+        assertEquals(PictureDetails.rows(p.copy(attribution = null)), PictureDetails.rows(p.copy(attribution = " ")))
+    }
+
+    @Test
     fun rows_onlyWhatIsKnown() {
         val local = Picture("local:a.jpg", "a", "", "/x/a.jpg", "/x/a.jpg", local = true, width = 800, height = 600)
         assertEquals(
@@ -51,6 +72,7 @@ class PictureDetailsTest {
         assertEquals(Txt(R.string.details_source_cma), PictureDetails.sourceName(ClevelandPaintings.id))
         assertEquals(Txt(R.string.details_source_commons), PictureDetails.sourceName(CommonsLandscapes.id))
         assertEquals(Txt(R.string.tab_local), PictureDetails.sourceName("local"))
+        assertEquals(Txt(R.string.details_source_wikidata), PictureDetails.sourceName("wd"))
         assertNull(PictureDetails.sourceName("other"))
     }
 

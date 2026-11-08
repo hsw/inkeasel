@@ -35,8 +35,10 @@
     <string name="details_source">Source</string>
     <string name="details_source_cma">Cleveland Museum of Art Open Access</string>
     <string name="details_source_commons">Wikimedia Commons</string>
+    <string name="details_source_wikidata">Wikidata</string>
     <string name="details_licence">Licence</string>
     <string name="details_licence_link">Licence text</string>
+    <string name="details_attribution">Image credit</string>
     <string name="details_size">Original size</string>
     <!-- %1$d × %2$d: the original's width and height in pixels -->
     <string name="details_size_px">%1$d × %2$d px</string>
@@ -58,6 +60,8 @@
     <string name="viewer_no_frame">No frame selected: choose one in the settings to send this picture.</string>
     <!-- %1$s why (a lowercase reason) -->
     <string name="viewer_failed">Could not load the picture: %1$s</string>
+    <!-- %1$s who the image (the photo or scan) is credited to, where its licence asks for it; a part of the credit line -->
+    <string name="viewer_attribution">image: %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Settings</string>
