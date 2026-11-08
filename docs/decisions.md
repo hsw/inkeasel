@@ -3,6 +3,17 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Room and Paging, tested under Robolectric
+The catalog database is Room (2.6.1, compiler through KSP) shown through Paging 3 (3.3.6). Both are pinned
+below their newest lines because those pull a newer Kotlin standard library (Room 2.7+: 2.1, over the 2.0.21
+compiler) or Compose foundation over the BOM (paging-compose 3.4+). The DAOs, the import and the paging
+source are tested as JVM unit tests on an in-memory database under Robolectric (4.16.1, SDK 36), with
+paging-testing, so they run in the same `testDebugUnitTest` as the pure tests, in CI and without an emulator.
+Robolectric's SQLite is newer than the one on Android 8.0 (3.18), so the SQL stays within what 3.18 has.
+Rejected: instrumented tests only (an emulator in every CI run and in every local test loop), no DAO tests
+(the paging query, the neighbours and the staging swap are SQL), a hand-written fake DAO (tests the fake, not
+the queries).
+
 ## 2026-11-09 — A full-screen viewer, opened from the details panel
 **View full screen** (second in the details panel's action row; **Send to frame** keeps the first focus)
 opens the picture letterboxed on black, fitted, never cropped, in a dialog that hides the system bars. A

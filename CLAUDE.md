@@ -14,6 +14,16 @@ or deviation made in a change gets its entry in the same commit.
   `parseDebugLocalResources` ("!directory.isDirectory()"); rerunning passes.
 - Android SDK path is in `local.properties` (git-ignored). compileSdk and targetSdk 36 on AGP 8.9.1 (the oldest
   that supports 36), Gradle 8.11.1, Kotlin 2.0.21, minSdk 26.
+- Room 2.6.1 (compiler through KSP `2.0.21-1.0.28`) and Paging 3.3.6 are pinned: Room 2.7+ pulls
+  kotlin-stdlib 2.1 over the 2.0.21 compiler, paging-compose 3.4+ pulls Compose foundation over the BOM.
+  After a dependency change check `./gradlew :app:dependencies` that Compose stays on the BOM and
+  kotlin-stdlib on 2.0.x. Room exports each schema version to `app/schemas/` (committed).
+- Room DAOs and the database run as JVM unit tests under Robolectric 4.16.1 at SDK 36
+  (`app/src/test/resources/robolectric.properties`; it needs JDK 21). Its first run downloads
+  `android-all-instrumented` (about 200 MB) from Maven Central into `~/.m2/repository`; a sandboxed shell
+  without network or write access there fails at that point, so run it once outside the sandbox. Its SQLite
+  is newer than minSdk 26's (3.18): a passing test does not make newer SQL safe (UPSERT needs 3.24, window
+  functions 3.25, `RETURNING` 3.35).
 - Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
   Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).

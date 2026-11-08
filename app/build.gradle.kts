@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
+    id("androidx.room")
 }
 
 // Release signing comes from the environment (CI secrets, or a local shell for a hand-made release):
@@ -77,6 +79,11 @@ android {
     }
 }
 
+// the catalog database's schema history, committed: each version's JSON shows what changed
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
@@ -89,9 +96,23 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    // Room 2.6.1, not 2.7.x: 2.7 pulls kotlin-stdlib 2.1 over the Kotlin 2.0.21 compiler. Paging 3.3.6, not
+    // 3.4+: paging-compose 3.4 pulls Compose foundation over the BOM.
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    implementation("androidx.room:room-paging:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.paging:paging-runtime:3.3.6")
+    implementation("androidx.paging:paging-compose:3.3.6")
 
     testImplementation("junit:junit:4.13.2")
     // the real org.json: android.jar only has stubs, and catalog errors need a real JSONException
     testImplementation("org.json:json:20240303")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // Room DAOs, the import and the paging source run on an in-memory database under Robolectric
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.paging:paging-testing:3.3.6")
+    // the same OkHttp line as the app (5.x would replace OkHttp 4 on the test classpath)
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
 }
