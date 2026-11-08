@@ -3,6 +3,24 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The starter set is cut from the published release
+The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of the release `core` and their
+labels in the UI languages plus `mul`, 1.1 MB gzipped) is cut from the published release files by
+`tools/catalog-export.py --starter-from`, through the same writer as a full export and with no Wikimedia
+request, so its rows are byte for byte the first lines of the release `core` and the release import replaces
+them in place. It is committed and cut again after each release upload; the build stays offline. All 75
+default languages fit well under the 1.5 MB budget, so the default (`--starter-langs`: the Android UI locales
+that Wikidata covers, plus `mul`) stays. AGP's asset merge decompresses `.gz` assets: the APK holds
+`catalog/core.jsonl` and `catalog/labels.jsonl` (deflated, about the same size), and the app opens those
+names. The export also writes `cma` (Wikidata P11110, the Cleveland Museum of Art ID, which is the museum's
+accession number), to hide live Cleveland rows that duplicate a Wikidata row, and `licUrl` (Commons
+`LicenseUrl`, always https, left out when Commons gives none or not a plain URL) for the licence link. The
+published release gets both only when it is exported again; until then the reader treats them as absent.
+`--self-test` checks the row building and the starter cut offline; it is not part of CI.
+Rejected: building the starter set in Gradle from a download (a build that needs the network), a separate
+export run for the starter (a second snapshot that may disagree with the release), fewer languages (not
+needed under the budget), committing it uncompressed (4.9 MB in the tree for the same APK size).
+
 ## 2026-11-09 — A release import is staged and swapped in one transaction
 The starter set goes straight into the live tables, in one transaction and only into a database with no
 Wikidata row (so a second run reads nothing), keeping labels of the language chain, English and `mul`. A
@@ -18,7 +36,7 @@ cleared then and at the next start. In a `core` the first row of an id wins. Lab
 referenced stay until their language's file is imported again: removing them by reference would lose labels
 when a new `core` arrives after an unchanged labels file that is not imported again. No UPSERT (SQLite 3.18):
 `INSERT OR REPLACE` keeps the rank by reading it from the row it replaces. The delivery entry below stays
-*planned*: the starter asset in the APK and the download with its weekly check are not built yet.
+*planned*: the starter import at first launch and the download with its weekly check are not built yet.
 Rejected: per-batch upserts into the live tables (a list mixing two releases while it imports, no sweep of
 absent rows, a paging invalidation per batch), staging the starter set too (it goes into an empty database,
 where one transaction already is all or nothing).

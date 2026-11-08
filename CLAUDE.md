@@ -24,6 +24,14 @@ or deviation made in a change gets its entry in the same commit.
   without network or write access there fails at that point, so run it once outside the sandbox. Its SQLite
   is newer than minSdk 26's (3.18): a passing test does not make newer SQL safe (UPSERT needs 3.24, window
   functions 3.25, `RETURNING` 3.35).
+- The catalog starter set (`app/src/main/assets/catalog/`) is cut from the published `catalog` release, never
+  edited by hand: download its `core.jsonl.gz` and `labels-all.jsonl.gz`, then
+  `python3 tools/catalog-export.py app/src/main/assets/catalog --starter-from <dir>` (no Wikimedia request;
+  `StarterAssetsTest` checks the result). AGP's asset merge decompresses `.gz` assets, so the APK holds
+  `catalog/core.jsonl` and `catalog/labels.jsonl` (deflated, about the same size): open those names.
+  `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the starter cut); it
+  is not in CI, so run it after changing the tool. A full export takes 20+ minutes of Wikidata load: test a
+  change with `--fame-file` on a handful of ids instead.
 - Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
   Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).

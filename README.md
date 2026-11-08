@@ -142,7 +142,8 @@ tablet).
 - **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
 - **Catalog export** (planned delivery, not used by the app yet): `uv run --script tools/catalog-export.py
   <outdir>` exports famous paintings from Wikidata and Commons as gzipped JSON Lines for the GitHub release
-  `catalog`.
+  `catalog`. The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with labels in the UI
+  languages) is cut from that release with `--starter-from <dir of the downloaded release files>`.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -150,7 +151,8 @@ tablet).
 - **Release build**: R8 shrinks the code and the resources (`proguard-android-optimize.txt` plus
   `app/proguard-rules.pro`) but does not obfuscate (`-dontobfuscate`): the code is public, and kept names
   make crash traces readable without a mapping file. No keep rule was needed; one is added only when an R8
-  warning or a release smoke test proves it necessary. The release APK is about 1.4 MB.
+  warning or a release smoke test proves it necessary. The release APK is about 2.6 MB, 1.1 MB of it the
+  catalog's starter set.
 - **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
   environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
   `INKEASEL_KEY_ALIAS` and `INKEASEL_KEY_PASSWORD`. With none of them set, it is signed with the debug key

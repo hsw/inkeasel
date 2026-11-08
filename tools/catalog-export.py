@@ -5,6 +5,8 @@
 """Export the InkEasel painting catalog from Wikidata and Wikimedia Commons.
 
     uv run --script tools/catalog-export.py <outdir> [options]
+    uv run --script tools/catalog-export.py app/src/main/assets/catalog --starter-from <dir>
+    python3 tools/catalog-export.py --self-test
 
 Set: paintings (P31 Q3305213) with an image (P18) and at least 3 sitelinks. Fame is the number of
 sitelinks (Wikipedia and other Wikimedia articles about the painting).
@@ -33,15 +35,28 @@ unchanged catalog gives byte-identical files):
 The top-level `*.jsonl.gz` files are the release assets: they are published, replacing the previous
 ones, under the GitHub release with the fixed tag `catalog`, e.g.
 `gh release upload catalog <outdir>/*.jsonl.gz --clobber`. Release asset names are flat (no
-directories), hence `labels-<lang>` rather than `labels/<lang>`. The `starter/` files go into the APK.
+directories), hence `labels-<lang>` rather than `labels/<lang>`. The `starter/` files go into the APK as
+`app/src/main/assets/catalog/`.
+
+Starter set from a published release: `--starter-from <dir>` reads `<dir>/core.jsonl.gz` and
+`<dir>/labels-all.jsonl.gz` (the release assets, downloaded from
+https://github.com/hsw/inkeasel/releases/download/catalog/<file>) and writes only `<outdir>/core.jsonl.gz`
+and `<outdir>/labels.jsonl.gz`, with the same writer and options as a full run and no Wikimedia request, so
+the APK's starter set always matches the published release. Run it after each release upload.
+
+`--self-test` checks the row building and the starter cut on a small built-in fixture (no network, nothing
+written outside a temporary directory) and exits 0 when every check passes.
 
 Rows are sorted by fame, most famous first (ties by numeric id). A labels file follows the same order:
 each painting, then the entities it references that no earlier painting referenced, so any prefix of a
 labels file covers the same prefix of the core file (stream import in batches).
 
 Core row:   {"id", "fame", "img" (Commons file name), "w", "h" (image size in pixels), "lic" (licence
-            short name), "attr" (attribution required), "credit" (author/credit text, plain, at most
-            200 characters), "creators", "inception" (year), "collections", "movements", "genres"}
+            short name), "licUrl" (the licence's deed URL, Commons `LicenseUrl`, always https; left out
+            when Commons gives none, as for public-domain files), "attr" (attribution required), "credit"
+            (author/credit text, plain, at most 200 characters), "creators", "inception" (year),
+            "collections", "movements", "genres", "cma" (Cleveland Museum of Art ID, Wikidata P11110: the
+            museum's accession number, e.g. "1945.24"; left out when the painting has none)}
             (lists hold Wikidata ids).
 Label row:  {"id", "l" (label), "a" (aliases), "w" (Wikipedia article title in that language)}; keys
             without a value are left out. In `labels-all` and `starter/labels` each row also has
@@ -295,24 +310,67 @@ def commons_meta(files):
         body = urllib.parse.urlencode({
             "action": "query", "titles": "|".join("File:" + f for f in chunk), "prop": "imageinfo",
             "iiprop": "size|extmetadata",
-            "iiextmetadatafilter": "LicenseShortName|AttributionRequired|Artist",
+            "iiextmetadatafilter": "LicenseShortName|LicenseUrl|AttributionRequired|Artist",
             "format": "json", "maxlag": "5"}).encode()
         q = fetch(COMMONS_API, data=body).get("query", {})
         norm = {n["to"]: n["from"] for n in q.get("normalized", [])}
         for p in q.get("pages", {}).values():
             if "missing" in p or "invalid" in p:
                 continue
-            ii = (p.get("imageinfo") or [{}])[0]
-            em = ii.get("extmetadata", {})
             title = norm.get(p.get("title"), p.get("title", ""))
-            meta[title[5:]] = {"w": ii.get("width"), "h": ii.get("height"),
-                               "lic": em.get("LicenseShortName", {}).get("value"),
-                               "attr": em.get("AttributionRequired", {}).get("value") == "true",
-                               "credit": plain(em.get("Artist", {}).get("value"))[:200]}
+            meta[title[5:]] = image_meta((p.get("imageinfo") or [{}])[0])
         if (i // BATCH) % 25 == 0:
             log(f"commons {i + len(chunk)}/{len(files)}")
         time.sleep(API_PAUSE)
     return meta
+
+
+def image_meta(ii):
+    """Size, licence and credit from one Commons `imageinfo` entry; `licUrl` only when there is one."""
+    em = ii.get("extmetadata", {})
+    m = {"w": ii.get("width"), "h": ii.get("height"), "lic": em.get("LicenseShortName", {}).get("value")}
+    url = licence_url(em.get("LicenseUrl", {}).get("value"))
+    if url:
+        m["licUrl"] = url
+    m["attr"] = em.get("AttributionRequired", {}).get("value") == "true"
+    m["credit"] = plain(em.get("Artist", {}).get("value"))[:200]
+    return m
+
+
+def licence_url(value):
+    """A licence URL as https, or None when the value is not a plain web URL (HTML, text, empty)."""
+    s = plain(value)
+    if s.startswith("//"):
+        s = "https:" + s
+    if not re.fullmatch(r"https?://[^\s\"'<>]+", s):
+        return None
+    return "https://" + s[len("http://"):] if s.startswith("http://") else s
+
+
+def painting(eid, e, fame):
+    """The core fields of one painting from its `wbgetentities` entity, or None when it has no image."""
+    c = e.get("claims", {})
+    imgs = claim_values(c, "P18")
+    if not imgs:
+        return None
+    # fame from the same snapshot as the labels; WDQS counts sitelinks the same way
+    it = {"id": eid, "fame": len(e.get("sitelinks", {})) or fame, "img": imgs[0],
+          "creators": claim_values(c, "P170"), "inception": year((claim_values(c, "P571") or [None])[0]),
+          "collections": claim_values(c, "P195"), "movements": claim_values(c, "P135"),
+          "genres": claim_values(c, "P136")}
+    cma = [v.strip() for v in claim_values(c, "P11110") if isinstance(v, str) and v.strip()]
+    if cma:
+        it["cma"] = cma[0]
+    return it
+
+
+def core_row(it, m):
+    """A core row: the painting's fields around its Commons metadata, in the documented key order."""
+    row = {"id": it["id"], "fame": it["fame"], "img": it["img"], **m,
+           **{k: it[k] for k in ("creators", "inception", "collections", "movements", "genres")}}
+    if "cma" in it:
+        row["cma"] = it["cma"]
+    return row
 
 
 # ---- output
@@ -334,7 +392,7 @@ def entity_order(core):
     """Each painting, then its references not yet listed: a labels prefix covers the same core prefix."""
     order, seen = [], set()
     for it in core:
-        for e in [it["id"], *(r for k in REF_KEYS for r in it[k] if r.startswith("Q"))]:
+        for e in [it["id"], *(r for k in REF_KEYS for r in it.get(k) or () if r.startswith("Q"))]:
             if e not in seen:
                 seen.add(e)
                 order.append(e)
@@ -356,9 +414,190 @@ def clear_old(d):
                 os.remove(os.path.join(d, name))
 
 
+def write_release(d, core, labels, langs):
+    """The release files; returns (entities in label order, rows in labels-all)."""
+    order = entity_order(core)
+    write_gz(os.path.join(d, "core.jsonl.gz"), core)
+    for lang in langs:
+        write_gz(os.path.join(d, f"labels-{lang}.jsonl.gz"), label_rows(labels, [lang], order, False))
+    return order, write_gz(os.path.join(d, "labels-all.jsonl.gz"), label_rows(labels, langs, order, True))
+
+
+def write_starter(d, core, labels, langs, size, wanted):
+    """The starter set: the first `size` core rows and their labels in the `wanted` languages, in one file.
+    Returns (paintings, languages, label rows)."""
+    starter = core[:size]
+    starter_langs = [lang for lang in langs if lang in wanted]
+    write_gz(os.path.join(d, "core.jsonl.gz"), starter)
+    n = write_gz(os.path.join(d, "labels.jsonl.gz"),
+                 label_rows(labels, starter_langs, entity_order(starter), True))
+    return len(starter), len(starter_langs), n
+
+
+def read_gz(path):
+    """The rows of a gzipped JSON Lines file, one at a time."""
+    with gzip.open(path, "rt", encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            if not line.strip():
+                continue
+            try:
+                yield json.loads(line)
+            except ValueError as e:
+                raise ValueError(f"{path}:{n}: {e}") from e
+
+
+def fame_key(row):
+    return -row["fame"], qnum(row["id"])
+
+
+def starter_from(src, outdir, size, wanted):
+    """The starter set cut from release files in `src` (`core.jsonl.gz`, `labels-all.jsonl.gz`) into
+    `outdir`, through the same writer as a full export; reads only the labels it keeps into memory."""
+    if size < 1:
+        raise ValueError(f"starter size {size}")
+    if os.path.realpath(src) == os.path.realpath(outdir):
+        raise ValueError("the output directory must not be the release directory")
+    core = []
+    for row in read_gz(os.path.join(src, "core.jsonl.gz")):
+        if len(core) == size:
+            break
+        if core and fame_key(row) <= fame_key(core[-1]):
+            raise ValueError(f"core.jsonl.gz is not in fame order at {row.get('id')}")
+        core.append(row)
+    if not core:
+        raise ValueError("core.jsonl.gz has no row")
+    entities = set(entity_order(core))
+    labels = defaultdict(dict)
+    for row in read_gz(os.path.join(src, "labels-all.jsonl.gz")):
+        lang, eid = row.pop("lang", None), row.pop("id", None)
+        if lang in wanted and eid in entities and LANG_RE.match(lang):
+            labels[lang][eid] = row
+    os.makedirs(outdir, exist_ok=True)
+    return write_starter(outdir, core, labels, sorted(labels), size, wanted)
+
+
+# ---- self-test (no network)
+
+def self_test():
+    import tempfile
+    failed = []
+    checks = 0
+
+    def check(ok, what):
+        nonlocal checks
+        checks += 1
+        if not ok:
+            failed.append(what)
+
+    def claim(v, rank="normal"):
+        return {"rank": rank, "mainsnak": {"datavalue": {"value": v}}}
+
+    # painting(): P11110 as `cma` (first non-deprecated, trimmed), absent without one, no image -> None
+    e = {"sitelinks": {"enwiki": {}, "frwiki": {}, "dewiki": {}},
+         "claims": {"P18": [claim("A b.jpg")], "P170": [claim({"id": "Q100"})], "P195": [claim({"id": "Q200"})],
+                    "P571": [claim({"time": "+1503-00-00T00:00:00Z"})],
+                    "P11110": [claim("1900.1", "deprecated"), claim(" 1945.24 "), claim("1960.81")]}}
+    it = painting("Q5", e, 0)
+    check(it["cma"] == "1945.24", "painting: cma is the first non-deprecated P11110, trimmed")
+    check((it["fame"], it["inception"], it["creators"]) == (3, 1503, ["Q100"]), "painting: fame, year, creators")
+    del e["claims"]["P11110"]
+    check("cma" not in painting("Q5", e, 0), "painting: no P11110, no cma key")
+    check(painting("Q6", {"claims": {}}, 4) is None, "painting: no image -> None")
+    check(painting("Q7", {"claims": {"P18": [claim("x.jpg")]}}, 4)["fame"] == 4, "painting: fame fallback")
+
+    # image_meta(): licUrl as https, left out when absent or not a URL; documented key order
+    def ii(**em):
+        return {"width": 10, "height": 20, "extmetadata": {k: {"value": v} for k, v in em.items()}}
+    m = image_meta(ii(LicenseShortName="CC BY-SA 4.0", AttributionRequired="true", Artist="<b>Ann</b> &amp; Bo",
+                      LicenseUrl="http://creativecommons.org/licenses/by-sa/4.0"))
+    check(list(m) == ["w", "h", "lic", "licUrl", "attr", "credit"], "image_meta: key order")
+    check(m["licUrl"] == "https://creativecommons.org/licenses/by-sa/4.0", "image_meta: http -> https")
+    check((m["attr"], m["credit"]) == (True, "Ann & Bo"), "image_meta: attr and plain credit")
+    check("licUrl" not in image_meta(ii(LicenseShortName="Public domain")), "image_meta: no LicenseUrl")
+    check(licence_url("//creativecommons.org/publicdomain/zero/1.0/")
+          == "https://creativecommons.org/publicdomain/zero/1.0/", "licence_url: protocol-relative")
+    check(licence_url("https://creativecommons.org/licenses/by/2.0") == "https://creativecommons.org/licenses/by/2.0",
+          "licence_url: https kept")
+    for bad in (None, "", "see the file page", "ftp://example.org/x", "https://a b", "<a href=\"x\">x</a>"):
+        check(licence_url(bad) is None, f"licence_url: {bad!r} -> None")
+    row = core_row({**painting("Q5", {"claims": {"P18": [claim("a.jpg")], "P11110": [claim("1.2")]}}, 3)}, m)
+    check(list(row) == ["id", "fame", "img", "w", "h", "lic", "licUrl", "attr", "credit", "creators", "inception",
+                        "collections", "movements", "genres", "cma"], "core_row: key order, cma last")
+
+    # the starter cut: from release files == from memory, byte for byte
+    def pic(qid, fame, refs=(), cma=None):
+        p = {"id": qid, "fame": fame, "img": f"{qid}.jpg"}
+        return core_row({**p, "creators": list(refs), "inception": None, "collections": ["Q900"],
+                         "movements": [], "genres": [], **({"cma": cma} if cma else {})},
+                        {"w": 1, "h": 2, "lic": "Public domain", "attr": False, "credit": ""})
+    core = sorted([pic("Q10", 5, ["Q100"]), pic("Q9", 5, ["Q101"], "1945.24"), pic("Q3", 9, ["Q100"]),
+                   pic("Q4", 2), pic("Q8", 1, ["Q102"])], key=fame_key)
+    check([r["id"] for r in core] == ["Q3", "Q9", "Q10", "Q4", "Q8"], "fixture: fame order, ties by number")
+    labels = defaultdict(dict)
+    for lang in ("de", "en", "mul", "ru", "xx"):
+        for eid in ("Q3", "Q9", "Q10", "Q4", "Q8", "Q100", "Q101", "Q102", "Q900"):
+            if (lang, eid) not in (("de", "Q9"), ("mul", "Q3")):
+                labels[lang][eid] = {"l": f"{eid} {'Мона' if lang == 'ru' else lang}", "a": ["x"], "w": eid}
+    langs = sorted(labels)
+    wanted = {"en", "ru", "mul", "de", "zz"}
+    with tempfile.TemporaryDirectory() as tmp:
+        rel, mem, cut = (os.path.join(tmp, n) for n in ("release", "memory", "cut"))
+        for d in (rel, mem):
+            os.makedirs(d)
+        write_release(rel, core, labels, langs)
+        write_starter(mem, core, labels, langs, 3, wanted)
+        got = starter_from(rel, cut, 3, wanted)
+        for name in ("core.jsonl.gz", "labels.jsonl.gz"):
+            with open(os.path.join(mem, name), "rb") as f1, open(os.path.join(cut, name), "rb") as f2:
+                check(f1.read() == f2.read(), f"starter_from: {name} byte-identical to a full run's starter")
+        check(got[0] == 3 and got[1] == 4, "starter_from: 3 paintings, 4 languages")
+        with gzip.open(os.path.join(rel, "core.jsonl.gz"), "rt", encoding="utf-8") as f:
+            rel_lines = f.read().splitlines()
+        with gzip.open(os.path.join(cut, "core.jsonl.gz"), "rt", encoding="utf-8") as f:
+            cut_lines = f.read().splitlines()
+        check(cut_lines == rel_lines[:3], "starter_from: core lines are a prefix of the release core")
+        rows = list(read_gz(os.path.join(cut, "labels.jsonl.gz")))
+        check({r["lang"] for r in rows} == {"de", "en", "mul", "ru"}, "starter_from: only wanted languages")
+        order = ["Q3", "Q100", "Q900", "Q9", "Q101", "Q10"]
+        check([r["id"] for r in rows if r["lang"] == "en"] == order, "starter_from: entity order")
+        check([r["lang"] for r in rows[:3]] == ["de", "en", "ru"], "starter_from: entity-major, sorted languages")
+        check(rows[2]["l"] == "Q3 Мона", "starter_from: non-ASCII label kept")
+        starter_from(rel, cut, 99, wanted)
+        check(len(list(read_gz(os.path.join(cut, "core.jsonl.gz")))) == 5, "starter_from: size over the core")
+        main_out = os.path.join(tmp, "main")
+        code = main([main_out, "--starter-from", rel, "--starter-size", "3", "--starter-langs", "en,ru,mul,de,zz"])
+        check(code == 0 and sorted(os.listdir(main_out)) == ["core.jsonl.gz", "labels.jsonl.gz"],
+              "main --starter-from: exit 0, only the two starter files (no cache directory)")
+        with open(os.path.join(main_out, "labels.jsonl.gz"), "rb") as f1, \
+                open(os.path.join(mem, "labels.jsonl.gz"), "rb") as f2:
+            check(f1.read() == f2.read(), "main --starter-from: same labels as the writer")
+        for args, what in (((rel, rel, 3, wanted), "output = release directory"),
+                           ((rel, cut, 0, wanted), "size 0"),
+                           ((os.path.join(tmp, "none"), cut, 3, wanted), "missing release files")):
+            try:
+                starter_from(*args)
+                check(False, f"starter_from fails: {what}")
+            except (OSError, ValueError):
+                check(True, what)
+        bad = os.path.join(tmp, "unordered")
+        os.makedirs(bad)
+        write_release(bad, [core[1], core[0]], labels, langs)
+        try:
+            starter_from(bad, cut, 3, wanted)
+            check(False, "starter_from fails: core not in fame order")
+        except ValueError:
+            check(True, "core not in fame order")
+        check(main([os.path.join(tmp, "x"), "--starter-from", bad]) == 1, "main --starter-from: error -> exit 1")
+
+    for what in failed:
+        print(f"FAIL {what}", file=sys.stderr)
+    print(f"self-test: {checks - len(failed)}/{checks} checks passed", file=sys.stderr)
+    return 1 if failed else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("outdir", help="output directory (created if missing)")
+    ap.add_argument("outdir", nargs="?", help="output directory (created if missing)")
     ap.add_argument("--cache", help="cache directory for WDQS bucket results (default: <outdir>/cache)")
     ap.add_argument("--cache-max-age", type=float, default=48, metavar="HOURS",
                     help="reuse cached buckets younger than this; 0 ignores the cache (default: 48)")
@@ -375,7 +614,25 @@ def main(argv=None):
                     help="paintings in the starter set (default: 1000)")
     ap.add_argument("--starter-langs", default=",".join(UI_LANGS), metavar="LANGS",
                     help="comma-separated label languages of the starter set (default: the UI languages)")
+    ap.add_argument("--starter-from", metavar="DIR",
+                    help="only write the starter set into <outdir>, cut from the release files in DIR "
+                         "(core.jsonl.gz, labels-all.jsonl.gz); no Wikimedia request")
+    ap.add_argument("--self-test", action="store_true", help="run the built-in checks and exit")
     a = ap.parse_args(argv)
+    if a.self_test:
+        return self_test()
+    if not a.outdir:
+        ap.error("the output directory is required")
+    wanted = {s.strip() for s in a.starter_langs.split(",") if s.strip()}
+
+    if a.starter_from:
+        try:
+            n, n_langs, n_labels = starter_from(a.starter_from, a.outdir, a.starter_size, wanted)
+        except (OSError, EOFError, ValueError, KeyError, TypeError) as e:
+            log(f"error: {type(e).__name__}: {e}")
+            return 1
+        log(f"starter: {n} paintings, {n_langs} languages ({n_labels} label rows) in {a.outdir}")
+        return 0
 
     cache = a.cache or os.path.join(a.outdir, "cache")
     os.makedirs(cache, exist_ok=True)
@@ -404,17 +661,11 @@ def main(argv=None):
     labels = defaultdict(dict)   # lang -> id -> {"l", "a", "w"}
     items = {}
     for eid, e in get_entities(ids, "labels|aliases|sitelinks|claims", "paintings"):
-        c = e.get("claims", {})
-        imgs = claim_values(c, "P18")
-        if not imgs:
+        it = painting(eid, e, fame.get(eid, 0))
+        if it is None:
             continue
         take_texts(labels, eid, e)
-        # fame from the same snapshot as the labels; WDQS counts sitelinks the same way
-        items[eid] = {"id": eid, "fame": len(e.get("sitelinks", {})) or fame.get(eid, 0), "img": imgs[0],
-                      "creators": claim_values(c, "P170"),
-                      "inception": year((claim_values(c, "P571") or [None])[0]),
-                      "collections": claim_values(c, "P195"), "movements": claim_values(c, "P135"),
-                      "genres": claim_values(c, "P136")}
+        items[eid] = it
 
     # 3. referenced entities
     refs = sorted({r for it in items.values() for k in REF_KEYS for r in it[k] if r.startswith("Q")}
@@ -430,9 +681,8 @@ def main(argv=None):
         if not m:
             missing_files += 1
             continue
-        core.append({"id": it["id"], "fame": it["fame"], "img": it["img"], **m,
-                     **{k: it[k] for k in ("creators", "inception", "collections", "movements", "genres")}})
-    core.sort(key=lambda it: (-it["fame"], qnum(it["id"])))
+        core.append(core_row(it, m))
+    core.sort(key=fame_key)
     if missing_files:
         log(f"{missing_files} painting(s) left out: file not found on Commons")
 
@@ -446,22 +696,13 @@ def main(argv=None):
     clear_old(a.outdir)
     clear_old(starter_dir)
 
-    order = entity_order(core)
-    write_gz(os.path.join(a.outdir, "core.jsonl.gz"), core)
-    for lang in langs:
-        write_gz(os.path.join(a.outdir, f"labels-{lang}.jsonl.gz"), label_rows(labels, [lang], order, False))
-    n_all = write_gz(os.path.join(a.outdir, "labels-all.jsonl.gz"), label_rows(labels, langs, order, True))
-
-    starter = core[:a.starter_size]
-    wanted = {s.strip() for s in a.starter_langs.split(",") if s.strip()}
-    starter_langs = [lang for lang in langs if lang in wanted]
-    write_gz(os.path.join(starter_dir, "core.jsonl.gz"), starter)
-    n_starter = write_gz(os.path.join(starter_dir, "labels.jsonl.gz"),
-                         label_rows(labels, starter_langs, entity_order(starter), True))
+    order, n_all = write_release(a.outdir, core, labels, langs)
+    n_starter, n_starter_langs, n_starter_labels = write_starter(starter_dir, core, labels, langs,
+                                                                 a.starter_size, wanted)
 
     log(f"done: {len(core)} paintings, {len(order) - len(core)} referenced entities, {len(langs)} label "
-        f"languages ({n_all} label rows); starter: {len(starter)} paintings, {len(starter_langs)} languages "
-        f"({n_starter} label rows)")
+        f"languages ({n_all} label rows); starter: {n_starter} paintings, {n_starter_langs} languages "
+        f"({n_starter_labels} label rows)")
     return 0
 
 
