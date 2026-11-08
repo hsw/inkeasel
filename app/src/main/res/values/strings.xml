@@ -37,6 +37,8 @@
     <string name="frame_unverified">not verified on hardware</string>
     <string name="frame_none_hint">No frame selected: choose one to send pictures.</string>
     <string name="ble_permission_needed">The app needs permission to search for Bluetooth devices. If no request appears, grant it in the app settings.</string>
+    <!-- before Android 12 the system dialog asks for location, which a BLE scan needed then -->
+    <string name="ble_permission_needed_location">The app needs location permission: Android uses it to search for Bluetooth devices. If no request appears, grant it in the app settings.</string>
     <string name="allow">Allow</string>
     <string name="bt_settings">Bluetooth settings</string>
     <string name="scan_failed">Frame search failed: %1$s</string>

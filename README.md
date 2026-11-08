@@ -266,10 +266,10 @@ one that can be chosen), unless the user has already moved onto the list.
 - The check and the render format (size, inks, packing, marker, verified flag) come from one place,
   `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (taken from the
   advertisement here); a new panel type is one more entry there.
-- Without Bluetooth permission the screen asks for it ("Allow"); with Bluetooth off it says so and
-  offers the system Bluetooth settings. Before Android 12 the scan also needs location on, and only there does
-  the hint under the search say so. Once the system no
-  longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
+- Without Bluetooth permission the screen asks for it ("Allow"; on Android 11 and older its text names the
+  location permission, which the system dialog asks for, and why a Bluetooth search needs it); with Bluetooth
+  off it says so and offers the system Bluetooth settings. Before Android 12 the scan also needs location on,
+  and only there does the hint under the search say so. Once the system no longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
   so the button becomes "App info" and the text names the path: Settings → Apps → InkEasel → Permissions →
   Nearby devices (Location on Android 11 and older). The grant is picked up when the app comes back.
   A dialog closed without an answer (Back, a tap outside) is not a denial: "Allow" asks again. Only after a

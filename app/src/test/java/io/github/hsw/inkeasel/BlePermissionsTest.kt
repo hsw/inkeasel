@@ -1,5 +1,6 @@
 package io.github.hsw.inkeasel
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -44,5 +45,19 @@ class BlePermissionsTest {
         val location = listOf("android.permission.ACCESS_FINE_LOCATION")
         assertTrue(BlePermissions.blocked(location, granted = false, deniedBefore = true) { false })
         assertFalse(BlePermissions.blocked(location, granted = false, deniedBefore = true) { true })
+    }
+
+    @Test
+    fun android11AndOlder_nameLocation() {
+        assertEquals(Txt(R.string.ble_permission_needed_location), BlePermissions.neededText(30))
+        assertEquals(Txt(R.string.ble_permission_needed_location), BlePermissions.neededText(26))
+        assertEquals(Txt(R.string.perm_name_location), BlePermissions.settingsName(30))
+    }
+
+    @Test
+    fun android12AndNewer_nameNearbyDevices() {
+        assertEquals(Txt(R.string.ble_permission_needed), BlePermissions.neededText(31))
+        assertEquals(Txt(R.string.ble_permission_needed), BlePermissions.neededText(36))
+        assertEquals(Txt(R.string.perm_name_nearby), BlePermissions.settingsName(31))
     }
 }

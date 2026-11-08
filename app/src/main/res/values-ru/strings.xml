@@ -31,6 +31,7 @@
     <string name="frame_unverified">не проверено на железе</string>
     <string name="frame_none_hint">Рамка не выбрана: выберите её, чтобы отправлять картинки.</string>
     <string name="ble_permission_needed">Нужно разрешение на поиск устройств Bluetooth. Если запрос не появляется, выдайте его в настройках приложения.</string>
+    <string name="ble_permission_needed_location">Нужно разрешение на доступ к местоположению: Android использует его для поиска устройств Bluetooth. Если запрос не появляется, выдайте его в настройках приложения.</string>
     <string name="allow">Разрешить</string>
     <string name="bt_settings">Настройки Bluetooth</string>
     <string name="scan_failed">Поиск рамок не удался: %1$s</string>

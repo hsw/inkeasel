@@ -235,7 +235,7 @@ private fun FrameSettings(
         Box(Modifier.fillMaxWidth()) {
             when {
                 !ble.permitted -> Problem(
-                    if (ble.blocked) blockedText() else stringResource(R.string.ble_permission_needed),
+                    if (ble.blocked) blockedText() else BlePermissions.neededText.text(),
                     stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
                     ble.request,
                 )

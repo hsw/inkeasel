@@ -25,7 +25,19 @@ object BlePermissions {
     val scanHint: Txt = Txt(if (Build.VERSION.SDK_INT >= 31) R.string.scanning_hint else R.string.scanning_hint_location)
 
     /** The name of the permission in the system's App info → Permissions screen. */
-    val settingsName: Txt = Txt(if (Build.VERSION.SDK_INT >= 31) R.string.perm_name_nearby else R.string.perm_name_location)
+    val settingsName: Txt = settingsName(Build.VERSION.SDK_INT)
+
+    /** [settingsName] on Android [sdk]. Pure. */
+    fun settingsName(sdk: Int): Txt = Txt(if (sdk >= 31) R.string.perm_name_nearby else R.string.perm_name_location)
+
+    /** The frame section's text while the permission is missing (and not blocked). */
+    val neededText: Txt = neededText(Build.VERSION.SDK_INT)
+
+    /**
+     * [neededText] on Android [sdk]: before Android 12 the system dialog asks for location, so the text names
+     * location and why a Bluetooth search needs it. Pure.
+     */
+    fun neededText(sdk: Int): Txt = Txt(if (sdk >= 31) R.string.ble_permission_needed else R.string.ble_permission_needed_location)
 
     fun granted(ctx: Context): Boolean = all.all { ctx.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
