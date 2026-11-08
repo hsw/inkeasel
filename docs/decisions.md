@@ -32,10 +32,14 @@ resizability limits, which Android 16 would ignore on large screens anyway).
 Rejected: AGP 8.10–8.13 or 9.x (newer than needed; 8.11+ also needs Gradle 8.13), keeping compileSdk 35
 with `android.suppressUnsupportedCompileSdk` (an untested combination).
 
-## 2026-11-08 — Release build: R8 shrinking without obfuscation (*planned*)
-Release uses R8 (`isMinifyEnabled`, `isShrinkResources`) with `-dontobfuscate`. The code is public, so
-renaming protects nothing, while it would make crash traces from GitHub APKs unreadable without a published
-`mapping.txt` and turn `Throwable.userText`'s class-name fallback into meaningless names.
+## 2026-11-08 — Release build: R8 shrinking without obfuscation
+Release uses R8 (`isMinifyEnabled`, `isShrinkResources`, `proguard-android-optimize.txt`) with
+`-dontobfuscate`. The code is public, so renaming protects nothing, while it would make crash traces from
+GitHub APKs unreadable without a published `mapping.txt` and turn `Throwable.userText`'s class-name fallback
+into meaningless names. R8 reported no warnings and no missing rules, and the release smoke tests (catalog,
+image decoding, settings, disclosure, share, manual upload and poster on a real frame) needed none, so
+`app/proguard-rules.pro` holds no keep rule: the libraries' consumer rules cover them. The release APK went
+from 6.3 MB to 1.4 MB.
 Rejected: obfuscation with `mapping.txt` uploaded by `release.yml` (more moving parts, no benefit for an open
 project).
 
