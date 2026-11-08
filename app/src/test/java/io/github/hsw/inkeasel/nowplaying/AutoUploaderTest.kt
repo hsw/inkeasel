@@ -53,8 +53,16 @@ class AutoUploaderTest {
                 if (holdRefused) throw IllegalStateException("background start not allowed")
             },
             refuse = { key -> reports += "$key refused" },
+            holdAll = { engine.holdAll() },
             log = { msg, _ -> logs += msg },
         )
+
+        /** The listener unbinds ([NowPlayingListener.connected] is cleared first). */
+        fun lose() {
+            bound = false
+            uploader.listenerLost()
+            runCurrent()
+        }
 
         fun upload(art: Art, key: String) {
             uploader.upload(art, "Film", key)
@@ -107,6 +115,42 @@ class AutoUploaderTest {
         assertEquals(listOf("submit $key hold=true", "hold"), r.calls)
         assertTrue(r.reports.isEmpty()) // no failure reported for the refused start
         assertTrue(r.logs.single().startsWith("listener not bound and the hold service not started"))
+        r.finish(ok = false)
+        assertEquals(listOf("$key failed"), r.reports) // once, by the engine
+        assertEquals(0, r.engine.heldCount)
+    }
+
+    @Test
+    fun listenerLostDuringAnUnheldUpload_itIsHeldUntilReported() = runTest {
+        val r = Rig(this)
+        r.upload(art, key) // unheld, in flight
+        r.lose()
+        assertEquals(listOf("submit $key hold=false", "hold"), r.calls)
+        assertEquals(1, r.engine.heldCount)
+        r.finish()
+        assertEquals(listOf("$key ok"), r.reports)
+        assertEquals(1, r.idle) // the hold service stops on this
+        assertEquals(0, r.engine.heldCount)
+    }
+
+    @Test
+    fun listenerLostWithNothingUnheld_noHoldStart() = runTest {
+        val r = Rig(this)
+        r.lose() // nothing in the engine
+        r.upload(art, key) // held: the listener is gone
+        r.lose() // again (onDestroy after onListenerDisconnected): nothing left unheld
+        assertEquals(listOf("submit $key hold=true", "hold"), r.calls)
+        r.finish()
+        assertEquals(1, r.idle)
+    }
+
+    @Test
+    fun listenerLost_refusedHoldStart_isLoggedOnly() = runTest {
+        val r = Rig(this)
+        r.upload(art, key)
+        r.holdRefused = true
+        r.lose() // does not throw
+        assertTrue(r.logs.single().startsWith("listener unbound during an upload and the hold service not started"))
         r.finish(ok = false)
         assertEquals(listOf("$key failed"), r.reports) // once, by the engine
         assertEquals(0, r.engine.heldCount)

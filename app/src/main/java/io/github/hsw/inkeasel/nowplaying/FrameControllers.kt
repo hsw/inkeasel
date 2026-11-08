@@ -22,8 +22,19 @@ object FrameControllers {
     @Volatile
     private var instance: FrameController? = null
 
+    @Volatile
+    private var uploader: AutoUploader? = null
+
     fun get(context: Context): FrameController =
         instance ?: synchronized(this) { instance ?: create(context.applicationContext).also { instance = it } }
+
+    /**
+     * [NowPlayingListener] has unbound: hold the automatic work it left unheld ([AutoUploader.listenerLost]).
+     * Without a controller yet there is none.
+     */
+    fun listenerLost() {
+        uploader?.listenerLost()
+    }
 
     private fun create(app: Context): FrameController {
         lateinit var controller: FrameController
@@ -36,8 +47,10 @@ object FrameControllers {
             },
             startHold = { UploadService.startHold(app) },
             refuse = { key -> controller.onUploadResult(key, false) },
+            holdAll = { UploadEngine.get(app).holdUnheld() },
             log = { msg, e -> Log.w(FrameController.TAG, msg, e) },
         )
+        this.uploader = uploader
         controller = FrameController(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             uploader = uploader,

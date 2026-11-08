@@ -1,6 +1,10 @@
 package io.github.hsw.inkeasel.nowplaying
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
@@ -11,9 +15,16 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.concurrent.thread
+import kotlin.random.Random
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UploadEngineCoreTest {
@@ -30,6 +41,10 @@ class UploadEngineCoreTest {
         val started = mutableListOf<String>()
         val stale = mutableSetOf<String>()
         val failWith = mutableMapOf<String, Exception>()
+        val reportFails = mutableSetOf<String>() // onDone / onDropped throw for these
+        var idleFails = false // onIdle throws
+        var drawFails = 0 // the next this many draw waits throw
+        var draws = 0
         var running = 0
         var maxRunning = 0
         val idleAt = mutableListOf<Long>()
@@ -38,7 +53,14 @@ class UploadEngineCoreTest {
         val core = UploadEngineCore<R>(
             scope = ts.backgroundScope,
             isAuto = { it.auto },
-            awaitIdle = { if (drawMs > 0) delay(drawMs) },
+            awaitIdle = {
+                draws++
+                if (drawFails > 0) {
+                    drawFails--
+                    error("draw wait broke")
+                }
+                if (drawMs > 0) delay(drawMs)
+            },
             upload = { r ->
                 started += r.name
                 running++
@@ -51,11 +73,18 @@ class UploadEngineCoreTest {
                 }
             },
             isStale = { it.name in stale },
-            onDone = { r, ok, e -> events += "done ${r.name} ${if (ok) "ok" else "failed:${e?.javaClass?.simpleName}"}" },
-            onDropped = { r, why -> events += "dropped ${r.name} $why" },
+            onDone = { r, ok, e ->
+                events += "done ${r.name} ${if (ok) "ok" else "failed:${e?.javaClass?.simpleName}"}"
+                if (r.name in reportFails) error("report broke")
+            },
+            onDropped = { r, why ->
+                events += "dropped ${r.name} $why"
+                if (r.name in reportFails) error("report broke")
+            },
             onIdle = {
                 events += "idle"
                 idleAt += ts.testScheduler.currentTime
+                if (idleFails) error("idle callback broke")
             },
         )
 
@@ -281,6 +310,176 @@ class UploadEngineCoreTest {
         runCurrent()
         assertEquals(listOf("a1", "a2"), started)
         assertEquals(0, core.heldCount)
+    }
+
+    // --- held work and errors ---
+
+    @Test
+    fun heldRequestWhoseReportThrows_isStillReleased() = runTest {
+        val r = Rig(this)
+        r.reportFails += "m1"
+        r.submit(manual("m1"))
+        r.finish("m1")
+        assertEquals(listOf("done m1 ok", "idle"), r.events)
+        assertEquals(0, r.core.heldCount)
+    }
+
+    @Test
+    fun heldRequestDroppedWithAThrowingReport_isStillReleased() = runTest {
+        val r = Rig(this, drawMs = 1_000)
+        r.reportFails += "h1"
+        r.submit(auto("h1"), hold = true)
+        r.submit(auto("a1")) // replaces h1; its report throws inside this submit, which must not
+        assertEquals(listOf("dropped h1 REPLACED", "idle"), r.events)
+        assertEquals(0, r.core.heldCount)
+        r.reportFails += "h2"
+        r.submit(auto("h2"), hold = true) // replaces a1
+        r.stale += "h2"
+        advanceTimeBy(1_001)
+        assertEquals(listOf("dropped h1 REPLACED", "idle", "dropped a1 REPLACED", "dropped h2 STALE", "idle"), r.events)
+        assertEquals(0, r.core.heldCount)
+    }
+
+    @Test
+    fun heldUploadThatFails_releasesTheHoldOnce() = runTest {
+        val r = Rig(this)
+        r.failWith["h1"] = IllegalStateException("boom")
+        r.reportFails += "h1"
+        r.submit(auto("h1"), hold = true)
+        assertEquals(listOf("done h1 failed:IllegalStateException", "idle"), r.events)
+        assertEquals(0, r.core.heldCount)
+    }
+
+    @Test
+    fun throwingOnIdle_reachesNeitherTheSubmitterNorTheWorker() = runTest {
+        val r = Rig(this, drawMs = 1_000)
+        r.idleFails = true
+        r.submit(auto("h1"), hold = true)
+        r.submit(auto("a1")) // replaces held h1: onIdle runs inside this submit and throws
+        assertEquals(listOf("dropped h1 REPLACED", "idle"), r.events)
+        r.submit(manual("m1"))
+        advanceTimeBy(1_001)
+        r.finish("m1")
+        advanceTimeBy(1_001)
+        r.finish("a1")
+        assertEquals(listOf("dropped h1 REPLACED", "idle", "done m1 ok", "idle", "done a1 ok"), r.events)
+    }
+
+    @Test
+    fun drawWaitThatThrowsOnce_theUploadGoesAheadWithoutIt() = runTest {
+        val r = Rig(this, drawMs = 1_000)
+        r.drawFails = 1
+        r.submit(manual("m1"))
+        assertEquals(listOf("m1"), r.started) // at once: the broken wait is skipped
+        r.finish("m1")
+        r.submit(manual("m2"))
+        assertEquals(listOf("m1"), r.started) // the next one waits again
+        advanceTimeBy(1_001)
+        assertEquals(listOf("m1", "m2"), r.started)
+        r.finish("m2")
+        assertEquals(listOf("done m1 ok", "idle", "done m2 ok", "idle"), r.events)
+    }
+
+    @Test
+    fun drawWaitThatKeepsThrowing_everyRequestStillGoesOutOnce_noSpin() = runTest {
+        val r = Rig(this)
+        r.drawFails = Int.MAX_VALUE
+        r.submit(auto("h1"), hold = true)
+        r.submit(manual("m1"))
+        r.finish("h1")
+        r.finish("m1")
+        assertEquals(listOf("done h1 ok", "done m1 ok", "idle"), r.events)
+        assertEquals(2, r.draws) // one wait per request taken, then the worker sleeps
+        advanceTimeBy(60_000)
+        assertEquals(2, r.draws)
+    }
+
+    // --- promotion to held work ---
+
+    @Test
+    fun holdAll_makesQueuedAndInFlightWorkHeld_idleAfterTheirReports() = runTest {
+        val r = Rig(this)
+        r.submit(auto("a1")) // in flight
+        r.submit(auto("a2")) // queued
+        assertEquals(0, r.core.heldCount)
+        assertTrue(r.core.holdAll())
+        assertEquals(2, r.core.heldCount)
+        r.finish("a1")
+        assertEquals(listOf("done a1 ok"), r.events)
+        r.finish("a2")
+        assertEquals(listOf("done a1 ok", "done a2 ok", "idle"), r.events)
+        assertEquals(0, r.core.heldCount)
+    }
+
+    @Test
+    fun holdAll_falseWhenNothingIsUnheld() = runTest {
+        val r = Rig(this)
+        assertFalse(r.core.holdAll()) // nothing at all
+        r.submit(manual("m1"))
+        r.submit(auto("h1"), hold = true)
+        assertFalse(r.core.holdAll()) // all held already
+        assertEquals(2, r.core.heldCount)
+        r.finish("m1")
+        r.finish("h1")
+        assertFalse(r.core.holdAll()) // everything reported
+        assertEquals(listOf("done m1 ok", "done h1 ok", "idle"), r.events)
+    }
+
+    // --- real threads ---
+
+    @Test
+    fun concurrentSubmits_eachReportedOnce_heldCountBackToZero_idleAfterTheLastHeldReport() {
+        repeat(20) { round ->
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val reported = ConcurrentHashMap<String, AtomicInteger>()
+            val held = ConcurrentHashMap.newKeySet<String>()
+            val lastHeldReport = AtomicLong()
+            val lastIdle = AtomicLong()
+            val clock = AtomicLong()
+            val count = { name: String ->
+                reported.computeIfAbsent(name) { AtomicInteger() }.incrementAndGet()
+                if (name in held) lastHeldReport.set(clock.incrementAndGet())
+            }
+            lateinit var core: UploadEngineCore<R>
+            core = UploadEngineCore(
+                scope = scope,
+                isAuto = { it.auto },
+                awaitIdle = { if (Random.nextInt(4) == 0) delay(1) },
+                upload = {
+                    when (Random.nextInt(8)) {
+                        0 -> error("upload broke")
+                        1, 2, 3 -> delay(1)
+                        else -> Unit
+                    }
+                },
+                isStale = { Random.nextInt(10) == 0 },
+                onDone = { r, _, _ -> count(r.name) },
+                onDropped = { r, _ -> count(r.name) },
+                onIdle = { lastIdle.set(clock.incrementAndGet()) },
+            )
+            val names = mutableListOf<String>()
+            val threads = (0 until 4).map { t ->
+                val mine = (0 until 50).map { i -> "r$round-$t-$i" }
+                synchronized(names) { names += mine }
+                thread {
+                    for ((i, name) in mine.withIndex()) {
+                        val kind = i % 3 // held auto, unheld auto, manual
+                        if (kind != 1) held += name
+                        core.submit(R(name, auto = kind != 2), hold = kind == 0)
+                        if (i % 7 == 0) Thread.sleep(1)
+                    }
+                }
+            }
+            threads.forEach { it.join() }
+            val deadline = System.currentTimeMillis() + 10_000
+            while (reported.size < names.size && System.currentTimeMillis() < deadline) Thread.sleep(5)
+            Thread.sleep(20) // a late second report would show up meanwhile
+            scope.cancel()
+            assertEquals(names.toSet(), reported.keys)
+            assertTrue(reported.values.all { it.get() == 1 })
+            assertEquals(0, core.heldCount)
+            assertTrue(lastIdle.get() > lastHeldReport.get()) // the last onIdle came after the last held report
+        }
     }
 
     /** A [TimeoutCancellationException] as `withTimeout` throws it inside an upload. */

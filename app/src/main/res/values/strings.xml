@@ -115,13 +115,12 @@
     <string name="upload_failed">Upload failed: %1$s</string>
     <string name="upload_err_unknown">unknown error</string>
     <string name="upload_picture">picture</string>
-    <string name="upload_default_picture">default picture</string>
     <string name="upload_err_text" translatable="false">%1$s</string>
-    <string name="upload_err_stopped">the upload service stopped</string>
     <string name="upload_channel">Sending to the frame</string>
     <string name="upload_no_picture">No picture given to send</string>
     <string name="upload_wait">The frame is still drawing the previous picture: sending in %1$d s</string>
     <string name="upload_no_frame">No frame selected: choose one in the settings</string>
+    <string name="upload_no_permission">Bluetooth is not allowed: open the app to allow it</string>
     <string name="upload_err_no_frame">no frame selected</string>
     <string name="upload_err_decode">could not decode the picture</string>
 

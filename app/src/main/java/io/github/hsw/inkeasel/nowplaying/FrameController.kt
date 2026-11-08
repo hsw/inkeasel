@@ -12,7 +12,9 @@ import kotlin.time.Duration.Companion.seconds
 fun interface Uploader {
     /**
      * Upload [art] ([title]: the film's, or empty for the default picture); the outcome comes back through
-     * [FrameController.onUploadResult] with the same [key].
+     * [FrameController.onUploadResult] with the same [key]. Called under the controller's lock; it may report
+     * synchronously, from inside this call: a refusal of this request, or the failure of an earlier request
+     * this one replaced.
      */
     fun upload(art: Art, title: String, key: String)
 }
@@ -360,7 +362,7 @@ class FrameController(
             log("no default picture; $onFrame stays")
             return
         }
-        request(art, "", defaultKey(art), what) // no title: UploadOutcome.untitled names it
+        request(art, "", defaultKey(art), what) // no title: the default picture is named by its file
     }
 
     /**
@@ -378,7 +380,10 @@ class FrameController(
             return
         }
         log("upload $what: $key")
-        uploader.upload(art, title, key) // may report a failure at once (onUploadResult under this lock)
+        // may report at once, re-entering onUploadResult (and reconcile) under this lock: the request itself
+        // refused without the Bluetooth permission, or an earlier automatic request it replaced in the
+        // engine's queue. Nothing may follow this call that relies on the state from before it.
+        uploader.upload(art, title, key)
     }
 
     private fun cancelStart() {

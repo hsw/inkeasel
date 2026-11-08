@@ -98,12 +98,11 @@
     <string name="upload_failed">Ошибка отправки: %1$s</string>
     <string name="upload_err_unknown">неизвестная ошибка</string>
     <string name="upload_picture">картинка</string>
-    <string name="upload_default_picture">фото по умолчанию</string>
-    <string name="upload_err_stopped">служба отправки остановлена</string>
     <string name="upload_channel">Отправка на рамку</string>
     <string name="upload_no_picture">Не указано фото для отправки</string>
     <string name="upload_wait">Рамка ещё рисует предыдущую картинку: отправка через %1$d с</string>
     <string name="upload_no_frame">Рамка не выбрана: выберите её в настройках</string>
+    <string name="upload_no_permission">Bluetooth не разрешён: откройте приложение, чтобы разрешить</string>
     <string name="upload_err_no_frame">рамка не выбрана</string>
     <string name="upload_err_decode">не удалось декодировать изображение</string>
 

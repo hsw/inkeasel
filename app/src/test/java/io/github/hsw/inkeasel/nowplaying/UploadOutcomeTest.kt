@@ -54,7 +54,7 @@ class UploadOutcomeTest {
     fun aTxtExceptionIsShownInTheUsersLanguage() {
         val nested = Txt(R.string.frame_err_not_found, "NM000001", Txt(R.string.scanning_hint))
         assertEquals(nested, UploadOutcome.reason(TxtException(nested)))
-        assertEquals(Txt(R.string.upload_err_stopped), UploadOutcome.reason(TxtException(Txt(R.string.upload_err_stopped), IOException("cause"))))
+        assertEquals(Txt(R.string.upload_err_decode), UploadOutcome.reason(TxtException(Txt(R.string.upload_err_decode), IOException("cause"))))
     }
 
     @Test
@@ -78,11 +78,4 @@ class UploadOutcomeTest {
         assertEquals(Txt(R.string.upload_err_unknown), UploadOutcome.reason(null))
     }
 
-    @Test
-    fun untitledPictureIsNamedByItsKey() {
-        assertEquals(Txt(R.string.upload_default_picture), UploadOutcome.untitled(FrameController.DEFAULT_PREFIX + "/p/sea.png"))
-        assertEquals(Txt(R.string.upload_picture), UploadOutcome.untitled(FrameController.MANUAL_PREFIX + "url:https://e/p.jpg"))
-        assertEquals(Txt(R.string.upload_picture), UploadOutcome.untitled("https://e/poster.jpg"))
-        assertEquals(Txt(R.string.upload_picture), UploadOutcome.untitled(null))
-    }
 }

@@ -25,8 +25,9 @@ import java.nio.ByteBuffer
  * screen the settings open ("Permissions and features", `ListenerAccess`), or where there is none with
  * `adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener`;
  * the system rebinds it (verified after a force-stop, expected after boot), which also keeps the process (and
- * the controller's timers and automatic uploads, see [connected]) alive. Sessions are followed also while the poster is switched off
- * ([FeatureStore]); the [FrameController] then only schedules nothing.
+ * the controller's timers and automatic uploads, see [connected]) alive. Sessions are followed, and their
+ * artwork cached, whenever the access is granted, also while the poster is switched off ([FeatureStore]): the
+ * [FrameController] then only schedules nothing, and it knows what plays the moment the poster is switched on.
  *
  * Threading: the session map and the callbacks live on the main thread. Everything else (reading the
  * metadata, hashing a bitmap, writing its PNG, mapping, calling the controller) runs on one serial
@@ -69,11 +70,15 @@ class NowPlayingListener : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         connected = false // first: an upload requested from now on is held by UploadService
+        FrameControllers.listenerLost() // and one already queued or in flight is held from now on
         release()
     }
 
     override fun onDestroy() {
-        connected = false
+        if (connected) { // destroyed without a disconnect first
+            connected = false
+            FrameControllers.listenerLost()
+        }
         release()
         scope.cancel()
         super.onDestroy()

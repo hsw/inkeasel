@@ -45,7 +45,7 @@ data class Source(val type: Type, val value: String, val title: String = "") {
          * The source named by `UploadService` extras, with the picture it resolved to; the first usable one
          * wins, in the order `path` (must be a file), `photo` (must resolve in the pictures folder), `url`.
          * Blank extras count as absent. The title is [title] if given, else the file name without extension
-         * (`path`, `photo`) or empty (`url`; the notification then names it, see `UploadOutcome.untitled`). It
+         * (`path`, `photo`) or empty (`url`; the notification then calls it a picture, `UploadService`). It
          * is stored with the default, so it is never a translated text.
          */
         fun fromExtras(

@@ -15,6 +15,13 @@ package io.github.hsw.inkeasel.nowplaying
  *   which keeps the process in the foreground until the engine has reported it. A refused start (a
  *   background start on Android 12+) is only logged: the request is already in the engine, which uploads it
  *   and reports it once, so it is not reported failed a second time.
+ *
+ * - When the listener unbinds ([listenerLost]), unheld work still queued or in flight is made held
+ *   ([holdAll]) and the hold starts for it, as above. Both run under one lock, so a request is either
+ *   submitted unheld before the promotion (and promoted) or decided after it (and held).
+ *
+ * A queued automatic request that the new one replaces is reported failed by the engine from inside
+ * [submit], so [FrameController.onUploadResult] runs re-entrantly under the controller's lock.
  */
 class AutoUploader(
     private val permitted: () -> Boolean,
@@ -22,21 +29,39 @@ class AutoUploader(
     private val submit: (art: Art, title: String, key: String, hold: Boolean) -> Unit,
     private val startHold: () -> Unit,
     private val refuse: (key: String) -> Unit,
+    private val holdAll: () -> Boolean,
     private val log: (String, Throwable?) -> Unit = { _, _ -> },
 ) : Uploader {
+    private val lock = Any() // lock order: the controller's, then this, then the engine's
+
     override fun upload(art: Art, title: String, key: String) {
         if (!permitted()) {
             log("no Bluetooth permission: auto upload not started: $key", null)
             refuse(key)
             return
         }
-        val hold = !listenerBound()
-        submit(art, title, key, hold)
-        if (!hold) return
+        val hold = synchronized(lock) {
+            val hold = !listenerBound()
+            submit(art, title, key, hold)
+            hold
+        }
+        if (hold) startHoldSafe("listener not bound and the hold service not started; the upload runs without it: $key")
+    }
+
+    /**
+     * The notification listener has unbound (its flag is already cleared): automatic work it left unheld,
+     * queued or in flight, is made held, and the hold service started for it.
+     */
+    fun listenerLost() {
+        val promoted = synchronized(lock) { holdAll() }
+        if (promoted) startHoldSafe("listener unbound during an upload and the hold service not started; it runs without it")
+    }
+
+    private fun startHoldSafe(refused: String) {
         try {
             startHold()
         } catch (e: RuntimeException) { // e.g. a background start refused by the system
-            log("listener not bound and the hold service not started; the upload runs without it: $key", e)
+            log(refused, e)
         }
     }
 }

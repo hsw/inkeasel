@@ -6,7 +6,6 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -14,7 +13,7 @@ import android.util.Log
 import android.widget.Toast
 import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.Source
-import io.github.hsw.inkeasel.nowplaying.UploadOutcome
+import io.github.hsw.inkeasel.nowplaying.UploadRequest
 import java.io.File
 
 /**
@@ -25,7 +24,7 @@ import java.io.File
  * ([UploadEngine.onIdle]), so nothing stays resident when idle. The queue, the worker, the toasts and the
  * reports live in the engine, not here.
  *
- * Trigger by intent (keeps the current app on screen):
+ * Trigger by intent, debug builds only (`src/debug/AndroidManifest.xml` exports it; release builds do not):
  *   adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo seaworld-abudhabi
  * Extras (first usable wins): `path` = an existing absolute file path, `photo` = file name that resolves in
  * the pictures folder (extension optional), `url` = remote image; optional `title` for the toast and
@@ -35,12 +34,13 @@ import java.io.File
  * Automatic uploads (a now-playing poster, the revert to the default) do not come through here: the
  * `FrameController` submits them to the engine itself (`AutoUploader`). Only while the notification listener
  * is not bound, so nothing keeps the process alive, it also starts this service with [ACTION_HOLD]: no
- * payload, the service only goes foreground and stays until the engine's held work is done.
+ * payload, the service only goes foreground and stays until the engine's held work is done. The listener does
+ * the same when it unbinds with automatic work still queued or in flight ([UploadEngine.holdUnheld]).
  *
  * Nothing is uploaded while no frame is chosen in the settings ([FrameStore]): a manual request is refused at
- * once, before Bluetooth is touched, with a toast. Without the Bluetooth permissions ([BlePermissions]) it is
- * not started at all: the app asks for them before a manual upload, and `AutoUploader` reports an automatic
- * one as failed.
+ * once, before Bluetooth is touched, with a toast. The app starts it only with the Bluetooth permissions
+ * ([BlePermissions]): it asks for them before a manual upload, and `AutoUploader` reports an automatic one as
+ * failed without them. The debug adb trigger can start it without them; it then refuses with a toast.
  *
  * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]); a manual request
  * that has to wait toasts how long.
@@ -51,32 +51,35 @@ import java.io.File
  */
 class UploadService : Service() {
     private var lastStartId = 0 // the latest start delivered to onStartCommand; main thread only
+    private var title: String? = null // what the notification names: the latest manual request's picture
     private val engine by lazy { UploadEngine.get(this) }
     private val frames by lazy { FrameStore(this) }
-    private val idle: () -> Unit = { stopIfIdle() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        if (Build.VERSION.SDK_INT >= 26) {
-            getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CH_ID, getString(R.string.upload_channel), NotificationManager.IMPORTANCE_LOW)
-            )
-        }
-        engine.onIdle = idle
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CH_ID, getString(R.string.upload_channel), NotificationManager.IMPORTANCE_LOW)
+        )
+        engine.onIdle = { stopIfIdle() }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStartId = startId
-        if (intent?.action == ACTION_HOLD) {
-            startForeground(NOTIF_ID, notification(null)) // must be called within 5 s of start
+        val hold = intent?.action == ACTION_HOLD
+        val req = if (hold) null else intent?.let { parse(it) }
+        // a hold keeps the name of a manual upload this service may still be running
+        if (!hold) title = req?.let { it.source.title.ifBlank { getString(R.string.upload_picture) } }
+        if (!BlePermissions.granted(this)) { // only the debug adb trigger starts it so
+            refuseWithoutPermission()
+            return START_NOT_STICKY
+        }
+        startForeground(NOTIF_ID, notification(title)) // must be called within 5 s of start
+        if (hold) {
             stopIfIdle() // the held work may already be done
             return START_NOT_STICKY
         }
-        val req = intent?.let { parse(it) }
-        // must be called within 5 s of start; a picture without a title is named by UploadOutcome.untitled
-        startForeground(NOTIF_ID, notification(req?.let { it.source.title.ifBlank { UploadOutcome.untitled(null).resolve(this) } }))
         if (frames.selected() == null) { // refuse without touching Bluetooth
             Log.w(TAG, "no frame selected: manual upload refused: ${req?.source?.title}")
             toast(getString(R.string.upload_no_frame))
@@ -95,7 +98,23 @@ class UploadService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun parse(intent: Intent): UploadEngine.Req? {
+    /**
+     * No Bluetooth permissions: only the debug adb trigger starts the service so (the app asks for them before a
+     * manual upload, and `AutoUploader` neither submits nor holds without them). Toast and stop. Android 14+
+     * refuses a `connectedDevice` foreground service without them, which is caught.
+     */
+    private fun refuseWithoutPermission() {
+        Log.w(TAG, "no Bluetooth permission: nothing sent: $title")
+        toast(getString(R.string.upload_no_permission))
+        try {
+            startForeground(NOTIF_ID, notification(title))
+        } catch (e: SecurityException) {
+            Log.w(TAG, "foreground refused without the Bluetooth permissions", e)
+        }
+        stopIfIdle()
+    }
+
+    private fun parse(intent: Intent): UploadRequest? {
         val resolve = { name: String -> resolvePhoto(this, name) }
         val picked = Source.fromExtras(
             path = intent.getStringExtra(EXTRA_PATH),
@@ -104,8 +123,7 @@ class UploadService : Service() {
             title = intent.getStringExtra(EXTRA_TITLE),
             resolvePhoto = resolve,
         ) ?: return null
-        // no key and no stamp: a manual request is never stale (FrameController.isStale)
-        return UploadEngine.Req(picked.source, picked.art, auto = false, key = null, stamp = 0)
+        return UploadRequest.manual(picked.source, picked.art)
     }
 
     /**
@@ -123,18 +141,15 @@ class UploadService : Service() {
         Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
     }
 
-    private fun notification(title: String?): Notification {
-        @Suppress("DEPRECATION")
-        val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CH_ID) else Notification.Builder(this)
-        return b.setContentTitle(getString(R.string.upload_sending))
+    private fun notification(title: String?): Notification =
+        Notification.Builder(this, CH_ID).setContentTitle(getString(R.string.upload_sending))
             .setContentText(title.orEmpty())
             .setSmallIcon(android.R.drawable.stat_sys_upload)
             .setOngoing(true)
             .build()
-    }
 
     override fun onDestroy() {
-        if (engine.onIdle === idle) engine.onIdle = null // the engine keeps any work and reports it itself
+        engine.onIdle = null // the engine keeps any work and reports it itself
         super.onDestroy()
     }
 
