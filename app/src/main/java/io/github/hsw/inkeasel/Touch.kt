@@ -5,6 +5,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 
 /**
@@ -26,4 +31,16 @@ fun Modifier.onTap(action: () -> Unit, onLongPress: () -> Unit): Modifier {
     val current by rememberUpdatedState(action)
     val long by rememberUpdatedState(onLongPress)
     return pointerInput(Unit) { detectTapGestures(onTap = { current() }, onLongPress = { long() }) }
+}
+
+/** Keys that are the D-pad's centre: tv-material's press keys (CENTER, Enter, keypad Enter) and a gamepad's A. */
+val CENTER_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.ButtonA)
+
+/**
+ * Takes the rest of a CENTER press already handled ([HeldCenter]: its repeats and its release) before any
+ * button inside sees it. On a dialog's root, so the focused button is never pressed by the key that opened it.
+ */
+fun Modifier.dropHeldCenter(held: HeldCenter): Modifier = onPreviewKeyEvent { e ->
+    e.key in CENTER_KEYS && (e.type == KeyEventType.KeyDown || e.type == KeyEventType.KeyUp) &&
+        held.swallow(e.type == KeyEventType.KeyDown, e.nativeKeyEvent.repeatCount)
 }

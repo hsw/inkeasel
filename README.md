@@ -220,23 +220,27 @@ state, the disclosure panel with its adb line, why a frame cannot be chosen, the
 secondary metadata is 12 sp: a card's artist and date, a frame's address and properties. Checked on the TV
 emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan margins stay.
 
-A press on a card (CENTER, or a tap) sends the picture at once. A long press (CENTER held, or a long touch)
-opens its details instead, in Google's "content details" layout: the title, every field the source gave
-(artist, date, collection, source, licence and its link, the image credit where the licence asks for one,
-original size, web page; links as text, since a TV
-opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path), **View
-full screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it:
-the same fit and dithering onto the frame's inks as an upload, white bars included. Without a frame, or with one the app cannot
-draw on, the panel says so instead of the preview. Back closes it. A narrow or portrait window stacks it into
-one scrolling column, the buttons under the title.
+A press on a card (CENTER, or a tap) sends the picture and opens it full screen (below), so you see what
+was sent. Without the Bluetooth permission the Bluetooth panel opens instead of the full-screen view; with no
+frame chosen nothing is sent and the full-screen view opens with its note that no frame is chosen. A long
+press (CENTER held, or a long touch) opens its details instead, in Google's "content details" layout: the
+title, every field the source gave (artist, date, collection, source, licence and its link, the image credit
+where the licence asks for one, original size, web page; links as text, since a TV opens no browser), **Send
+to frame** (focused; it closes the panel and sends as a press does, without the full-screen view), **View full
+screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it: the
+same fit and dithering onto the frame's inks as an upload, white bars included. Releasing the held CENTER
+leaves the panel open. Without a frame, or with one the app cannot draw on, the panel says so instead of the
+preview. Back closes it. A narrow or portrait window stacks it into one scrolling column, the buttons under
+the title.
 
-**View full screen** shows the picture on black, fitted to the screen and never cropped, with the system bars
-hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
+The full-screen view (a press on a card, or **View full screen**) shows the picture on black, fitted to the
+screen and never cropped, with the system bars hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
 and stop at its ends (in the Catalog the next one is read from the database, so it does not matter how far
 the grid has loaded; "n / N" is the place in the whole list); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
 tap hides it again. The credit line (title; artist, source and licence, and the image credit where the licence
 asks for one) shows for 5 s on open, on each new
-picture and with the button. Back returns to the details panel of the picture on screen. The image is loaded
+picture and with the button. Back returns to the grid when a press opened the view, to the details panel of
+the picture on screen when the panel did. The image is loaded
 in a size that fits the screen: for a Commons file (the release paintings and the Commons landscapes) a
 standard width (960, 1280, 1920 or 3840 px), or the original when a JPEG, PNG or WebP is narrower (TIFF and
 SVG always as a thumbnail), for Cleveland the `web` image up to a Full HD screen and the
@@ -611,7 +615,9 @@ Code:
   sends a waiting shared picture once the permission is granted and a frame chosen
 - `DetailsPanel.kt`: the details panel of a long-pressed card, with its frame preview; `PictureDetails.kt`:
   its lines, source names, which preview a selected frame gets and why one failed (pure)
-- `FullscreenViewer.kt`: the full-screen view opened from the details panel; `ViewerRules.kt`: which
+- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel;
+  `HeldCenter.kt`: the rest of a CENTER press already handled (the long press that opened the details panel,
+  the viewer's own CENTER) kept from the dialog's buttons (pure); `ViewerRules.kt`: which
   rendition it loads for the window, its credit line, its list position, overlay and swipe rules, and its
   moves through the list (`ViewerNav`: a step pressed during a read is dropped, a late result is ignored)
   (pure)

@@ -122,6 +122,14 @@ enum class ViewerOverlay {
     companion object {
         /** How long the overlay stays after the last key, tap or step before it hides. */
         const val SHOWN_MS = 5_000L
+
+        /**
+         * What shows when the viewer opens: the credit line; with the action row too when a press on a card
+         * opened it ([byPress]) and no frame is chosen ([frameChosen] false), since the row's note is then the
+         * press's only answer (it sends nothing, and no toast repeats it).
+         */
+        fun onOpen(byPress: Boolean, frameChosen: Boolean): ViewerOverlay =
+            if (byPress && !frameChosen) ACTIONS else CREDIT
     }
 }
 

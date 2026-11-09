@@ -170,4 +170,14 @@ class ViewerRulesTest {
         assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.CREDIT.onTap())
         assertEquals(ViewerOverlay.HIDDEN, ViewerOverlay.ACTIONS.onTap())
     }
+
+    @Test
+    fun overlay_onOpen_aPressWithoutAFrameShowsTheRow() {
+        // the press sent nothing: the row's "no frame" note is its answer
+        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.onOpen(byPress = true, frameChosen = false))
+        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = true, frameChosen = true))
+        // from the details panel, as before
+        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = false, frameChosen = false))
+        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = false, frameChosen = true))
+    }
 }

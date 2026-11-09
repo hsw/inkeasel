@@ -62,9 +62,11 @@ private sealed interface PreviewImage {
  * (the text and the actions on the left, the picture large on the right), with every field the source gave
  * ([PictureDetails.rows]; the web page as text, since a TV launches no browser) and a preview drawn as the
  * [selected] frame will show it ([EpdImage.previewOf]: fitted whole with white bars, in its inks), or why there
- * is none. [onSend] ("Send to frame", focused first) takes the same path as a plain press on the card; "View
- * full screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). A full-screen dialog over the
- * catalog; on a narrow or portrait window everything is one scrolling column, the actions under the title.
+ * is none. [onSend] ("Send to frame", focused first) takes the same send path as a plain press on the card;
+ * "View full screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). The CENTER press that opened
+ * it may still be held: its repeats and release are swallowed ([HeldCenter]), so the panel stays open with its
+ * first button focused. A full-screen dialog over the catalog; on a narrow or portrait window everything is one
+ * scrolling column, the actions under the title.
  */
 @Composable
 fun DetailsPanel(
@@ -86,7 +88,9 @@ fun DetailsPanel(
         }
         val plan = PictureDetails.preview(selected)
         val image = previewImage(p, plan)
-        Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
+        // a long press opens the panel while CENTER is still down: its release must not press "Send to frame"
+        val held = remember { HeldCenter() }
+        Surface(Modifier.fillMaxSize().dropHeldCenter(held), shape = RectangleShape) {
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
                 val pad = Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)

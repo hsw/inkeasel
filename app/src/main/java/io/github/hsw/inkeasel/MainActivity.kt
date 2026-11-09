@@ -190,22 +190,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * The open full-screen viewer ([FullscreenViewer], from "View full screen" in the details panel), on the
-     * list of the tab it was opened from ([viewerSteps]); `null` while it is closed. It replaces the details
-     * panel, and Back brings that back for the picture then shown ([closeViewer]). Never open with the
-     * settings or the Bluetooth panel.
+     * The open full-screen viewer ([FullscreenViewer], from a press on a card or "View full screen" in the
+     * details panel), on the list of the tab it was opened from; `null` while it is closed. Opened from the
+     * details panel it replaces it, and Back brings that back for the picture then shown; opened by a press
+     * ([viewerByPress]) Back returns to the grid ([closeViewer]). Never open with the settings or the
+     * Bluetooth panel.
      */
     var viewer by mutableStateOf<ViewerState?>(null)
         private set
     private val nav = ViewerNav(viewModelScope) { viewer = it }
 
+    /** The open viewer was opened by a press on a card, not from the details panel. */
+    var viewerByPress by mutableStateOf(false)
+        private set
+
     /**
-     * The viewer on [p]: in the Catalog it steps through the database by rank ([CatalogSteps], each row made
-     * a picture by [catalogPicture], as the grid makes it) and shows [p] alone until its place is read; in
-     * My pictures through its loaded list ([ListSteps]).
+     * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
+     * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
+     * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]).
      */
-    fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture) {
+    fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture, byPress: Boolean = false) {
         details = null
+        viewerByPress = byPress
         if (tab == CATALOG_TAB) {
             val steps = CatalogSteps(store.db.catalog(), store.chain.value, catalogPicture)
             nav.open(ViewerState.alone(p), steps) {
@@ -222,9 +228,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Left/Right in the viewer ([ViewerNav.step]). */
     fun stepViewer(delta: Int) = nav.step(delta)
 
-    /** Back from the viewer: the details panel of the picture it showed. */
+    /** Back from the viewer: the grid if a press opened it, else the details panel of the picture it showed. */
     fun closeViewer() {
-        details = nav.close()
+        val shown = nav.close()
+        details = if (viewerByPress) null else shown
     }
 
     fun closeBlePanel() {
@@ -437,24 +444,32 @@ class MainActivity : ComponentActivity() {
                 vm,
                 ble = BleAccess(permitted, blocked, ::requestPermissions),
                 onFrameSelected = ::sendPendingShare,
-                onSend = { p ->
-                    readBle()
-                    when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
-                        BleAsk.Send.SEND -> sendToFrame(p)
-                        BleAsk.Send.NO_FRAME -> {
-                            Log.i(TAG, "no frame selected: upload of ${p.title} refused")
-                            Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
-                        }
-                        BleAsk.Send.PANEL -> showPanel(p)
-                        BleAsk.Send.BLOCKED -> {
-                            Log.i(TAG, "Bluetooth denied for good: upload of ${p.title} refused")
-                            Toast.makeText(this, R.string.upload_toast_blocked, Toast.LENGTH_LONG).show()
-                        }
-                    }
-                },
+                onSend = { p -> send(p, byPress = false) },
+                onPress = { p -> send(p, byPress = true) },
                 onPanelConfirm = { askPermissions.launch(BlePermissions.all) },
                 onPanelDismiss = ::dismissPanel,
             )
+        }
+    }
+
+    /**
+     * The send path of a picture ([BleAsk.onSend]): sent, the Bluetooth panel (which replaces any open
+     * viewer), or a toast why not. A press on a card ([byPress]) has the viewer open on the picture, whose
+     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast.
+     */
+    private fun send(p: Picture, byPress: Boolean) {
+        readBle()
+        when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
+            BleAsk.Send.SEND -> sendToFrame(p)
+            BleAsk.Send.NO_FRAME -> {
+                Log.i(TAG, "no frame selected: upload of ${p.title} refused")
+                if (!byPress) Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
+            }
+            BleAsk.Send.PANEL -> showPanel(p)
+            BleAsk.Send.BLOCKED -> {
+                Log.i(TAG, "Bluetooth denied for good: upload of ${p.title} refused")
+                Toast.makeText(this, R.string.upload_toast_blocked, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -524,6 +539,7 @@ fun App(
     ble: BleAccess,
     onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
+    onPress: (Picture) -> Unit,
     onPanelConfirm: () -> Unit,
     onPanelDismiss: () -> Unit,
 ) {
@@ -551,6 +567,12 @@ fun App(
                 val catalogPicture = remember(names, columnPx, aspect) {
                     { row: CatalogRow -> CatalogPicture.of(row, names, CatalogPicture.thumbWidth(columnPx, aspect, row.width, row.height)) }
                 }
+                // a press on a card: the viewer on it, then the send path (whose Bluetooth panel replaces the viewer)
+                val press = { p: Picture ->
+                    Log.i(TAG, "press on ${p.id}")
+                    vm.openViewer(p, catalogPicture, byPress = true)
+                    onPress(p)
+                }
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader, tabFocus)
                     Spacer(Modifier.height(16.dp))
@@ -573,7 +595,7 @@ fun App(
                         if (catalog) {
                             when (CatalogView.of(pages.itemCount, catalogEmpty, pages.loadState.refresh is LoadState.Loading)) {
                                 CatalogView.GRID -> PagedGrid(
-                                    pages, catalogPicture, aspect, layout, catalogGrid, onSend = onSend, onDetails = vm::openDetails,
+                                    pages, catalogPicture, aspect, layout, catalogGrid, onPress = press, onDetails = vm::openDetails,
                                 )
                                 CatalogView.NONE -> Text(stringResource(R.string.catalog_none))
                                 CatalogView.LOADING -> Text(stringResource(R.string.catalog_loading))
@@ -585,7 +607,7 @@ fun App(
                                 Spacer(Modifier.height(12.dp))
                                 Button(onClick = vm::loadLocal, modifier = Modifier.onTap(vm::loadLocal)) { Text(stringResource(R.string.retry)) }
                             }
-                            is LocalState.Loaded -> LocalGrid(st, aspect, layout, grid, onSend = onSend, onDetails = vm::openDetails)
+                            is LocalState.Loaded -> LocalGrid(st, aspect, layout, grid, onPress = press, onDetails = vm::openDetails)
                         }
                     }
                 }
@@ -610,10 +632,15 @@ fun App(
                         BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
                     } else if (viewer != null) {
                         // "Send to frame" keeps the viewer open (a toast), unless the Bluetooth panel replaces it
-                        FullscreenViewer(viewer, vm.selected, onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer)
+                        FullscreenViewer(
+                            viewer, vm.selected,
+                            start = ViewerOverlay.onOpen(vm.viewerByPress, vm.selected != null),
+                            onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer,
+                        )
                     } else if (details != null) {
-                        // "Send to frame" closes the panel and takes the card's own path (a toast, or the Bluetooth
-                        // panel); "View full screen" replaces it with the viewer, and Back from there brings it back
+                        // "Send to frame" closes the panel and takes the card's send path without the viewer (a toast,
+                        // or the Bluetooth panel); "View full screen" replaces it with the viewer, and Back from there
+                        // brings it back
                         DetailsPanel(
                             details, vm.selected,
                             onSend = { vm.closeDetails(); onSend(details) },
@@ -687,7 +714,7 @@ private fun LocalGrid(
     aspect: Float,
     layout: CatalogLayout,
     grid: LazyGridState,
-    onSend: (Picture) -> Unit,
+    onPress: (Picture) -> Unit,
     onDetails: (Picture) -> Unit,
 ) {
     if (st.items.isEmpty()) { // Share first; the folder and adb only for advanced users
@@ -707,7 +734,7 @@ private fun LocalGrid(
         horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
         verticalArrangement = Arrangement.spacedBy(layout.gap.dp),
     ) {
-        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect, onClick = { onSend(p) }, onLongClick = { onDetails(p) }) }
+        items(st.items, key = { it.id }) { p -> PictureCard(p, aspect, onClick = { onPress(p) }, onLongClick = { onDetails(p) }) }
     }
 }
 
@@ -725,7 +752,7 @@ private fun PagedGrid(
     aspect: Float,
     layout: CatalogLayout,
     grid: LazyGridState,
-    onSend: (Picture) -> Unit,
+    onPress: (Picture) -> Unit,
     onDetails: (Picture) -> Unit,
 ) {
     LazyVerticalGrid(
@@ -738,18 +765,19 @@ private fun PagedGrid(
         items(pages.itemCount) { i ->
             val row = pages[i]
             val p = remember(row, picture) { row?.let(picture) }
-            PictureCard(p, aspect, onClick = { p?.let(onSend) }, onLongClick = { p?.let(onDetails) })
+            PictureCard(p, aspect, onClick = { p?.let(onPress) }, onLongClick = { p?.let(onDetails) })
         }
     }
 }
 
 /**
  * A catalog card: the whole picture fitted inside it on black, its title and credit over a scrim at the bottom
- * (over the picture or the black around it). A press (CENTER or a tap) sends [p] at once ([onClick]), a long
- * press opens its details ([onLongClick]). With no picture ([p] `null`: its row is still loading) it is the same card, empty and
- * focusable; it stays the same node when the picture arrives, so a focused card keeps the focus. Its
- * thumbnail may be held ([Holdable]); one refused with 429 or 503 (the host asked for a pause, often after a
- * fast scroll) is asked again once the pause is over ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
+ * (over the picture or the black around it). A press (CENTER or a tap, [onClick]) sends [p] and opens the
+ * viewer on it, a long press opens its details ([onLongClick]). With no picture ([p] `null`: its row is still
+ * loading) it is the same card, empty and focusable; it stays the same node when the picture arrives, so a
+ * focused card keeps the focus. Its thumbnail may be held ([Holdable]); one refused with 429 or 503 (the host
+ * asked for a pause, often after a fast scroll) is asked again once the pause is over
+ * ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
  */
 @Composable
 fun PictureCard(p: Picture?, aspect: Float, onClick: () -> Unit, onLongClick: () -> Unit) {

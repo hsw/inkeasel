@@ -69,26 +69,27 @@ import kotlin.math.min
 
 private const val TAG = "FullscreenViewer"
 
-/** Keys that are the D-pad's centre: the one that shows the action row is not also a press on its button. */
-private val CENTER_KEYS = setOf(Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.ButtonA)
-
-/** Keys that stay the system's: they neither show the overlay nor are taken from it. */
-private val SYSTEM_KEYS = setOf(Key.Back, Key.Escape, Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Key.Home, Key.Power)
+/** Keys that stay the system's: they neither show the overlay nor are taken from it (Back closes the viewer). */
+private val SYSTEM_KEYS = setOf(Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Key.Home, Key.Power)
 
 /**
- * A picture full screen ([ViewerState]), opened by "View full screen" in the details panel: letterboxed on
- * black and fitted to the screen, no crop, in a rendition sized to the window ([ViewerRules.rendition]) and
- * decoded to the window's size; the card's thumbnail stands in while it loads. Left/Right (a swipe on a touch
- * screen) go to the previous and next picture of the same list ([onStep]; the catalog's from the database,
- * [ViewerSteps]); any other key, or a tap, shows the action row: "Send to frame" ([onSend], the card's own
- * path) with a frame chosen, otherwise a note that none is. The credit line (title, artist, source, licence)
- * shows on open, on every picture change and with the action row, and hides after [ViewerOverlay.SHOWN_MS].
- * Back closes ([onClose]). The screen is not kept on: a still picture lets the screen saver start as usual.
+ * A picture full screen ([ViewerState]), opened by a press on its card or by "View full screen" in the details
+ * panel: letterboxed on black and fitted to the screen, no crop, in a rendition sized to the window
+ * ([ViewerRules.rendition]) and decoded to the window's size; the card's thumbnail stands in while it loads.
+ * Left/Right (a swipe on a touch screen) go to the previous and next picture of the same list ([onStep]; the
+ * catalog's from the database, [ViewerSteps]); any other key, or a tap, shows the action row: "Send to frame"
+ * ([onSend], the card's own send path) with a frame chosen, otherwise a note that none is. The credit line
+ * (title, artist, source, licence) shows on open ([start]: the action row too when [ViewerOverlay.onOpen] says
+ * so), on every picture change and with the action row, and hides after [ViewerOverlay.SHOWN_MS]. A CENTER
+ * press it handles itself (the one that shows the row, or one still held when it opens) never also presses the
+ * row's button ([HeldCenter]). Back closes ([onClose]) in one press, also while the row's button has the focus.
+ * The screen is not kept on: a still picture lets the screen saver start as usual.
  */
 @Composable
 fun FullscreenViewer(
     state: ViewerState,
     selected: SelectedFrame?,
+    start: ViewerOverlay,
     onStep: (Int) -> Unit,
     onSend: (Picture) -> Unit,
     onClose: () -> Unit,
@@ -100,9 +101,9 @@ fun FullscreenViewer(
         EdgeToEdgeDialogWindow()
         ImmersiveDialogWindow()
         val p = state.picture
-        var overlay by remember { mutableStateOf(ViewerOverlay.CREDIT) }
+        var overlay by remember { mutableStateOf(start) }
         var shown by remember { mutableIntStateOf(0) } // bumped by every key, tap or step: restarts the hide timer
-        var swallowUp by remember { mutableStateOf<Key?>(null) }
+        val held = remember { HeldCenter() }
         val step = { delta: Int ->
             onStep(delta) // nothing past either end of the list
             overlay = overlay.onStep()
@@ -134,16 +135,20 @@ fun FullscreenViewer(
                             if (down) step(if (e.key == Key.DirectionRight) 1 else -1)
                             true
                         }
-                        e.key in SYSTEM_KEYS -> false
-                        e.key == swallowUp && !down -> {
-                            swallowUp = null
+                        // Back closes at once, also while the row's button has the focus (Compose would take that
+                        // Back to move the focus out of the button to the picture, so leaving took two presses)
+                        e.key == Key.Back || e.key == Key.Escape -> {
+                            if (e.type == KeyEventType.KeyUp) onClose()
                             true
                         }
+                        e.key in SYSTEM_KEYS -> false
+                        e.key in CENTER_KEYS && (down || e.type == KeyEventType.KeyUp) &&
+                            held.swallow(down, e.nativeKeyEvent.repeatCount) -> true
                         down && overlay != ViewerOverlay.ACTIONS -> {
                             overlay = overlay.onKey()
                             shown++
-                            // CENTER only shows the row; its release must not press the button it brings
-                            if (e.key in CENTER_KEYS) swallowUp = e.key
+                            // CENTER only shows the row; its repeats and release must not press the button it brings
+                            if (e.key in CENTER_KEYS) held.arm()
                             e.key in CENTER_KEYS
                         }
                         else -> {

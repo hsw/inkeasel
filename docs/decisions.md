@@ -3,6 +3,38 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — A press on a card sends and opens the viewer; a long press's release is swallowed
+The user's decision after testing the release build on the TV: a press sent the picture and showed nothing of
+it, so there was no way to see what had been sent. Now a press (CENTER or a tap) takes the same send path as
+before (`BleAsk.onSend`) and opens the full-screen viewer on that picture, stepping through the tab's list as
+from the details panel. Dialogs never stack: when the send path needs the Bluetooth panel, the panel opens
+instead of the viewer (the picture is still sent once the permission is granted). With no frame chosen the
+press sends nothing and the viewer opens with its action row up, whose note says no frame is chosen; that note
+is the press's one answer, so the press leaves out the "No frame selected" toast (Send in the details panel and
+in the viewer keep it). Bluetooth denied for good keeps its toast, which says what the viewer does not. Back
+from a viewer opened by a press returns to the grid, as there was no panel to go back to; from a viewer opened
+from the details panel it still returns to the panel. Send in the details panel still sends without opening
+the viewer. tv-material's `Card.onClick` acts on the key's release, so no part of the press reaches the viewer
+and a press sends once.
+A long press opened the details panel while CENTER was still down (tv-material's `onLongClick` acts on the first
+key repeat); the remaining repeats and the release went to the panel's focused **Send to frame**, which sent the
+picture and closed the panel. The details panel and the viewer now open with a `HeldCenter` armed: the repeats
+and the release of a CENTER press already handled are swallowed, until that release or a fresh press, which
+goes through. The viewer uses the same rule for its own CENTER that shows the action row (in place of its
+swallowed key-up). Reproduced on the TV emulator with a virtual remote holding CENTER for 2 s: the panel closed
+through the send path before the change and stays open after it.
+Found while checking Back: with the action row's button focused, Back in the viewer only moved the focus to the
+picture (Compose spends an unhandled Back on moving the focus out of a focused child), so leaving took two
+presses, against the earlier entry. The viewer now takes Back (and Escape) itself and closes on its release.
+Supersedes the plain press of "A long press on a card opens its details; a press still sends" and "A
+full-screen viewer, opened from the details panel" (its rejected "CENTER on a card opening the viewer" was the
+viewer instead of the send; this is both), and the latter's Back to the panel for a viewer opened by a press.
+Rejected: a press that opens the viewer only (one more press per upload, the reason the press sent at once),
+keeping the press as send only (the user's test), the toast and the row together without a frame (two messages
+for one press), the viewer behind the Bluetooth panel (two dialogs), a delay before the panel's first button
+takes the focus (a held key repeats and is released whenever the user lets go), a flag of its own in each
+dialog (one rule, tested once, for the panel and the viewer).
+
 ## 2026-11-09 — Catalog cards show the whole picture
 A card showed its thumbnail cropped to the card's shape (`ContentScale.Crop`), so a portrait painting kept
 only its middle. Now the picture is fitted whole into the card (`ContentScale.Fit`) on black, in the Catalog
@@ -374,7 +406,8 @@ the queries).
 ## 2026-11-09 — A full-screen viewer, opened from the details panel
 **View full screen** (second in the details panel's action row; **Send to frame** keeps the first focus)
 opens the picture letterboxed on black, fitted, never cropped, in a dialog that hides the system bars. A
-plain press on a card still sends at once. The viewer replaces the details panel (dialogs never stack), and
+plain press on a card still sends at once (and opens this viewer too since "A press on a card sends and opens
+the viewer", above). The viewer replaces the details panel (dialogs never stack), and
 Back brings that panel back for the picture then shown, not the grid: Back returns one step, and after
 Left/Right the details of what is on screen are the useful ones. Left/Right go through the list of the tab it
 was opened from and stop at its ends (no wrap). Any other key shows the action row with the credit line; its
@@ -402,7 +435,8 @@ width (refused), the display mode's size instead of the window's (decodes pixels
 pinch-zoom and a timed slideshow (left for later).
 
 ## 2026-11-08 — A long press on a card opens its details; a press still sends
-A plain press (CENTER or a tap) keeps the one-press send. A long press (tv-material `Card.onLongClick`, which
+A plain press (CENTER or a tap) keeps the one-press send (and opens the viewer since "A press on a card sends
+and opens the viewer", above). A long press (tv-material `Card.onLongClick`, which
 takes CENTER held; a long touch through `onTap(action, onLongPress)`) opens a full-screen details panel laid
 out after Google's TV "content details" template: the title, the fields as label and value lines, **Send to
 frame** first and focused, and the picture large on the right above a preview of it on the chosen frame.
