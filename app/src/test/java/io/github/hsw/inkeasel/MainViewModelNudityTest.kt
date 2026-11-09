@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel
 
 import android.app.Application
+import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.UserManager
@@ -13,7 +14,11 @@ import io.github.hsw.inkeasel.catalog.CatalogStore
 import io.github.hsw.inkeasel.catalog.NudityFilter
 import io.github.hsw.inkeasel.catalog.NudityLevel
 import io.github.hsw.inkeasel.catalog.PictureEntity
+import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.MainCoroutineDispatcher
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -51,6 +56,16 @@ class MainViewModelNudityTest {
         store.applyFilter(NudityFilter.DEFAULT)
         vm = ViewModelProvider(owner, ViewModelProvider.AndroidViewModelFactory(app))[MainViewModel::class.java]
         vm.readNudityLock() // the first start
+        // a fast read could return before the gate suspends and run the open at once: an open's read here
+        // always waits for the main looper, so whatever a test does right after an open happens while it waits
+        // (a direct runBlocking { allowed() } on the main thread reads at once: the looper is blocked)
+        val read = vm.storedNudity
+        vm.storedNudity = { id ->
+            if (currentCoroutineContext()[ContinuationInterceptor] is MainCoroutineDispatcher) {
+                suspendCancellableCoroutine<Unit> { c -> Handler(Looper.getMainLooper()).post { c.resume(Unit) {} } }
+            }
+            read(id)
+        }
         idle()
     }
 

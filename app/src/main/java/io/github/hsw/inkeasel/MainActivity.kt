@@ -206,7 +206,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         do {
             val writes = store.writes.value
             level = try {
-                store.db.catalog().nudity(p.id)
+                storedNudity(p.id)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -216,6 +216,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } while (store.writes.value != writes)
         return passes(if (level == null) p else p.copy(nudity = level))
     }
+
+    /**
+     * The read behind [allowed]. A fast read may return before the gate suspends, so the action runs at once;
+     * tests that act while an open waits replace it with one that always waits for the main looper.
+     */
+    internal var storedNudity: suspend (String) -> Int? = { store.db.catalog().nudity(it) }
 
     /**
      * The open or send waiting for [allowed] ([whenAllowed]), one at a time; dropped ([dropPending]) by a newer
