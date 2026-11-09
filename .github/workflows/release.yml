@@ -94,6 +94,10 @@ jobs:
         run: |
           apk="$RUNNER_TEMP/inkeasel-$TAG.apk"
           mv "$RUNNER_TEMP/apk/app-release.apk" "$apk"
+          # the same APK under a fixed name: releases/latest/download/inkeasel.apk is the one address the
+          # README and the Downloader code point at, whatever the version
+          fixed="$RUNNER_TEMP/inkeasel.apk"
+          cp "$apk" "$fixed"
           # an APK release is always "latest": releases/latest is the app download, while the catalog files
           # live in the separate `catalog` release (never touched here, a v* tag only)
-          gh release create "$TAG" "$apk" --repo "$GITHUB_REPOSITORY" --verify-tag --latest --title "InkEasel $TAG" --generate-notes
+          gh release create "$TAG" "$apk" "$fixed" --repo "$GITHUB_REPOSITORY" --verify-tag --latest --title "InkEasel $TAG" --generate-notes
