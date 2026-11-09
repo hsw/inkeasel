@@ -62,14 +62,12 @@ class LiveSourceRowsTest {
         assertEquals(
             PictureEntity(
                 id = "cma:1", source = "cma", rank = -10, museumRef = "1915.534", sourceRank = 0, width = 1200,
-                height = 800, licence = "CC0", title = "Fields", artist = "A Painter${CatalogConverters.SEPARATOR}Another",
+                height = 800, licence = "CC0", title = "Fields", artists = listOf("A Painter", "Another"),
                 date = "c. 1880", collection = "Cleveland Museum of Art", pageUrl = "https://example.org/1",
                 thumbUrl = "https://example.org/1_web.jpg", fullUrl = "https://example.org/1_print.jpg",
             ),
             out[0],
         )
-        // the list query reads the artists back as a list
-        assertEquals(listOf("A Painter", "Another"), CatalogConverters().toTexts(out[0].artist))
         assertEquals(PictureEntity(id = "cma:2", source = "cma", rank = -11, sourceRank = 1), out[1])
         assertFalse(out.any { it.hidden || it.wikidataId != null || it.attr })
     }

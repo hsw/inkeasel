@@ -15,12 +15,15 @@ import java.security.MessageDigest
  *   so the URLs are the ones the Commons API hands out and share its caches.
  */
 object CommonsUrls {
-    const val HOST = "upload.wikimedia.org"
+    private const val HOST = "upload.wikimedia.org"
 
     private const val BASE = "https://$HOST/wikipedia/commons"
 
     /** Wikimedia's standard thumbnail widths (mediawiki.org "Common thumbnail sizes"). */
     val WIDTHS = listOf(20, 40, 60, 120, 250, 330, 500, 960, 1280, 1920, 3840)
+
+    /** The width of a file's rendition for the frame ([io.github.hsw.inkeasel.Picture.fullUrl]), a standard one. */
+    const val FRAME_WIDTH = 1920
 
     /** Commons' `abbrvThreshold`: a longer name is `thumbnail.<ext>` in the thumbnail's own name. */
     const val LONG_NAME_BYTES = 160

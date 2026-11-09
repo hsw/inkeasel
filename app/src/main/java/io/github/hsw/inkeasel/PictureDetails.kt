@@ -1,5 +1,7 @@
 package io.github.hsw.inkeasel
 
+import io.github.hsw.inkeasel.catalog.CatalogRank
+
 /** One line of the details panel: a [label] and its [value], a `String` from the source or a [Txt]. */
 data class DetailRow(val label: Txt, val value: Any)
 
@@ -28,16 +30,17 @@ object PictureDetails {
 
     /** The name of a [Picture.source]; `null` for one this build does not know. */
     fun sourceName(source: String): Txt? = when (source) {
-        "wd" -> Txt(R.string.details_source_wikidata)
-        "cma" -> Txt(R.string.details_source_cma)
-        "commons" -> Txt(R.string.details_source_commons)
-        "local" -> Txt(R.string.tab_local)
+        CatalogRank.WIKIDATA -> Txt(R.string.details_source_wikidata)
+        ClevelandPaintings.id -> Txt(R.string.details_source_cma)
+        CommonsLandscapes.id -> Txt(R.string.details_source_commons)
+        LocalImages.ID -> Txt(R.string.tab_local)
         else -> null
     }
 
     /**
      * The panel's lines for [p], in this order, each only when known: artist, date, collection, source,
-     * licence, licence text link, image credit (only where the licence asks for one), original size, web page. The title is the panel's heading, not a line.
+     * licence, licence text link, image credit (only where the licence asks for one), original size, web
+     * page. The title is the panel's heading, not a line.
      */
     fun rows(p: Picture): List<DetailRow> = buildList {
         fun add(label: Int, value: Any?) {
@@ -60,6 +63,6 @@ object PictureDetails {
      */
     fun previewFailure(e: Throwable): Txt = when (e) {
         is TxtException -> Txt(R.string.details_preview_failed, e.txt)
-        else -> CatalogError.of(e).takeIf { it.id != R.string.catalog_failed } ?: e.userText(R.string.details_preview_failed)
+        else -> CatalogError.of(e) ?: e.userText(R.string.details_preview_failed)
     }
 }

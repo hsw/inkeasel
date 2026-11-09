@@ -129,4 +129,12 @@ class CatalogRankTest {
     fun commonsFileKey() {
         assertEquals("Mona Lisa.jpg", CatalogRank.fileKey(" Mona_Lisa.jpg "))
     }
+
+    @Test
+    fun theFreeRankIsBelowEveryRankInUseAndBelowZero() {
+        assertEquals(-1L, CatalogRank.freeBelow(null)) // an empty table
+        assertEquals(-1L, CatalogRank.freeBelow(0))
+        assertEquals(-1L, CatalogRank.freeBelow(40)) // the release's ranks start at 0
+        assertEquals(-8L, CatalogRank.freeBelow(-7))
+    }
 }

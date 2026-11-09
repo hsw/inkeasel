@@ -50,11 +50,11 @@ class CatalogSync(
 
     /**
      * Checks the files the [chain] has due, fetching them outside the lock, then imports and records them
-     * through [write] (the store's write lock; `null`: in the caller's own context).
+     * through [writer] (the store's write lock).
      */
     suspend fun run(
         chain: List<String>,
-        write: (suspend (suspend () -> Unit) -> Unit)? = null,
+        writer: CatalogWriter = CatalogWriter.DIRECT,
     ): SyncReport = withContext(Dispatchers.IO) {
         clearTemp()
         val checks = CatalogSyncPlan.due(chain, dao.files().associateBy { it.name }, now())
@@ -62,10 +62,7 @@ class CatalogSync(
         val outcomes = ArrayList<SyncOutcome>(checks.size)
         try {
             for (check in checks) outcomes += fetch(check)
-            var report = SyncReport(outcomes)
-            val block: suspend () -> Unit = { report = apply(outcomes, chain) }
-            if (write != null) write(block) else block()
-            report
+            writer.write { apply(outcomes, chain) }
         } finally {
             outcomes.forEach { if (it is SyncOutcome.Downloaded) it.file.delete() }
         }
@@ -176,6 +173,9 @@ class CatalogSync(
     }
 
     companion object {
+        /** Its log tag. */
+        const val TAG = "CatalogSync"
+
         /** The release's address; never `releases/latest`, which is the newest APK release. */
         const val RELEASE = "https://github.com/hsw/inkeasel/releases/download/catalog/"
 

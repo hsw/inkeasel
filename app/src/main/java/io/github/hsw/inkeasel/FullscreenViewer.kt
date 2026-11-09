@@ -81,9 +81,9 @@ private val SYSTEM_KEYS = setOf(Key.Back, Key.Escape, Key.VolumeUp, Key.VolumeDo
  * decoded to the window's size; the card's thumbnail stands in while it loads. Left/Right (a swipe on a touch
  * screen) go to the previous and next picture of the same list ([onStep]; the catalog's from the database,
  * [ViewerSteps]); any other key, or a tap, shows the action row: "Send to frame" ([onSend], the card's own
- * path) with a frame chosen, otherwise a note that none is. The credit line (title, artist, source, licence) shows on open, on every picture change and with the
- * action row, and hides after [ViewerOverlay.SHOWN_MS]. Back closes ([onClose]). The screen is not kept on:
- * a still picture lets the screen saver start as usual.
+ * path) with a frame chosen, otherwise a note that none is. The credit line (title, artist, source, licence)
+ * shows on open, on every picture change and with the action row, and hides after [ViewerOverlay.SHOWN_MS].
+ * Back closes ([onClose]). The screen is not kept on: a still picture lets the screen saver start as usual.
  */
 @Composable
 fun FullscreenViewer(

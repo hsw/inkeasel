@@ -3,7 +3,6 @@ package io.github.hsw.inkeasel.catalog
 import android.content.Context
 import androidx.paging.PagingSource
 import androidx.room.InvalidationTracker
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
@@ -48,11 +47,7 @@ class CatalogImportTest {
     fun open() {
         queries = Executors.newSingleThreadExecutor()
         transactions = Executors.newSingleThreadExecutor()
-        db = CatalogDb.configure(
-            Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)
-                .setQueryExecutor(queries)
-                .setTransactionExecutor(transactions),
-        ).build()
+        db = inMemoryCatalogDb(context) { setQueryExecutor(queries).setTransactionExecutor(transactions) }
         dao = db.catalog()
         db.invalidationTracker.addObserver(
             object : InvalidationTracker.Observer(arrayOf("picture", "label", "picture_entity")) {

@@ -61,7 +61,8 @@ Core row:   {"id", "fame", "img" (Commons file name), "w", "h" (image size in pi
             museum's accession number, e.g. "1945.24"; left out when the painting has none)}
             (lists hold Wikidata ids).
 Label row:  {"id", "l" (label), "a" (aliases), "w" (Wikipedia article title in that language)}; keys
-            without a value are left out. In `labels-all` each row also has "lang". The language `mul` holds Wikidata's language-independent labels.
+            without a value are left out. In `labels-all` each row also has "lang". The language `mul`
+            holds Wikidata's language-independent labels.
 Paintings whose file is missing on Commons are left out.
 
 Wikimedia etiquette: a descriptive User-Agent naming the project, sequential requests with pauses

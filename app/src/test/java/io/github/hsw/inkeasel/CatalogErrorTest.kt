@@ -3,6 +3,7 @@ package io.github.hsw.inkeasel
 import org.json.JSONException
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.IOException
@@ -59,14 +60,9 @@ class CatalogErrorTest {
     }
 
     @Test
-    fun anythingElse_keepsItsMessage() {
-        assertEquals(Txt(R.string.catalog_failed, "Chain validation failed"), CatalogError.of(SSLHandshakeException("Chain validation failed")))
-        assertEquals(Txt(R.string.catalog_failed, "boom"), CatalogError.of(IllegalStateException("boom")))
-    }
-
-    @Test
-    fun missingOrBlankMessage_className() {
-        assertEquals(Txt(R.string.catalog_failed, "IllegalStateException"), CatalogError.of(IllegalStateException()))
-        assertEquals(Txt(R.string.catalog_failed, "IOException"), CatalogError.of(IOException(" ")))
+    fun anythingElse_noWords() {
+        assertNull(CatalogError.of(SSLHandshakeException("Chain validation failed")))
+        assertNull(CatalogError.of(IllegalStateException("boom")))
+        assertNull(CatalogError.of(IOException(" ")))
     }
 }

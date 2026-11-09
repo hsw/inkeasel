@@ -73,7 +73,7 @@ data class Picture(
 data class Listing<T>(val items: List<T>, val complete: Boolean = true)
 
 /**
- * A tab that loads its whole list ([loadCatalog]): "My pictures" ([LocalImages]). The live sources are rows of
+ * A tab that loads its whole list ([readLocal]): "My pictures" ([LocalImages]). The live sources are rows of
  * the Catalog ([liveSources]).
  */
 interface Source {
@@ -256,10 +256,13 @@ object CommonsLandscapes : LiveSource {
  * Any JPEG/PNG/WebP/BMP/GIF/HEIC dropped there shows up, newest first.
  */
 class LocalImages(private val app: Application) : Source {
-    override val id = "local"
+    override val id = ID
     override val name = Txt(R.string.tab_local)
 
     companion object {
+        /** The tab's id and its pictures' [Picture.source]. */
+        const val ID = "local"
+
         private const val DIR = "pictures"
 
         /** Extensions of the pictures the folder lists (and `UploadService` resolves `photo` names with). */
@@ -280,7 +283,7 @@ class LocalImages(private val app: Application) : Source {
             ?.map { f ->
                 val size = pixelSize(f)
                 Picture(
-                    id = "local:${f.name}",
+                    id = "$ID:${f.name}",
                     title = f.nameWithoutExtension,
                     credit = "",
                     thumbUrl = f.absolutePath,

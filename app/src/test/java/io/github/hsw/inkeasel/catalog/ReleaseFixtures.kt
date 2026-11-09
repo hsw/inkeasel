@@ -1,5 +1,8 @@
 package io.github.hsw.inkeasel.catalog
 
+import android.content.Context
+import androidx.room.Room
+import androidx.room.RoomDatabase
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -12,6 +15,10 @@ import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.GZIPOutputStream
+
+/** An in-memory catalog database with the app's builder settings ([CatalogDb.configure]) and a test's own [setup]. */
+fun inMemoryCatalogDb(context: Context, setup: RoomDatabase.Builder<CatalogDb>.() -> Unit = {}): CatalogDb =
+    CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java).apply(setup)).build()
 
 /** Release rows and files for the sync and store tests. */
 object ReleaseFixtures {

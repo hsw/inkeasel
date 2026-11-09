@@ -3,7 +3,7 @@
     <string name="app_name" translatable="false">InkEasel</string>
     <!-- joins the parts of one line (a frame's properties); quoted to keep the spaces -->
     <string name="list_separator" translatable="false">" · "</string>
-    <!-- joins names in a list (a painting's artists); quoted to keep the space -->
+    <!-- joins names in a list (a painting's artists) and the card's credit (first artist, date); quoted to keep the space -->
     <string name="list_names_separator">", "</string>
 
     <!-- catalog -->
@@ -14,7 +14,6 @@
     <string name="catalog_loading">Loading the catalog…</string>
     <!-- the catalog database has no picture (the built-in set failed to load); the sync may still fill it -->
     <string name="catalog_none">No pictures in the catalog yet. It downloads when the device is online.</string>
-    <string name="catalog_failed">Could not load the catalog: %1$s</string>
     <string name="catalog_err_offline">No connection to the source. Check the network and try again.</string>
     <string name="catalog_err_timeout">The source is not responding. Try again later.</string>
     <string name="catalog_err_http_server">The source is unavailable (HTTP %1$d). Try again later.</string>

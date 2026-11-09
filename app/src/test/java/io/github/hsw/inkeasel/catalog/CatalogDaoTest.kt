@@ -5,7 +5,6 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.testing.asSnapshot
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -27,7 +26,7 @@ class CatalogDaoTest {
 
     @Before
     fun open() {
-        db = CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)).build()
+        db = inMemoryCatalogDb(context)
         dao = db.catalog()
     }
 
@@ -43,7 +42,7 @@ class CatalogDaoTest {
 
     private fun live(source: String, n: Int, file: String? = null, ref: String? = null) = PictureEntity(
         id = "$source:$n", source = source, rank = -100_000L - n - (if (source == "cma") 0 else 50_000),
-        commonsFile = file, museumRef = ref, sourceRank = n, title = "$source title $n", artist = "$source artist $n",
+        commonsFile = file, museumRef = ref, sourceRank = n, title = "$source title $n", artists = listOf("$source artist $n"),
         collection = "$source museum", thumbUrl = "https://example.org/$n.jpg",
     )
 

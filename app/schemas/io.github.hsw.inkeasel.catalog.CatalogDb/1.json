@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "a79843552dd9db000a4d7f32f9aeba13",
+    "identityHash": "2c2931ed7659761a205cde665a19902b",
     "entities": [
       {
         "tableName": "picture",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `rank` INTEGER NOT NULL, `hidden` INTEGER NOT NULL, `wikidataId` TEXT, `commonsFile` TEXT, `museumRef` TEXT, `fame` INTEGER, `sourceRank` INTEGER, `width` INTEGER, `height` INTEGER, `licence` TEXT, `licenceUrl` TEXT, `attr` INTEGER NOT NULL, `attribution` TEXT, `inception` INTEGER, `title` TEXT, `artist` TEXT, `date` TEXT, `collection` TEXT, `pageUrl` TEXT, `thumbUrl` TEXT, `fullUrl` TEXT, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `source` TEXT NOT NULL, `rank` INTEGER NOT NULL, `hidden` INTEGER NOT NULL, `wikidataId` TEXT, `commonsFile` TEXT, `museumRef` TEXT, `fame` INTEGER, `sourceRank` INTEGER, `width` INTEGER, `height` INTEGER, `licence` TEXT, `licenceUrl` TEXT, `attr` INTEGER NOT NULL, `attribution` TEXT, `inception` INTEGER, `title` TEXT, `artists` TEXT, `date` TEXT, `collection` TEXT, `pageUrl` TEXT, `thumbUrl` TEXT, `fullUrl` TEXT, PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -111,8 +111,8 @@
             "notNull": false
           },
           {
-            "fieldPath": "artist",
-            "columnName": "artist",
+            "fieldPath": "artists",
+            "columnName": "artists",
             "affinity": "TEXT",
             "notNull": false
           },
@@ -504,7 +504,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a79843552dd9db000a4d7f32f9aeba13')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2c2931ed7659761a205cde665a19902b')"
     ]
   }
 }

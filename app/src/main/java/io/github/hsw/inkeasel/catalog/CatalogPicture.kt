@@ -1,6 +1,5 @@
 package io.github.hsw.inkeasel.catalog
 
-import io.github.hsw.inkeasel.CommonsMapping
 import io.github.hsw.inkeasel.Picture
 
 /**
@@ -27,7 +26,7 @@ object CatalogPicture {
      * [row] as a [Picture]. [separator] joins names (the artists; the card's artist and date) and comes from
      * the edge, as a string resource. A Wikidata row: the title, artists and first collection from the labels
      * (the file name when there is no title label), the inception year as the date, its Wikidata page, the
-     * card's thumbnail [cardWidth] px and the frame's 1920 px rendition built from the Commons file
+     * card's thumbnail [cardWidth] px and the frame's rendition ([CommonsUrls.FRAME_WIDTH] px) built from the Commons file
      * ([CommonsUrls]), the licence's URL from the release or else [Licences.deedUrl], and the credit as
      * [Picture.attribution] only where the licence asks for it. A live row keeps the texts and URLs its source
      * gave, the same rules filling only what it lacks.
@@ -41,7 +40,7 @@ object CatalogPicture {
             title = row.shownTitle,
             credit = listOfNotNull(artists.firstOrNull(), date).joinToString(separator),
             thumbUrl = row.thumbUrl ?: file?.let { CommonsUrls.url(it, cardWidth, row.width) }.orEmpty(),
-            fullUrl = row.fullUrl ?: file?.let { CommonsUrls.url(it, CommonsMapping.FULL_WIDTH, row.width) }.orEmpty(),
+            fullUrl = row.fullUrl ?: file?.let { CommonsUrls.url(it, CommonsUrls.FRAME_WIDTH, row.width) }.orEmpty(),
             artist = artists.joinToString(separator).ifEmpty { null },
             date = date,
             collection = row.collection,

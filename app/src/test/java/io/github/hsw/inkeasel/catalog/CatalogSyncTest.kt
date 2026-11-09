@@ -1,7 +1,6 @@
 package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
 import io.github.hsw.inkeasel.HttpStatusException
@@ -47,7 +46,7 @@ class CatalogSyncTest {
 
     @Before
     fun open() {
-        db = CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)).build()
+        db = inMemoryCatalogDb(context)
         release = FakeRelease()
         release.serve(CORE, coreBytes)
         release.serve("labels-ru.jsonl.gz", ruBytes)
@@ -128,11 +127,16 @@ class CatalogSyncTest {
     fun theDownloadsRunOutsideTheWriteLockAndTheImportUnderIt() = runTest {
         var askedBeforeTheLock = -1
         var writes = 0
-        sync().run(ruChain) { block ->
-            askedBeforeTheLock = release.requests.size
-            writes++
-            block()
-        }
+        sync().run(
+            ruChain,
+            object : CatalogWriter {
+                override suspend fun <T> write(block: suspend () -> T): T {
+                    askedBeforeTheLock = release.requests.size
+                    writes++
+                    return block()
+                }
+            },
+        )
         // every file was fetched before the lock was taken, once, for the import and the state
         assertEquals(4, askedBeforeTheLock)
         assertEquals(1, writes)

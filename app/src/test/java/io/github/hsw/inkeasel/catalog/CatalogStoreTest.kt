@@ -3,7 +3,6 @@ package io.github.hsw.inkeasel.catalog
 import android.content.Context
 import android.content.res.Configuration
 import androidx.paging.testing.asSnapshot
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
 import io.github.hsw.inkeasel.Listing
@@ -56,13 +55,27 @@ class CatalogStoreTest {
         labels = { lang -> opened += lang; ByteArrayInputStream(gzip(starterLabels.getValue(lang))) },
     )
 
+    private val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
+
+    /** A starter set whose `core` cannot be read: the starter import fails. */
+    private val broken = StarterSet({ ByteArrayInputStream("not json\n".toByteArray()) }, starter.languages, starter.labels)
+
+    /** A store over this test's database and release, with [starter] and [log]. */
+    private fun newStore(
+        starter: StarterSet = this.starter,
+        log: (String, Throwable?) -> Unit = this.log,
+        live: LiveRefresh? = null,
+        legacy: File? = null,
+    ) = CatalogStore(
+        db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log, live = live, legacy = legacy,
+    )
+
     @Before
     fun open() {
-        db = CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)).build()
+        db = inMemoryCatalogDb(context)
         release = FakeRelease()
         temp = File(context.cacheDir, "store-test").apply { deleteRecursively() }
-        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
-        store = CatalogStore(db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        store = newStore()
     }
 
     @After
@@ -73,7 +86,8 @@ class CatalogStoreTest {
         temp.deleteRecursively()
     }
 
-    private fun awaitPasses(n: Int) = runBlocking { withTimeout(20_000) { store.passes.first { it >= n } } }
+    private fun awaitPasses(n: Int, s: CatalogStore = store) =
+        runBlocking { withTimeout(20_000) { s.passes.first { it >= n } } }
 
     private fun query(sql: String): List<String> = db.openHelper.readableDatabase.query(sql).use { c ->
         buildList {
@@ -232,16 +246,14 @@ class CatalogStoreTest {
     @Test
     fun aFailedStarterImportWithNothingStoredIsEmpty() {
         release.server.shutdown()
-        val broken = StarterSet({ ByteArrayInputStream("not json\n".toByteArray()) }, starter.languages, starter.labels)
-        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
-        val store = CatalogStore(db, broken, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        val s = newStore(broken)
         try {
-            store.start(ruChain)
-            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
-            assertTrue(store.empty.value)
+            s.start(ruChain)
+            awaitPasses(1, s)
+            assertTrue(s.empty.value)
             assertTrue(logged.any { it.startsWith("starter import failed") })
         } finally {
-            store.close()
+            s.close()
         }
     }
 
@@ -249,20 +261,18 @@ class CatalogStoreTest {
     fun aFailedStarterImportIsNotEmptyOnceTheReleaseIsIn() {
         release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40), core(3))))
         release.serve("labels-ru.jsonl.gz", gzip(listOf(label(3, "Три"))))
-        val broken = StarterSet({ ByteArrayInputStream("not json\n".toByteArray()) }, starter.languages, starter.labels)
-        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
-        val store = CatalogStore(db, broken, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        val s = newStore(broken)
         try {
-            store.start(ruChain)
-            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            s.start(ruChain)
+            awaitPasses(1, s)
             assertTrue(logged.any { it.startsWith("starter import failed") })
             // the pass's release import filled the database: the list shows it, and "none yet" goes
-            assertFalse(store.empty.value)
-            val rows = runBlocking { store.pages.asSnapshot() }
+            assertFalse(s.empty.value)
+            val rows = runBlocking { s.pages.asSnapshot() }
             assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3"), rows.map { it.id })
             assertEquals("Три", rows.last().title)
         } finally {
-            store.close()
+            s.close()
         }
     }
 
@@ -279,11 +289,10 @@ class CatalogStoreTest {
 
         // the next process: a new store over the same database
         val later = CopyOnWriteArrayList<String>()
-        val log: (String, Throwable?) -> Unit = { msg, e -> later += if (e == null) msg else "$msg: $e" }
-        val next = CatalogStore(db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        val next = newStore(log = { msg, e -> later += if (e == null) msg else "$msg: $e" })
         try {
             next.start(ruChain)
-            runBlocking { withTimeout(20_000) { next.passes.first { it >= 1 } } }
+            awaitPasses(1, next)
 
             assertFalse(later.any { it.startsWith("starter") })
             assertTrue(opened.isEmpty()) // no starter file read
@@ -305,22 +314,21 @@ class CatalogStoreTest {
             languages = { emptySet() },
             labels = { error("no labels") },
         )
-        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
-        val store = CatalogStore(db, big, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        val s = newStore(big)
         try {
-            store.start(ruChain)
-            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            s.start(ruChain)
+            awaitPasses(1, s)
 
-            val end = runBlocking { store.pages.asSnapshot { scrollTo(n - 1) } }
+            val end = runBlocking { s.pages.asSnapshot { scrollTo(n - 1) } }
             assertTrue("${end.size} rows loaded", end.size <= CatalogStore.MAX_ROWS)
             assertEquals("wd:Q$n", end.last().id) // the window holds where the list was read
             assertFalse(end.any { it.id == "wd:Q1" }) // and the first pages were dropped
 
             // read from the top again, the list starts at its first row
-            val start = runBlocking { store.pages.asSnapshot() }
+            val start = runBlocking { s.pages.asSnapshot() }
             assertEquals("wd:Q1", start.first().id)
         } finally {
-            store.close()
+            s.close()
         }
     }
 
@@ -353,26 +361,22 @@ class CatalogStoreTest {
             override val id = "commons"
             override suspend fun fetch(): Listing<LiveRow> = throw UnknownHostException("commons")
         }
-        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
-        val store = CatalogStore(
-            db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log,
-            live = LiveRefresh(db, listOf(cma, down), log = log), legacy = legacy,
-        )
+        val s = newStore(live = LiveRefresh(db, listOf(cma, down), log = log), legacy = legacy)
         try {
-            store.start(ruChain)
-            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            s.start(ruChain)
+            awaitPasses(1, s)
             assertFalse(legacy.exists())
             assertTrue(logged.any { it == "old list cache deleted" })
             // offline for the release, the starter set and the live row are listed; the source that is down is logged
             assertEquals(listOf("wd:Q1", "wd:Q2", "cma:1"), query("SELECT id FROM picture WHERE hidden = 0 ORDER BY rank"))
             assertTrue(logged.any { it.startsWith("commons: refresh failed") })
 
-            store.start(ruChain)
-            runBlocking { withTimeout(20_000) { store.passes.first { it >= 2 } } }
+            s.start(ruChain)
+            awaitPasses(2, s)
             assertEquals(1, asked) // refreshed a moment ago: not asked again
             assertEquals(1, logged.count { it == "old list cache deleted" })
         } finally {
-            store.close()
+            s.close()
             legacy.deleteRecursively()
         }
     }

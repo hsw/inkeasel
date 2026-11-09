@@ -1,7 +1,6 @@
 package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.ViewerState
 import kotlinx.coroutines.test.runTest
@@ -23,7 +22,7 @@ class CatalogStepsTest {
 
     @Before
     fun open() {
-        db = CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)).build()
+        db = inMemoryCatalogDb(context)
         dao = db.catalog()
     }
 

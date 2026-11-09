@@ -114,7 +114,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The catalog database has no picture once its starter step has run ([CatalogStore.empty]). */
     val catalogEmpty: StateFlow<Boolean> = store.empty
 
-    /** My pictures ([LOCAL_TAB]): a list loaded whole ([loadCatalog]), re-scanned when its folder changes. */
+    /** My pictures ([LOCAL_TAB]): a list loaded whole ([readLocal]), re-scanned when its folder changes. */
     private val local = LocalImages(app)
 
     /** The tab names: the Catalog ([CATALOG_TAB]), then My pictures ([LOCAL_TAB]). */
@@ -123,7 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     /** What My pictures shows; `null` until its first load. */
-    var localState by mutableStateOf<CatalogState?>(null)
+    var localState by mutableStateOf<LocalState?>(null)
         private set
 
     private var localLoad: Job? = null
@@ -209,13 +209,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (tab == CATALOG_TAB) {
             val steps = CatalogSteps(store.db.catalog(), store.chain.value, catalogPicture)
             nav.open(ViewerState.alone(p), steps) {
-                steps.open(p.id)?.also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }
+                steps.open(p.id)?.also(::logViewer)
             }
         } else {
-            val steps = ListSteps((localState as? CatalogState.Loaded)?.items.orEmpty())
-            nav.open(steps.open(p).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }, steps)
+            val steps = ListSteps((localState as? LocalState.Loaded)?.items.orEmpty())
+            nav.open(steps.open(p).also(::logViewer), steps)
         }
     }
+
+    private fun logViewer(s: ViewerState) = Log.i(TAG, "viewer on ${s.picture.id} (${s.index + 1} of ${s.count})")
 
     /** Left/Right in the viewer ([ViewerNav.step]). */
     fun stepViewer(delta: Int) = nav.step(delta)
@@ -304,12 +306,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localReload?.cancel()
         localReload = viewModelScope.launch {
             delay(300)
-            localState = loadCatalog(local) { Log.w(TAG, it) }
+            localState = readLocal(local) { Log.w(TAG, it) }
         }
     }
 
     override fun onCleared() {
         localWatcher.stopWatching()
+    }
+
+    /** Load My pictures (again), unless it is loading already ([readLocal]). */
+    fun loadLocal() {
+        if (localLoad?.isActive == true) return
+        localState = LocalState.Loading
+        localLoad = viewModelScope.launch {
+            localState = readLocal(local) { Log.w(TAG, it) }
+        }
     }
 
     companion object {
@@ -318,15 +329,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
         /** My pictures. */
         const val LOCAL_TAB = 1
-    }
-
-    /** Load My pictures (again), unless it is loading already ([loadCatalog]). */
-    fun loadLocal() {
-        if (localLoad?.isActive == true) return
-        localState = CatalogState.Loading
-        localLoad = viewModelScope.launch {
-            localState = loadCatalog(local) { Log.w(TAG, it) }
-        }
     }
 }
 
@@ -551,12 +553,12 @@ fun App(
                     Spacer(Modifier.height(16.dp))
                     LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
                     val catalog = vm.tab == MainViewModel.CATALOG_TAB
-                    val st = vm.localState ?: CatalogState.Loading
+                    val st = vm.localState ?: LocalState.Loading
                     // Back from the content goes to the tabs first ([CatalogBack]); the settings dialog has its own
                     val shownGrid = if (catalog) catalogGrid else grid
                     val gridItems = when {
                         catalog -> pages.itemCount
-                        st is CatalogState.Loaded -> st.items.size
+                        st is LocalState.Loaded -> st.items.size
                         else -> 0
                     }
                     val back = CatalogBack.of(contentFocused, gridItems, shownGrid.canScrollBackward)
@@ -574,13 +576,13 @@ fun App(
                                 CatalogView.LOADING -> Text(stringResource(R.string.catalog_loading))
                             }
                         } else when (st) {
-                            CatalogState.Loading -> Text(stringResource(R.string.local_loading))
-                            is CatalogState.Failed -> Column {
+                            LocalState.Loading -> Text(stringResource(R.string.local_loading))
+                            is LocalState.Failed -> Column {
                                 Text(st.reason.text())
                                 Spacer(Modifier.height(12.dp))
                                 Button(onClick = vm::loadLocal, modifier = Modifier.onTap(vm::loadLocal)) { Text(stringResource(R.string.retry)) }
                             }
-                            is CatalogState.Loaded -> CatalogGrid(st, aspect, layout, grid, onSend = onSend, onDetails = vm::openDetails)
+                            is LocalState.Loaded -> LocalGrid(st, aspect, layout, grid, onSend = onSend, onDetails = vm::openDetails)
                         }
                     }
                 }
@@ -677,8 +679,8 @@ private fun Header(vm: MainViewModel, split: Boolean, tabFocus: FocusRequester) 
 
 /** My pictures: the whole list in a grid, or, while the folder is empty, how to add pictures. */
 @Composable
-private fun CatalogGrid(
-    st: CatalogState.Loaded,
+private fun LocalGrid(
+    st: LocalState.Loaded,
     aspect: Float,
     layout: CatalogLayout,
     grid: LazyGridState,

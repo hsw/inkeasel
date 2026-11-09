@@ -97,11 +97,10 @@ object LiveSourceRows {
      * The [rows] of [source] as stored rows, in the list's order ([PictureEntity.sourceRank]), the first of a
      * repeated id winning; a row whose id lacks the source's prefix is left out. Each gets a rank below
      * [free] (`free`, `free - 1`, …), unique until [CatalogDao.rerank] places it. Artists are kept as a list
-     * ([CatalogConverters]), as the list query reads them.
+     * ([CatalogConverters] stores it), as the list query reads them.
      */
     fun entities(source: String, rows: List<LiveRow>, free: Long): List<PictureEntity> {
         val seen = HashSet<String>()
-        val texts = CatalogConverters()
         return rows.filter { it.id.startsWith("$source:") && seen.add(it.id) }.mapIndexed { i, r ->
             PictureEntity(
                 id = r.id,
@@ -115,7 +114,7 @@ object LiveSourceRows {
                 licence = r.licence,
                 licenceUrl = r.licenceUrl,
                 title = r.title,
-                artist = texts.fromTexts(r.artists).ifEmpty { null },
+                artists = r.artists.ifEmpty { null },
                 date = r.date,
                 collection = r.collection,
                 pageUrl = r.pageUrl,
@@ -143,8 +142,8 @@ class LiveRefresh(
     private val dao = db.imports()
     private val catalog = db.catalog()
 
-    /** Refreshes each due source in turn, writing through [write] (the store's write lock). */
-    suspend fun run(write: suspend (suspend () -> Unit) -> Unit): List<LiveResult> = withContext(Dispatchers.IO) {
+    /** Refreshes each due source in turn, writing through [writer] (the store's write lock). */
+    suspend fun run(writer: CatalogWriter): List<LiveResult> = withContext(Dispatchers.IO) {
         val stored = dao.files().associateBy { it.name }
         sources.map { source ->
             if (!LiveSourceRows.due(stored[LiveSourceRows.stateName(source.id)], now())) {
@@ -158,9 +157,8 @@ class LiveRefresh(
                 log("${source.id}: refresh failed", e)
                 return@map LiveResult(source.id, LiveOutcome.FAILED, dao.sourceCount(source.id))
             }
-            var result: LiveResult? = null
-            try {
-                write { result = store(source.id, got) }
+            val result = try {
+                writer.write { store(source.id, got) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -168,14 +166,14 @@ class LiveRefresh(
                 log("${source.id}: storing the list failed", e)
                 return@map LiveResult(source.id, LiveOutcome.FAILED, dao.sourceCount(source.id))
             }
-            checkNotNull(result).also { log("${source.id}: ${it.outcome}, ${it.rows} rows", null) }
+            result.also { log("${source.id}: ${it.outcome}, ${it.rows} rows", null) }
         }
     }
 
     private suspend fun store(source: String, got: Listing<LiveRow>): LiveResult = db.withTransaction {
         val stored = dao.sourceCount(source)
         // below every rank in use now, so also once the source's old rows are gone
-        val free = minOf(0L, dao.lowestRank() ?: 0L) - 1
+        val free = CatalogRank.freeBelow(catalog.lowestRank())
         val rows = LiveSourceRows.entities(source, got.items, free)
         when (val outcome = LiveSourceRows.decide(rows.size, got.complete, stored)) {
             LiveOutcome.REPLACED, LiveOutcome.PARTIAL -> {
@@ -190,5 +188,10 @@ class LiveRefresh(
             }
             else -> LiveResult(source, outcome, stored)
         }
+    }
+
+    companion object {
+        /** Its log tag. */
+        const val TAG = "LiveRefresh"
     }
 }

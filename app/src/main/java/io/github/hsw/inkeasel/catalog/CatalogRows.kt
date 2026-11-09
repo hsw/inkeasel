@@ -60,7 +60,10 @@ data class LabelRow(
  * an import checks tens of thousands of them, and a regex match allocates a matcher each time.
  */
 object CatalogRows {
-    /** A `core.jsonl.gz` row. Keys the app does not know are ignored; an optional key of the wrong type counts as absent. */
+    /**
+     * A `core.jsonl.gz` row. Keys the app does not know are ignored; an optional key of the wrong type counts
+     * as absent.
+     */
     fun core(line: String): CoreRow {
         val o = JSONObject(line)
         return CoreRow(

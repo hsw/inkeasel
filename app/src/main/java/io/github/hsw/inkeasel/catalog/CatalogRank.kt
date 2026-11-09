@@ -45,6 +45,12 @@ object CatalogRank {
      */
     fun wikidataRank(line: Int): Long = STEP * line
 
+    /**
+     * The highest rank below every rank in use (and below 0) for a table whose lowest rank is [lowest]
+     * (`null`: empty): rows written at it and further down keep the unique rank index until [place] moves them.
+     */
+    fun freeBelow(lowest: Long?): Long = minOf(0L, lowest ?: 0L) - 1
+
     fun place(rows: List<RankKey>): List<Placement> {
         val wikidata = rows.filter { it.source == WIKIDATA }.sortedWith(ORDER)
         val files = wikidata.mapNotNullTo(HashSet()) { it.commonsFile?.let(::fileKey) }

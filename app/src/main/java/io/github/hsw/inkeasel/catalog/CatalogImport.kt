@@ -71,8 +71,8 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
             db.withTransaction {
                 if (dao.hasWikidata()) return@withTransaction null
                 // into an empty table the rows go straight to their places; else below every rank in use
-                val lowest = dao.lowestRank()
-                val rank = if (lowest == null) CatalogRank::wikidataRank else { line: Int -> minOf(0L, lowest) - 1 - line }
+                val lowest = catalog.lowestRank()
+                val rank = if (lowest == null) CatalogRank::wikidataRank else { line: Int -> CatalogRank.freeBelow(lowest) - line }
                 var added = 0
                 val coreRead = readCore(core) { pictures, links ->
                     catalog.insertPictures(pictures.map { it.live(rank(it.sourceRank)) })
@@ -182,7 +182,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         if (newCore) {
             added = dao.newPictures()
             replaced = dao.stagedPictures() - added
-            dao.movePictures(free = minOf(0L, dao.lowestRank() ?: 0L) - 1)
+            dao.movePictures(free = CatalogRank.freeBelow(catalog.lowestRank()))
             removed = dao.sweepPictures()
             dao.clearLinks()
             dao.moveLinks()
@@ -296,9 +296,6 @@ private const val WD = "'${CatalogRank.WIKIDATA}'"
 abstract class ImportDao {
     @Query("SELECT EXISTS(SELECT 1 FROM picture WHERE source = $WD)")
     abstract suspend fun hasWikidata(): Boolean
-
-    @Query("SELECT MIN(rank) FROM picture")
-    abstract suspend fun lowestRank(): Long?
 
     /** How many rows of [source] (a live source's id) are stored, shown or hidden. */
     @Query("SELECT COUNT(*) FROM picture WHERE source = :source")

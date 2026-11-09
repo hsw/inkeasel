@@ -53,7 +53,13 @@ object CatalogSyncPlan {
     private const val LABELS_PREFIX = "labels-"
     private const val SUFFIX = ".jsonl.gz"
 
-    fun labels(lang: String): String = "$LABELS_PREFIX$lang$SUFFIX"
+    /** The tool's file of every language at once; the sync never fetches it. */
+    private const val ALL = "all"
+
+    fun labels(lang: String): String = labelsName(lang, SUFFIX)
+
+    /** The name of the `labels-<lang>[suffix]` file of [lang] (the release's or the starter's). */
+    fun labelsName(lang: String, suffix: String): String = "$LABELS_PREFIX$lang$suffix"
 
     /** The language of a release `labels-<lang>` file name, `null` for any other file (`labels-all` too). */
     fun langOf(name: String): String? = labelsLang(name, SUFFIX)
@@ -66,9 +72,6 @@ object CatalogSyncPlan {
         name.takeIf { it.startsWith(LABELS_PREFIX) && it.endsWith(suffix) }
             ?.substring(LABELS_PREFIX.length, name.length - suffix.length)
             ?.takeIf { CatalogRows.isLang(it) && it != ALL }
-
-    /** The tool's file of every language at once; the sync never fetches it. */
-    private const val ALL = "all"
 
     /** The files the [chain] needs: `core` first, then the labels of each stored language in chain order. */
     fun files(chain: List<String>): List<SyncCheck> =

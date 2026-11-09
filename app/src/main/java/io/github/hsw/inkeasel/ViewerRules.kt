@@ -166,7 +166,7 @@ object ViewerRules {
     fun rendition(p: Picture, w: Int, h: Int): String = when {
         p.local -> p.fullUrl
         p.commonsFile != null -> CommonsUrls.url(p.commonsFile, max(neededWidth(p, w, h), MIN_COMMONS_WIDTH), p.width)
-        p.source == "cma" -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
+        p.source == ClevelandPaintings.id -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
         else -> p.fullUrl
     }
 
@@ -188,7 +188,7 @@ object ViewerRules {
      * ([CatalogError]), anything else (e.g. an undecodable file) after "Could not load the picture:".
      */
     fun failure(e: Throwable): Txt =
-        CatalogError.of(e).takeIf { it.id != R.string.catalog_failed } ?: e.userText(R.string.viewer_failed)
+        CatalogError.of(e) ?: e.userText(R.string.viewer_failed)
 
     /**
      * A horizontal swipe of [dx] px: -1 (to the previous picture, a swipe to the right) or +1 (to the next, a

@@ -2,7 +2,6 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import android.database.sqlite.SQLiteFullException
-import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.ClevelandMapping
 import io.github.hsw.inkeasel.CommonsMapping
@@ -17,7 +16,6 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -47,7 +45,7 @@ class LiveRefreshTest {
 
     @Before
     fun open() {
-        db = CatalogDb.configure(Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)).build()
+        db = inMemoryCatalogDb(context)
     }
 
     @After
@@ -56,9 +54,20 @@ class LiveRefreshTest {
     private fun refresh(vararg sources: LiveSource) =
         LiveRefresh(db, sources.toList(), now = { clock }, log = { msg, e -> logged += if (e == null) msg else "$msg: $e" })
 
-    private fun LiveRefresh.go(): List<LiveResult> = runBlocking { this@go.run { block -> lock.withLock { block() } } }
+    /** Writes under [lock], after [before] (which may throw, as a failed write does). */
+    private fun locked(before: () -> Unit = {}) = object : CatalogWriter {
+        override suspend fun <T> write(block: suspend () -> T): T {
+            before()
+            return lock.withLock { block() }
+        }
+    }
 
-    /** [n] Wikidata rows in `core` order, at their places; [files] and [refs] give some of them a Commons file or accession number. */
+    private fun LiveRefresh.go(): List<LiveResult> = runBlocking { this@go.run(locked()) }
+
+    /**
+     * [n] Wikidata rows in `core` order, at their places; [files] and [refs] give some of them a Commons file
+     * or accession number.
+     */
     private fun wikidata(n: Int, files: Map<Int, String> = emptyMap(), refs: Map<Int, String> = emptyMap()) = runBlocking {
         db.catalog().insertPictures(
             (0 until n).map { i ->
@@ -240,10 +249,7 @@ class LiveRefreshTest {
         val commons = Fake("commons") { Listing(rows("commons", "a.jpg")) }
         var writes = 0
         val results = runBlocking {
-            refresh(cma, commons).run { block ->
-                if (writes++ == 0) throw SQLiteFullException("database or disk is full")
-                lock.withLock { block() }
-            }
+            refresh(cma, commons).run(locked { if (writes++ == 0) throw SQLiteFullException("database or disk is full") })
         }
 
         assertEquals(listOf(LiveResult("cma", LiveOutcome.FAILED, 0), LiveResult("commons", LiveOutcome.REPLACED, 1)), results)
@@ -286,7 +292,7 @@ class LiveRefreshTest {
             Listing(rows("cma", "1"))
         }
         lock.lock() // an import holds the lock
-        val run = async(Dispatchers.IO) { refresh(cma).run { block -> lock.withLock { block() } } }
+        val run = async(Dispatchers.IO) { refresh(cma).run(locked()) }
         withTimeout(10_000) { asked.await() }
         assertEquals(0, query("SELECT id FROM picture WHERE source = 'cma'").size) // the write waits for the lock
         lock.unlock()

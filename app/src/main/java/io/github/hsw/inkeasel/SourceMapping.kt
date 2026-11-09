@@ -40,7 +40,10 @@ object ClevelandMapping {
     /** The museum: the collection of every picture of this source. A proper name, stored as data. */
     const val COLLECTION = "Cleveland Museum of Art"
 
-    /** The rows of one answer (`{"data": [...]}`), in its order; artworks without a usable landscape image are left out. */
+    /**
+     * The rows of one answer (`{"data": [...]}`), in its order; artworks without a usable landscape image are
+     * left out.
+     */
     fun rows(root: JSONObject): List<LiveRow> {
         val data = root.getJSONArray("data")
         return (0 until data.length()).mapNotNull { row(data.getJSONObject(it)) }
@@ -89,9 +92,6 @@ object ClevelandMapping {
 object CommonsMapping {
     /** The `extmetadata` fields [row] reads: the `iiextmetadatafilter` query parameter. */
     const val EXTMETADATA = "ObjectName|Artist|LicenseShortName|LicenseUrl|DateTimeOriginal"
-
-    /** The width of the rendition the frame gets ([io.github.hsw.inkeasel.catalog.CommonsUrls]). */
-    const val FULL_WIDTH = 1920
 
     private const val FILE = "File:"
 

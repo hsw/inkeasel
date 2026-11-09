@@ -69,7 +69,7 @@ class CatalogStore internal constructor(
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val live: LiveRefresh? = null,
     private val legacy: File? = null,
-) {
+) : CatalogWriter {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val writeLock = Mutex()
     private val import = CatalogImport(db)
@@ -120,7 +120,7 @@ class CatalogStore internal constructor(
     }
 
     /** Runs [block] under the write lock: writes to the catalog never overlap. */
-    suspend fun <T> write(block: suspend () -> T): T = writeLock.withLock { block() }
+    override suspend fun <T> write(block: suspend () -> T): T = writeLock.withLock { block() }
 
     /** Stops the work (tests; the process-wide store lives as long as the process). */
     internal fun close() {
@@ -136,8 +136,8 @@ class CatalogStore internal constructor(
         for (signal in wake) {
             val chain = chain.value
             step("starter labels") { starterLabels(chain) }
-            unlocked("release sync") { sync.run(chain) { block -> write(block) } }
-            live?.let { unlocked("live refresh") { it.run { block -> write(block) } } }
+            unlocked("release sync") { sync.run(chain, this) }
+            live?.let { unlocked("live refresh") { it.run(this) } }
             checkEmpty()
             _passes.update { it + 1 }
         }
@@ -219,12 +219,14 @@ class CatalogStore internal constructor(
          */
         private const val ASSETS = "catalog"
         const val CORE_ASSET = "$ASSETS/core.jsonl"
-        private const val LABELS_PREFIX = "labels-"
         private const val LABELS_SUFFIX = ".jsonl"
 
-        fun labelsAsset(lang: String) = "$ASSETS/$LABELS_PREFIX$lang$LABELS_SUFFIX"
+        fun labelsAsset(lang: String) = "$ASSETS/${CatalogSyncPlan.labelsName(lang, LABELS_SUFFIX)}"
 
-        /** The language of a starter labels file named [name] (in the assets' `catalog` folder); `null` for another file. */
+        /**
+         * The language of a starter labels file named [name] (in the assets' `catalog` folder); `null` for
+         * another file.
+         */
         fun assetLanguage(name: String): String? = CatalogSyncPlan.labelsLang(name, LABELS_SUFFIX)
 
         @Volatile
@@ -249,11 +251,11 @@ class CatalogStore internal constructor(
                     db,
                     Http.client.newBuilder().callTimeout(CatalogSync.CALL_TIMEOUT_MIN, TimeUnit.MINUTES).build(),
                     File(app.cacheDir, "catalog-sync"),
-                    log = logTo("CatalogSync"),
+                    log = logTo(CatalogSync.TAG),
                 ),
                 chainOf(app.resources.configuration),
                 logTo(TAG),
-                live = LiveRefresh(db, liveSources, log = logTo("LiveRefresh")),
+                live = LiveRefresh(db, liveSources, log = logTo(LiveRefresh.TAG)),
                 legacy = File(app.filesDir, LEGACY_DIR),
             )
         }

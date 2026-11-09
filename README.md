@@ -555,8 +555,9 @@ Code:
 - `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
 - `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
   their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
-- `CatalogLoad.kt`: what "My pictures" shows (`CatalogState`), one load of it (`loadCatalog`) and when it
-  reloads, and what the Catalog tab shows (`CatalogView`: the grid, "none yet" or loading) (pure)
+- `LocalLoad.kt`: what "My pictures" shows (`LocalState`), one load of it (`readLocal`) and when it
+  reloads (pure)
+- `CatalogView.kt`: what the Catalog tab shows (the grid, "none yet" or loading) (pure)
 - `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
   the details preview and the viewer
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
