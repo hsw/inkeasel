@@ -3,6 +3,25 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Uploads fit the whole picture on white
+An upload scaled the picture to cover the panel and cut off what stuck out, so a portrait painting on a
+landscape frame (the Mona Lisa on 1024 × 600) lost most of itself. The user's decision after testing the
+release build on the TV: the whole picture, scaled up or down to fit inside the panel and centred, the rest
+white (the paper of e-paper): bars at the sides of a picture narrower than the panel's shape, at the top and
+bottom of a wider one, none for the same shape. The geometry is pure and tested (`FrameFormat.fit`, `centred`,
+`sampleSize`). The bars are the panel's white ink (`FrameFormat.paper`: the ink nearest to white; BP has none
+and gets its pink), filled plain: only the picture is dithered, so none of its error diffuses into the bars
+and they stay clean. Memory: the decoder subsamples to the picture's place on the panel (a portrait original
+needs only the panel's height), the scaled bitmap and its pixel array have the picture's size, not the
+panel's, and only the ink indices cover the whole panel. The details panel's preview runs the same path and
+shows the bars. Every upload takes it, the now-playing poster included (a square cover gets side bars
+instead of losing its top and bottom).
+Supersedes the crop in "A long press on a card opens its details; a press still sends" (its preview).
+Rejected: keeping the crop (the user's test), a crop for posters only (two rules on one path, and a cover's
+text sits near its edges), dithering a panel-sized bitmap with the bars painted in (Floyd–Steinberg would
+spread the picture's edge error into the bars as stray dots, and it costs a panel-sized ARGB copy), black bars
+or the picture's mean colour (on e-paper the background is the paper).
+
 ## 2026-11-09 — English labels: plain `en` before `en-us`, `en-gb` and `en-ca`
 For an English UI the language chain now reads `en`, then the regional variant, then `mul` (an `en-US` TV:
 `en`, `en-us`, `mul`). Wikidata's English regional labels are few and often worse than `en`: on the release,
@@ -371,7 +390,8 @@ A plain press (CENTER or a tap) keeps the one-press send. A long press (tv-mater
 takes CENTER held; a long touch through `onTap(action, onLongPress)`) opens a full-screen details panel laid
 out after Google's TV "content details" template: the title, the fields as label and value lines, **Send to
 frame** first and focused, and the picture large on the right above a preview of it on the chosen frame.
-The preview runs the upload's own decode, crop and Floyd–Steinberg onto the frame's inks
+The preview runs the upload's own decode, crop (a fit with white bars since "Uploads fit the whole picture on
+white", above) and Floyd–Steinberg onto the frame's inks
 (`EpdImage.previewOf`) on the full image an upload would download, off the main thread, and is cancelled
 with its download when the panel closes; without a frame, or with one that cannot be drawn on, the panel says
 so instead. Send closes the panel and takes the card's path (`BleAsk.onSend`: a toast without a frame, the

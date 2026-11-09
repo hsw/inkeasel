@@ -61,10 +61,10 @@ private sealed interface PreviewImage {
  * The details of picture [p], opened by a long press on its card: Google's "content details" layout for TV
  * (the text and the actions on the left, the picture large on the right), with every field the source gave
  * ([PictureDetails.rows]; the web page as text, since a TV launches no browser) and a preview drawn as the
- * [selected] frame will show it ([EpdImage.previewOf]: its crop and its inks), or why there is none.
- * [onSend] ("Send to frame", focused first) takes the same path as a plain press on the card; "View full
- * screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). A full-screen dialog over the catalog; on a narrow or portrait window everything is one
- * scrolling column, the actions under the title.
+ * [selected] frame will show it ([EpdImage.previewOf]: fitted whole with white bars, in its inks), or why there
+ * is none. [onSend] ("Send to frame", focused first) takes the same path as a plain press on the card; "View
+ * full screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). A full-screen dialog over the
+ * catalog; on a narrow or portrait window everything is one scrolling column, the actions under the title.
  */
 @Composable
 fun DetailsPanel(

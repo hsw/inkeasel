@@ -1,5 +1,7 @@
 package io.github.hsw.inkeasel
 
+import kotlin.math.roundToInt
+
 /**
  * One ink of a panel: the RGB dithering aims at and the device's code for it. What the code means is up to
  * the [Packing]: a 4/2-bit colour code ([Nibbles4], [Crumbs2]) or a set of plane bits ([BitPlanes]).
@@ -142,6 +144,12 @@ data class BitPlanes(val planes: Int, val split: Boolean = false) : Packing {
 }
 
 /**
+ * Where a picture lands on a panel: [width] × [height] px with its top-left corner at ([left], [top]); the
+ * rest of the panel is paper ([FrameFormat.paper]).
+ */
+data class Placement(val left: Int, val top: Int, val width: Int, val height: Int)
+
+/**
  * Everything the renderer and the uploader need for one frame: its size, its inks, how pixels are packed,
  * the content marker (MK) of the start frame, and whether this exact layout was seen working on a real
  * panel ([verified]; the picker says "not verified on hardware" otherwise). Chosen from the frame's
@@ -168,15 +176,69 @@ data class FrameFormat(
     val aspect: Float get() = width.toFloat() / height
 
     /**
-     * Floyd–Steinberg of [px] (ARGB, [width]×[height], row-major) onto [palette], always the panel's own
+     * The ink index of the paper around a fitted picture ([fit]): the ink nearest to white (the first wins a
+     * tie), so the bars are the panel's own white, or its lightest ink where it has no white (BP: pink).
+     */
+    val paper: Int get() = nearest(255, 255, 255)
+
+    private fun nearest(r: Int, g: Int, b: Int): Int {
+        var best = 0
+        var bestD = Int.MAX_VALUE
+        for ((i, c) in palette.inks.withIndex()) {
+            val d = (r - c.r) * (r - c.r) + (g - c.g) * (g - c.g) + (b - c.b) * (b - c.b)
+            if (d < bestD) { bestD = d; best = i }
+        }
+        return best
+    }
+
+    /**
+     * A [w] × [h] px picture scaled to fit inside the panel, whole (no crop), up or down, and centred: bars of
+     * paper at the sides of a picture narrower than the panel's shape, at the top and bottom of a wider one,
+     * none for the same shape. Each side is at least 1 px.
+     */
+    fun fit(w: Int, h: Int): Placement {
+        require(w > 0 && h > 0)
+        // compare w/h with width/height in integers: the side that limits the scale is the panel's own
+        val (pw, ph) = if (w.toLong() * height >= h.toLong() * width) {
+            width to (h.toLong() * width / w.toDouble()).roundToInt().coerceIn(1, height)
+        } else {
+            (w.toLong() * height / h.toDouble()).roundToInt().coerceIn(1, width) to height
+        }
+        return centred(pw, ph)
+    }
+
+    /** A picture of [w] × [h] px, no larger than the panel, centred on it as it is. */
+    fun centred(w: Int, h: Int): Placement {
+        require(w in 1..width && h in 1..height) { "$w×$h does not fit $width×$height" }
+        return Placement((width - w) / 2, (height - h) / 2, w, h)
+    }
+
+    /**
+     * The decoder's subsampling for an original of [w] × [h] px: the largest power of two that still leaves
+     * the picture at least as large as its place on the panel ([fit]), so it is never scaled up for nothing.
+     */
+    fun sampleSize(w: Int, h: Int): Int {
+        val at = fit(w, h)
+        var sample = 1
+        while (w / (sample * 2) >= at.width && h / (sample * 2) >= at.height) sample *= 2
+        return sample
+    }
+
+    /** Floyd–Steinberg of [px] (ARGB, the whole panel, row-major): [dither] with the picture filling the panel. */
+    fun dither(px: IntArray): ByteArray = dither(px, Placement(0, 0, width, height))
+
+    /**
+     * Floyd–Steinberg of [px] (ARGB, [at]'s width × height, row-major) onto [palette], always the panel's own
      * (docs/protocol.md#dithering: the vendor app dithers every type with the E6 inks, which breaks the
      * others): plain raster order, nearest ink by squared RGB distance (the first wins a tie), the pixel plus
-     * its error clamped to 0..255. One ink index per pixel.
+     * its error clamped to 0..255. The picture sits at [at] on the panel and the rest is [paper], plain: no
+     * error reaches the bars, so they stay clean. One ink index per pixel of the whole panel.
      */
-    fun dither(px: IntArray): ByteArray {
-        val w = width
-        val h = height
+    fun dither(px: IntArray, at: Placement): ByteArray {
+        val w = at.width
+        val h = at.height
         require(px.size == w * h)
+        require(at.left >= 0 && at.top >= 0 && at.left + w <= width && at.top + h <= height)
         val inks = palette.inks
         val pr = IntArray(inks.size) { inks[it].r }
         val pg = IntArray(inks.size) { inks[it].g }
@@ -184,8 +246,10 @@ data class FrameFormat(
         // error buffers for the current and next row, 3 channels each, with one pixel of padding on both sides
         var cur = IntArray((w + 2) * 3)
         var nxt = IntArray((w + 2) * 3)
-        val out = ByteArray(w * h)
+        val out = ByteArray(width * height)
+        if (w != width || h != height) out.fill(paper.toByte())
         for (y in 0 until h) {
+            val row = (at.top + y) * width + at.left
             for (x in 0 until w) {
                 val p = px[y * w + x]
                 val e = (x + 1) * 3
@@ -201,7 +265,7 @@ data class FrameFormat(
                     val d = dr * dr + dg * dg + db * db
                     if (d < bestD) { bestD = d; best = i }
                 }
-                out[y * w + x] = best.toByte()
+                out[row + x] = best.toByte()
                 val er = r - pr[best]
                 val eg = g - pg[best]
                 val eb = b - pb[best]

@@ -276,6 +276,92 @@ class FrameFormatTest {
     }
 
     @Test
+    fun fit_portraitOnLandscape_barsAtTheSides() {
+        val f = FrameFormats.DEFAULT // 1024×600
+        // the Mona Lisa's shape (about 2:3): the whole height, a third of the width
+        assertEquals(Placement(312, 0, 400, 600), f.fit(600, 900))
+        assertEquals(Placement(312, 0, 400, 600), f.fit(6000, 9000)) // scaled down the same
+        assertEquals(Placement(312, 0, 400, 600), f.fit(60, 90)) // and up
+    }
+
+    @Test
+    fun fit_widerThanThePanel_barsAtTopAndBottom() {
+        val f = FrameFormats.DEFAULT
+        assertEquals(Placement(0, 95, 1024, 410), f.fit(2000, 800)) // 600 × 2000/800 = 409.6, rounded
+        assertEquals(Placement(0, 12, 1024, 576), f.fit(1920, 1080)) // 16:9 on 1024×600
+    }
+
+    @Test
+    fun fit_sameShape_noBars() {
+        val f = FrameFormats.DEFAULT
+        assertEquals(Placement(0, 0, 1024, 600), f.fit(1024, 600))
+        assertEquals(Placement(0, 0, 1024, 600), f.fit(2048, 1200))
+        assertEquals(Placement(0, 0, 1024, 600), f.fit(512, 300))
+        assertEquals(Placement(0, 0, 1024, 600), f.fit(1920, 1125))
+    }
+
+    @Test
+    fun fit_extremeShapes_keepOnePixel() {
+        val f = FrameFormats.DEFAULT
+        assertEquals(Placement(0, 299, 1024, 1), f.fit(100_000, 1))
+        assertEquals(Placement(511, 0, 1, 600), f.fit(1, 100_000))
+    }
+
+    @Test
+    fun centred_placesAsIs() {
+        val f = FrameFormats.DEFAULT
+        assertEquals(Placement(312, 0, 400, 600), f.centred(400, 600))
+        assertEquals(Placement(0, 0, 1024, 600), f.centred(1024, 600))
+        assertThrows(IllegalArgumentException::class.java) { f.centred(1025, 600) }
+    }
+
+    @Test
+    fun sampleSize_keepsThePictureAtLeastItsPlace() {
+        val f = FrameFormats.DEFAULT
+        assertEquals(1, f.sampleSize(1024, 600))
+        assertEquals(1, f.sampleSize(2047, 1199))
+        assertEquals(2, f.sampleSize(2048, 1200))
+        // a portrait original needs only 600 px of height: 4800 / 8 = 600
+        assertEquals(8, f.sampleSize(3200, 4800))
+        assertEquals(4, f.sampleSize(3200, 4799))
+        assertEquals(1, f.sampleSize(300, 200)) // smaller than the panel: decoded whole
+    }
+
+    @Test
+    fun paper_isTheWhiteInk() {
+        assertEquals(1, FrameFormats.DEFAULT.paper) // E6: black, white, …
+        assertEquals(0, FrameFormat(4, 1, FrameFormats.E4, Crumbs2).paper)
+        assertEquals(0, FrameFormat(16, 1, FrameFormats.BWR, BitPlanes(2)).paper)
+        assertEquals(1, FrameFormat(16, 1, FrameFormats.BP, BitPlanes(1)).paper) // no white: pink is the lightest
+    }
+
+    @Test
+    fun dither_placed_barsArePlainPaper() {
+        val f = FrameFormat(8, 4, FrameFormats.E6, Nibbles4())
+        val at = f.fit(2, 4) // a portrait picture in the middle: columns 3 and 4
+        assertEquals(Placement(3, 0, 2, 4), at)
+        // a mid grey that dithers to a mix of inks and spreads its error to the right and below
+        val grey = 0xFF707070.toInt()
+        val idx = f.dither(IntArray(at.width * at.height) { grey }, at)
+        assertEquals(f.width * f.height, idx.size)
+        for (y in 0 until f.height) for (x in 0 until f.width) {
+            if (x !in 3..4) assertEquals("($x, $y)", f.paper, idx[y * f.width + x].toInt())
+        }
+        // the picture's pixels are what the same picture dithered alone gives
+        val alone = FrameFormat(2, 4, FrameFormats.E6, Nibbles4()).dither(IntArray(8) { grey })
+        for (y in 0 until 4) for (x in 0 until 2) assertEquals(alone[y * 2 + x], idx[y * f.width + 3 + x])
+        assertEquals(0xFFFFFFFF.toInt(), f.previewPixels(idx)[0]) // the bars preview as white
+    }
+
+    @Test
+    fun dither_placed_wholePanel_isThePlainDither() {
+        val f = FrameFormat(4, 2, FrameFormats.E6, Nibbles4())
+        val px = IntArray(8) { (0xFF shl 24) or (it * 30 shl 16) or (it * 20 shl 8) or (255 - it * 25) }
+        assertArrayEquals(f.dither(px), f.dither(px, f.fit(4, 2)))
+        assertThrows(IllegalArgumentException::class.java) { f.dither(IntArray(4), Placement(3, 0, 2, 2)) }
+    }
+
+    @Test
     fun preview_worksForEveryFormat() {
         for (b0 in listOf(e6, bwr, e4)) {
             val f = format(b0, 0x01, 0x64)!! // 200×200

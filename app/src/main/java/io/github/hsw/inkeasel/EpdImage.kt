@@ -7,60 +7,62 @@ import android.graphics.Paint
 import android.graphics.Rect
 
 /**
- * Image preparation for one frame's [FrameFormat]: decode, crop
- * to the panel, dither onto its inks, pack. The pixel work itself is in [FrameFormat], free of Android types.
+ * Image preparation for one frame's [FrameFormat]: decode, fit the whole picture inside the panel, dither onto
+ * its inks with paper (white) bars around it, pack. The pixel work and the geometry are in [FrameFormat], free
+ * of Android types.
  */
 object EpdImage {
-    /** Decodes [bytes], subsampling large originals so the short side still covers the panel of [fmt]. */
+    /** Decodes [bytes], subsampling large originals while they stay at least as large as their place on the panel of [fmt]. */
     fun decode(bytes: ByteArray, fmt: FrameFormat): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= fmt.width && bounds.outHeight / (sample * 2) >= fmt.height) sample *= 2
+        val sample = if (bounds.outWidth > 0 && bounds.outHeight > 0) fmt.sampleSize(bounds.outWidth, bounds.outHeight) else 1
         val opts = BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 }
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
             ?: throw TxtException(Txt(R.string.upload_err_decode))
     }
 
-    /** Scales to cover the panel of [fmt] and centre-crops. */
+    /**
+     * [src] scaled to its place on the panel of [fmt] ([FrameFormat.fit]): the whole picture, no crop. Only the
+     * picture's own pixels, not the panel: [dither] centres it and puts the paper around it.
+     */
     fun fit(src: Bitmap, fmt: FrameFormat): Bitmap {
-        val w = fmt.width
-        val h = fmt.height
-        val scale = maxOf(w.toFloat() / src.width, h.toFloat() / src.height)
-        val cw = (w / scale).toInt().coerceAtMost(src.width)
-        val ch = (h / scale).toInt().coerceAtMost(src.height)
-        val left = (src.width - cw) / 2
-        val top = (src.height - ch) / 2
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        Canvas(out).drawBitmap(src, Rect(left, top, left + cw, top + ch), Rect(0, 0, w, h), Paint(Paint.FILTER_BITMAP_FLAG))
+        val at = fmt.fit(src.width, src.height)
+        val out = Bitmap.createBitmap(at.width, at.height, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(src, Rect(0, 0, src.width, src.height), Rect(0, 0, at.width, at.height), Paint(Paint.FILTER_BITMAP_FLAG))
         return out
     }
 
-    /** Floyd–Steinberg onto the inks of [fmt] ([FrameFormat.dither]); one ink index per pixel, row-major. */
+    /**
+     * Floyd–Steinberg of the fitted [img] onto the inks of [fmt], centred on the panel with paper around it
+     * ([FrameFormat.dither]); one ink index per pixel of the panel, row-major.
+     */
     fun dither(img: Bitmap, fmt: FrameFormat): ByteArray {
-        require(img.width == fmt.width && img.height == fmt.height)
-        val px = IntArray(fmt.width * fmt.height).also { img.getPixels(it, 0, fmt.width, 0, 0, fmt.width, fmt.height) }
-        return fmt.dither(px)
+        val at = fmt.centred(img.width, img.height)
+        val px = IntArray(at.width * at.height).also { img.getPixels(it, 0, at.width, 0, 0, at.width, at.height) }
+        return fmt.dither(px, at)
     }
 
     /** The payload for the frame ([FrameFormat.pack]; E6 1024×600: 307 200 bytes). */
     fun pack(indices: ByteArray, fmt: FrameFormat): ByteArray = fmt.pack(indices)
 
-    /** Decode, crop, dither and pack [bytes] for [fmt]. */
-    fun render(bytes: ByteArray, fmt: FrameFormat): ByteArray = pack(dither(fit(decode(bytes, fmt), fmt), fmt), fmt)
+    /** Decode, fit, dither and pack [bytes] for [fmt]; the intermediate bitmaps are freed at once. */
+    fun render(bytes: ByteArray, fmt: FrameFormat): ByteArray = pack(indicesOf(bytes, fmt), fmt)
 
     /** What the panel will roughly look like. */
     fun preview(indices: ByteArray, fmt: FrameFormat): Bitmap =
         Bitmap.createBitmap(fmt.previewPixels(indices), fmt.width, fmt.height, Bitmap.Config.ARGB_8888)
 
     /**
-     * [bytes] as the frame of [fmt] will show them: the same decode, crop and dithering as [render], drawn
-     * in the panel's inks ([preview]). The intermediate bitmaps are freed at once (a TV has little memory).
+     * [bytes] as the frame of [fmt] will show them: the same decode, fit and dithering as [render], white bars
+     * included, drawn in the panel's inks ([preview]).
      */
-    fun previewOf(bytes: ByteArray, fmt: FrameFormat): Bitmap {
+    fun previewOf(bytes: ByteArray, fmt: FrameFormat): Bitmap = preview(indicesOf(bytes, fmt), fmt)
+
+    /** Decode, fit and dither; each bitmap is recycled as soon as the next step has its pixels (a TV has little memory). */
+    private fun indicesOf(bytes: ByteArray, fmt: FrameFormat): ByteArray {
         val src = decode(bytes, fmt)
         val fitted = try { fit(src, fmt) } finally { src.recycle() }
-        val indices = try { dither(fitted, fmt) } finally { fitted.recycle() }
-        return preview(indices, fmt)
+        return try { dither(fitted, fmt) } finally { fitted.recycle() }
     }
 }

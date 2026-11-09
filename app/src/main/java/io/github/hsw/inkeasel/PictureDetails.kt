@@ -18,7 +18,10 @@ object PictureDetails {
         /** The chosen frame cannot be drawn on ([FormatLookup.Unsupported]); [reason] is a whole sentence. */
         data class Unsupported(val reason: Txt) : Preview
 
-        /** Rendered as an upload to [frameName] would be: its size, its crop and its inks ([FrameFormat]). */
+        /**
+         * Rendered as an upload to [frameName] would be: its size, the picture fitted whole with white bars, its
+         * inks ([FrameFormat]).
+         */
         data class Render(val format: FrameFormat, val frameName: String) : Preview
     }
 

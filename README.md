@@ -20,7 +20,9 @@ License: [Apache-2.0](LICENSE).
 ## Supported frames
 
 NowMean e-paper frames (BLE service `0xFFBB`). The app reads the frame's colour type, panel and resolution
-from its advertisement and renders each picture for that panel:
+from its advertisement and renders each picture for that panel: the whole picture, scaled to fit and centred,
+never cropped, on white (bars at the sides of a picture narrower than the panel, at the top and bottom of a
+wider one), dithered onto the panel's inks.
 
 - **E6 (Spectra 6)**: verified on a real frame (1024×600); most other E6 sizes use the same layout at
   another size and count as verified.
@@ -224,7 +226,7 @@ opens its details instead, in Google's "content details" layout: the title, ever
 original size, web page; links as text, since a TV
 opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path), **View
 full screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it:
-the same crop and dithering onto the frame's inks as an upload. Without a frame, or with one the app cannot
+the same fit and dithering onto the frame's inks as an upload, white bars included. Without a frame, or with one the app cannot
 draw on, the panel says so instead of the preview. Back closes it. A narrow or portrait window stacks it into
 one scrolling column, the buttons under the title.
 
@@ -571,8 +573,9 @@ Code:
   its rules in `LiveSourceRows`, pure) and gives the Catalog tab its pages; a row as
   a `Picture` (`CatalogPicture`, its Commons URLs from `CommonsUrls`, both pure) and the viewer's steps
   through the list (`CatalogSteps`)
-- `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`, or draw
-  the dithered picture in the frame's inks for the details panel's preview
+- `EpdImage.kt`: decode and scale the whole picture to fit inside the frame (`FrameFormat.fit`), then dither
+  it onto the frame's inks with white bars around it and pack via its `FrameFormat`, or draw the dithered
+  picture in the frame's inks for the details panel's preview
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
   verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally
   split), `Crumbs2` (2 bpp) and `BitPlanes` (1-bpp planes, padded, optionally split), free of Android types)
