@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,7 @@ import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil.compose.AsyncImage
+import coil.network.HttpException
 import io.github.hsw.inkeasel.catalog.CatalogPicture
 import io.github.hsw.inkeasel.catalog.CatalogRow
 import io.github.hsw.inkeasel.catalog.CatalogSteps
@@ -772,21 +774,41 @@ private fun PlaceholderCard(aspect: Float) {
     Card(onClick = {}, modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {}
 }
 
-/** A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details ([onLongClick]). */
+/**
+ * A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details
+ * ([onLongClick]). A thumbnail refused with 429 or 503 (the host asked for a pause, often after a fast scroll)
+ * is asked again once the pause is over ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
+ */
 @Composable
 fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+    var retries by remember(p.thumbUrl) { mutableIntStateOf(0) }
+    var retryIn by remember(p.thumbUrl) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(retryIn) {
+        val ms = retryIn ?: return@LaunchedEffect
+        delay(ms)
+        retryIn = null
+        retries++
+    }
     Card(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick, onLongPress = onLongClick),
     ) {
         Box(Modifier.fillMaxSize()) {
-            AsyncImage(
-                model = p.thumbModel(),
-                contentDescription = p.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
+            key(retries) {
+                AsyncImage(
+                    model = p.thumbModel(),
+                    contentDescription = p.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = { e ->
+                        val answer = (e.result.throwable as? HttpException)?.response
+                        retryIn = RetryPolicy.thumbRetryMs(
+                            answer?.code, answer?.header("Retry-After"), retries, System.currentTimeMillis(),
+                        )
+                    },
+                )
+            }
             Column(
                 Modifier
                     .align(Alignment.BottomStart)

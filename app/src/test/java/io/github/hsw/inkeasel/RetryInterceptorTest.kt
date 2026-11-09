@@ -212,4 +212,67 @@ class RetryInterceptorTest {
         assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start) < 2_000)
         assertEquals(1, server.requestCount)
     }
+
+    @Test
+    fun aHostThatAskedForAPauseGetsNoRequestUntilItEnds() {
+        var clock = 1_000_000L
+        val c = OkHttpClient.Builder().addInterceptor(RetryInterceptor(now = { clock })).build()
+        server.enqueue(answer(429, "30", body = "slow down"))
+        server.enqueue(answer(200, body = "picture"))
+
+        get(c).use { assertEquals(429, it.code) } // longer than a retry may wait: final
+        assertEquals(1, server.requestCount)
+
+        // held: answered here, with what is left of the pause, and not sent
+        clock += 12_500
+        get(c, "/b").use { r ->
+            assertEquals(429, r.code)
+            assertEquals("18", r.header("Retry-After"))
+            assertEquals("", r.body!!.string())
+        }
+        assertEquals(1, server.requestCount)
+
+        // the pause is over
+        clock += 17_500
+        get(c, "/b").use { assertEquals("picture", it.body!!.string()) }
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun aShortHoldIsWaitedOutWhereItMayWait() {
+        var mayWait = false
+        val c = client(mayWait = { mayWait })
+        server.enqueue(answer(503, "1"))
+        server.enqueue(answer(200))
+
+        get(c).use { assertEquals(503, it.code) } // the main thread: returned as it is, the host is held 1 s
+        // still held, and the main thread does not wait
+        get(c).use { assertEquals(429, it.code) }
+        assertEquals(1, server.requestCount)
+
+        mayWait = true
+        val start = System.nanoTime()
+        get(c).use { assertEquals(200, it.code) }
+        val waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
+        assertTrue("waited $waited ms", waited >= 500)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun onlyTheHostThatAskedIsHeld() {
+        val other = MockWebServer()
+        try {
+            val c = client()
+            server.enqueue(answer(429, "30"))
+            other.enqueue(answer(200, body = "other"))
+
+            get(c).use { assertEquals(429, it.code) }
+            c.newCall(Request.Builder().url(other.url("/a")).build()).execute().use {
+                assertEquals("other", it.body!!.string())
+            }
+            assertEquals(1, other.requestCount)
+        } finally {
+            other.shutdown()
+        }
+    }
 }

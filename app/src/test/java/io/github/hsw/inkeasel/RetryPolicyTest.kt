@@ -1,8 +1,13 @@
 package io.github.hsw.inkeasel
 
+import io.github.hsw.inkeasel.RetryPolicy.MAX_HOLD_MS
 import io.github.hsw.inkeasel.RetryPolicy.MAX_RETRIES
 import io.github.hsw.inkeasel.RetryPolicy.MAX_WAIT_MS
+import io.github.hsw.inkeasel.RetryPolicy.THUMB_RETRIES
+import io.github.hsw.inkeasel.RetryPolicy.holdMs
 import io.github.hsw.inkeasel.RetryPolicy.retryAfterMs
+import io.github.hsw.inkeasel.RetryPolicy.retryAfterSeconds
+import io.github.hsw.inkeasel.RetryPolicy.thumbRetryMs
 import io.github.hsw.inkeasel.RetryPolicy.waitMs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -80,5 +85,50 @@ class RetryPolicyTest {
     fun hugeSecondsDoNotOverflow() {
         assertEquals(Long.MAX_VALUE, retryAfterMs("${Long.MAX_VALUE}", now))
         assertEquals(Long.MAX_VALUE, retryAfterMs("99999999999999999999999", now))
+    }
+
+    @Test
+    fun aHostIsHeldForTheWaitItAskedFor() {
+        for (code in listOf(429, 503)) {
+            assertEquals(11_000L, holdMs(code, "11", now))
+            assertEquals(1_000L, holdMs(code, null, now)) // the first default wait
+            assertEquals(0L, holdMs(code, "0", now))
+            assertEquals(5_000L, holdMs(code, "Mon, 09 Nov 2026 12:00:05 GMT", now))
+        }
+        // longer than any retry wait, but never more than a minute
+        assertEquals(60_000L, MAX_HOLD_MS)
+        assertEquals(MAX_HOLD_MS, holdMs(429, "3600", now))
+        assertEquals(MAX_HOLD_MS, holdMs(429, "99999999999999999999999", now))
+    }
+
+    @Test
+    fun otherAnswersHoldNothing() {
+        for (code in listOf(200, 304, 400, 404, 500, 502, 504)) assertNull("HTTP $code", holdMs(code, "11", now))
+    }
+
+    @Test
+    fun aHeldAnswerSaysTheSecondsLeftRoundedUp() {
+        assertEquals(11L, retryAfterSeconds(10_001))
+        assertEquals(10L, retryAfterSeconds(10_000))
+        assertEquals(1L, retryAfterSeconds(1))
+        assertEquals(0L, retryAfterSeconds(-5))
+    }
+
+    @Test
+    fun aCardAsksForItsThumbnailAgainAfterThePause() {
+        assertEquals(11_000L, thumbRetryMs(429, "11", 0, now))
+        assertEquals(1_000L, thumbRetryMs(503, null, 0, now))
+        // never at once, never after more than a minute
+        assertEquals(1_000L, thumbRetryMs(429, "0", 0, now))
+        assertEquals(MAX_HOLD_MS, thumbRetryMs(429, "3600", 0, now))
+        assertEquals(3, THUMB_RETRIES)
+        assertEquals(11_000L, thumbRetryMs(429, "11", THUMB_RETRIES - 1, now))
+        assertNull(thumbRetryMs(429, "11", THUMB_RETRIES, now))
+    }
+
+    @Test
+    fun aCardDoesNotAskAgainAfterOtherFailures() {
+        assertNull(thumbRetryMs(null, null, 0, now)) // no HTTP answer: a file, a connection failure
+        for (code in listOf(400, 403, 404, 500, 502, 504)) assertNull("HTTP $code", thumbRetryMs(code, "1", 0, now))
     }
 }

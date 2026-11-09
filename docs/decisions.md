@@ -3,6 +3,33 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — A host that asks for a pause gets none; a refused thumbnail is asked again
+Found in the acceptance check on the TV emulator: a fast D-pad scroll through the Catalog asks
+`upload.wikimedia.org` for a thumbnail per card, and Wikimedia soon answers HTTP 429 with `Retry-After: 11`.
+That is longer than a retry may wait, so the answer was final: 430 of 469 thumbnail requests of one scroll
+were refused, and the cards where the scroll stopped stayed grey for good, because Coil does not ask again.
+Now the retry interceptor holds a host (with its port) that answered 429 or 503 for the wait it asked for
+(the first default wait without one, at most a minute): a request to it before the hold ends waits for it
+where it may wait (not on the main thread, at most the 10 s retry cap) and is otherwise answered by the app
+itself with a 429 whose `Retry-After` is what is left, without being sent. A catalog card whose thumbnail was
+refused with 429 or 503 asks again after that wait (at least 1 s, at most a minute, three times at most), as
+long as it stays composed; a card scrolled away asks nothing. A longer scroll (240 rows instead of 160)
+then sent 96 thumbnail requests, 28 of them refused, the app itself answered 97, and every card on screen
+showed its thumbnail once the pause was over.
+Rejected: waiting up to `Retry-After` inside the request (a scroll would fill the host's 4 slots with waiting
+calls for 11 s), a longer retry cap (the same, for every call), loading thumbnails only once a scroll settles
+(fewer requests, but a slow D-pad step through the list would still hit the limit and keep grey cards), a
+retry on every failed thumbnail (a 404 or a broken file would be asked for again and again).
+
+## 2026-11-09 — The Catalog keeps at most 360 rows loaded
+Found in the acceptance check: the list's pager had no `maxSize`, so every page a scroll read stayed in
+memory, and a scroll to the end would hold all of the about 9,800 rows the paging query was there to avoid.
+The pager now keeps at most six pages (`CatalogStore.MAX_ROWS`, 360 rows, about 90 rows of four cards on a
+TV); pages far from where the list is read are dropped and show as placeholders until scrolled back to,
+when they are read again. Placeholders are on, so the grid keeps its length and the focus does not move.
+Rejected: no bound (memory grows with the scroll on 1 to 2 GB TV boxes), a bound of a few pages (pages are
+read again on every turn of direction; 360 rows cost little).
+
 ## 2026-11-09 — Few requests per host, a short retry on 429 and 503, a fixed image cache
 The one HTTP client (`Http.client`: Coil, full images, artwork, the release sync and the live lists) sends at
 most 4 requests to one host at a time (OkHttp's default is 5), so a fast scroll through Commons thumbnails

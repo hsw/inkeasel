@@ -169,6 +169,34 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun aUiLanguageWithNoLabelsFileFallsBackToEnglishThenTheFileName() {
+        // Kazakh: neither the starter set nor the release has its labels (the release answers 404)
+        val kk = LanguageChain.of("kk-KZ")
+        assertEquals(listOf("kk", "en", "mul"), kk)
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40), core(3))))
+        release.serve("labels-en.jsonl.gz", gzip(listOf(label(1, "One"), label(3, "Three"))))
+
+        store.start(kk)
+        awaitPasses(1)
+
+        assertEquals(listOf("en"), opened) // the starter set has no Kazakh file
+        val rows = runBlocking { store.pages.asSnapshot() }
+        assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3"), rows.map { it.id })
+        assertEquals(listOf("One", null, "Three"), rows.map { it.title })
+        assertEquals("Painting 2", rows[1].shownTitle) // no label in any language: the file name
+        assertEquals(
+            listOf("labels-kk.jsonl.gz|1", "labels-mul.jsonl.gz|1"),
+            query("SELECT name, missing FROM catalog_file WHERE missing = 1 ORDER BY name"),
+        )
+
+        // the 404 is not asked again within the week
+        val asked = release.requests.size
+        store.start(kk)
+        awaitPasses(2)
+        assertEquals(asked, release.requests.size)
+    }
+
+    @Test
     fun theListIsNotEmptyOnceTheStarterSetIsIn() {
         release.server.shutdown()
         assertFalse(store.empty.value) // before the starter step: still loading, not empty
@@ -195,6 +223,34 @@ class CatalogStoreTest {
             runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
             assertTrue(store.empty.value)
             assertTrue(logged.any { it.startsWith("starter import failed") })
+        } finally {
+            store.close()
+        }
+    }
+
+    @Test
+    fun scrollingThroughTheWholeListKeepsOnlyAWindowOfRowsLoaded() {
+        release.server.shutdown()
+        val n = 1000
+        val big = StarterSet(
+            core = { ByteArrayInputStream(gzip((1..n).map { core(it, fame = n - it) })) },
+            languages = { emptySet() },
+            labels = { error("no labels") },
+        )
+        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
+        val store = CatalogStore(db, big, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        try {
+            store.start(ruChain)
+            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+
+            val end = runBlocking { store.pages.asSnapshot { scrollTo(n - 1) } }
+            assertTrue("${end.size} rows loaded", end.size <= CatalogStore.MAX_ROWS)
+            assertEquals("wd:Q$n", end.last().id) // the window holds where the list was read
+            assertFalse(end.any { it.id == "wd:Q1" }) // and the first pages were dropped
+
+            // read from the top again, the list starts at its first row
+            val start = runBlocking { store.pages.asSnapshot() }
+            assertEquals("wd:Q1", start.first().id)
         } finally {
             store.close()
         }

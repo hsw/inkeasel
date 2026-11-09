@@ -98,11 +98,13 @@ class CatalogStore internal constructor(
     /**
      * The list ([CatalogDao.pages]) over the current [chain]: a new chain starts a new pager. It starts once
      * the starter step has run, so its first query neither waits for the starter's transaction nor holds it
-     * up; until then it gives nothing, and the list shows that it is loading.
+     * up; until then it gives nothing, and the list shows that it is loading. At most [MAX_ROWS] rows stay
+     * loaded: pages far from where the list is read are dropped (they show as placeholders and load again
+     * when scrolled back to), so scrolling through the whole catalog never holds all of it in memory.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val pages: Flow<PagingData<CatalogRow>> = ready.filter { it }.flatMapLatest { _chain }.flatMapLatest { chain ->
-        Pager(PagingConfig(pageSize = PAGE, prefetchDistance = PAGE, initialLoadSize = 2 * PAGE)) {
+        Pager(PagingConfig(pageSize = PAGE, prefetchDistance = PAGE, initialLoadSize = 2 * PAGE, maxSize = MAX_ROWS)) {
             db.catalog().pages(CatalogRow.chainKey(chain))
         }.flow
     }
@@ -217,6 +219,9 @@ class CatalogStore internal constructor(
 
         /** Rows per page of the list: about 15 rows of 4 cards on a TV. */
         const val PAGE = 60
+
+        /** Rows the list keeps loaded at most: six pages, about 90 rows of 4 cards on a TV. */
+        const val MAX_ROWS = 6 * PAGE
 
         /**
          * The starter set's files as the APK holds them (`catalog/core.jsonl`, `catalog/labels-<lang>.jsonl`):

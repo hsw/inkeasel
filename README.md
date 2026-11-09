@@ -243,7 +243,8 @@ Museum of Art's CC0 landscapes and Wikimedia Commons' featured landscapes among 
 app's own folder on the device).
 
 The Catalog tab pages through the database (Paging 3): it holds about 9,600 paintings, so only the rows
-near the screen are read. A card not read yet is an empty card of the same size, which the D-pad focus
+near the screen are read, and at most 360 rows stay loaded (pages far from the screen are dropped and read
+again when scrolled back to). A card not read yet is an empty card of the same size, which the D-pad focus
 moves through like any other (a press on it does nothing), so a long scroll never jumps. Cards take a 330 or
 500 px Commons thumbnail, whichever covers their width. Titles, artists and museums are the labels of the UI
 language's chain; artists are joined with a translatable separator. While the starter set imports at the
@@ -291,7 +292,11 @@ it loses its labels at the next import. To watch it:
 All requests go through one OkHttp client (`Http.client`, with the app's User-Agent): at most 4 at a time
 to one host, and an HTTP 429 or 503 answer to a GET is asked again at most twice, after its `Retry-After` (or
 1 s, then 2 s), unless it asks for more than 10 s; a cancelled request stops waiting at once, and the main
-thread never waits (`RetryPolicy.kt`). Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
+thread never waits (`RetryPolicy.kt`). A host that answered 429 or 503 gets no request until the pause it
+asked for is over (at most a minute): a request to it in the meantime is answered 429 by the app itself, so a
+fast scroll past hundreds of cards does not send hundreds of thumbnail requests to `upload.wikimedia.org`
+when it asks for a pause (it answers `Retry-After: 11`), and a card whose thumbnail was refused so asks
+again once the pause is over, up to three times while it is on screen. Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
 
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
 than 60 s every time, its rows never come (or stay as they were); asking for fewer results than `limit=200`
@@ -520,7 +525,8 @@ Code:
   paintings, Wikimedia Commons featured landscapes); list requests give up after 60 s, Commons reads at most
   3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete); `Http`, the one
   OkHttp client
-- `RetryPolicy.kt`: when a 429 or 503 answer is asked again (pure) and the interceptor that does it
+- `RetryPolicy.kt`: when a 429 or 503 answer is asked again, how long its host is held and when a card asks
+  for its thumbnail again (pure), and the interceptor that retries and holds
 - `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
 - `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
   their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
