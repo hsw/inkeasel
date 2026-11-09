@@ -21,11 +21,13 @@ class NuditySettingTest {
     }
 
     @Test
-    fun lock_forcesHideAllNudity_whateverTheChoice() {
-        for (choice in NudityFilter.entries) {
-            val lock = NuditySetting.lock(parentalControls = true, accountsRestricted = false)
-            assertEquals(NudityFilter.HIDE_NUDES, NudityFilter.effective(choice, lock != null))
-            assertEquals(choice, NudityFilter.effective(choice, NuditySetting.lock(false, false) != null))
+    fun eitherLock_forcesHideAllNudity_whateverTheChoice() {
+        for (parental in listOf(false, true)) for (restricted in listOf(false, true)) {
+            val locked = NuditySetting.lock(parental, restricted) != null
+            for (choice in NudityFilter.entries) {
+                val want = if (parental || restricted) NudityFilter.HIDE_NUDES else choice
+                assertEquals("$parental $restricted $choice", want, NudityFilter.effective(choice, locked))
+            }
         }
     }
 

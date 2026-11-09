@@ -26,7 +26,11 @@ or deviation made in a change gets its entry in the same commit.
   `android-all-instrumented` (about 200 MB) from Maven Central into `~/.m2/repository`; a sandboxed shell
   without network or write access there fails at that point, so run it once outside the sandbox. Its SQLite
   is newer than minSdk 26's (3.18): a passing test does not make newer SQL safe (UPSERT needs 3.24, window
-  functions 3.25, `RETURNING` 3.35). OkHttp's own `RetryAndFollowUpInterceptor` repeats a 503 carrying
+  functions 3.25, `RETURNING` 3.35), and before 3.32 a statement binds at most 999 parameters, so a long
+  `IN (:ids)` goes in chunks (`CatalogDao.markListed`, `LISTED_CHUNK`; its test passes a small chunk, as
+  Robolectric binds far more). Room 2.6: `fallbackToDestructiveMigration()` alone covers an upgrade and a
+  downgrade; adding `fallbackToDestructiveMigrationOnDowngrade()` after it makes an upgrade ask for a
+  migration again. OkHttp's own `RetryAndFollowUpInterceptor` repeats a 503 carrying
   `Retry-After: 0` once: a test that counts requests answers another code (`CatalogSyncTest` uses 500).
 - The catalog starter set (`app/src/main/assets/catalog/`) is cut from the published `catalog` release, never
   edited by hand: download its `core.jsonl.gz` and `labels-all.jsonl.gz`, then
@@ -41,8 +45,8 @@ or deviation made in a change gets its entry in the same commit.
   builds the same ids in (`Nudity.EXPLICIT`, `Nudity.NUDE`) and `NudityTest` checks they equal the file, so an
   edit changes both.
   `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the nudity list, the
-  starter cut); it is not in CI, so run it after changing the tool. A full export takes 20+ minutes of Wikidata load: test a
-  change with `--fame-file` on a handful of ids instead.
+  starter cut); it is not in CI, so run it after changing the tool. A full export takes 20+ minutes of
+  Wikidata load: test a change with `--fame-file` on a handful of ids instead.
 - Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
   Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
   Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
@@ -112,7 +116,8 @@ or deviation made in a change gets its entry in the same commit.
   header); a TV (960 dp) must keep 4 columns, the 48 × 27 dp overscan margins and one header row.
 - `BlePermissions` is the one BLE permission set (scan + connect on 12+, fine location before); every screen
   asks for and checks it through it. "Permissions and features" in the settings is where the app shows what
-  it needs; a new permission or feature switch gets a row there.
+  it needs; a new permission or feature switch gets a row there. A Catalog content setting goes into the
+  settings' "Catalog" group instead.
 - Now-playing poster: `FeatureStore.posterEnabled` (default on) gates `FrameController` before any frame
   rule; whoever changes it calls `FrameController.onPosterSwitched()`. Notification access screens differ per
   device (`ListenerAccess`: detail screen, list screen, or the adb hint on older Android TV).
@@ -153,9 +158,10 @@ or deviation made in a change gets its entry in the same commit.
   import streams into the `_stage` tables, then swaps in one transaction that also writes the files' ETag and
   SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes nothing. `rank` (unique) and `hidden`
   are stored, recomputed by `CatalogDao.rerank` (rules in the pure `CatalogRank`) inside the write transaction,
-  never in the paging query (`WHERE hidden = 0 AND nudity < :nudityBelow ORDER BY rank`). Catalog files come only from
-  `releases/download/catalog/<file>` (`CatalogSync.RELEASE`), never `releases/latest` (the APK). The Pager keeps
-  a bounded window (`maxSize = MAX_ROWS`); no DAO returns the whole list. Every id keeps its `<source>:` prefix
+  never in the paging query (`WHERE hidden = 0 AND nudity < :nudityBelow ORDER BY rank`, on the index
+  `(hidden, rank, nudity)`). Catalog files come only from `releases/download/catalog/<file>`
+  (`CatalogSync.RELEASE`), never `releases/latest` (the APK). The Pager keeps a bounded window
+  (`maxSize = MAX_ROWS`); no DAO returns the whole list. Every id keeps its `<source>:` prefix
   (`wd:`, `cma:`, `commons:`). The paged grid keys its items by index, not by row id (an id key replaces a
   focused placeholder when its page arrives, and the D-pad focus is lost), and a placeholder is the same
   `PictureCard` node, empty. Live sources (`LiveRefresh`, rules in the pure `LiveSourceRows`) keep their weekly
@@ -166,9 +172,12 @@ or deviation made in a change gets its entry in the same commit.
   release's `nsfw`, the built-in list and the nude genre (a source never lowers it; live rows 0), and each
   process start raises stored rows to the list (`CatalogDao.markListed`). Every query the grid and the viewer
   read takes `nudityBelow` (`pages`, `count`, `PLACED_ROW`, `FROM_RANK`), so "n / N" counts what the grid
-  shows; the order is computed over all levels, so a filter change writes nothing; only `checkEmpty` counts
-  unfiltered. In force is `NudityFilter.effective(choice, lock)`; the lock (`CatalogFilterStore.readLock`) is
-  read at every `onStart` and when the settings open, never stored, and `PRIVACY.md` says what it reads.
+  shows; the order is computed over all levels, so a filter change writes nothing and a process start ranks
+  nothing again; only `checkEmpty` counts unfiltered. In force is `NudityFilter.effective(choice, lock)`; the
+  lock (`CatalogFilterStore.readLock`) is read at every `onStart` and when the settings open, never stored,
+  and `PRIVACY.md` says what it reads. A change of the filter in force (`MainViewModel.applyNudity`, the one
+  place) closes a Catalog viewer and the details of a Catalog picture and drops the Bluetooth panel's Catalog
+  picture; the grid scrolls to its top after moving a card's focus to the tab.
 
 ## Public-repo hygiene
 This repository will become public. Committed text must contain no IP addresses, MAC addresses of real

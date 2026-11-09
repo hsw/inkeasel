@@ -24,9 +24,6 @@ enum class NudityFilter(val nudityBelow: Int) {
     HIDE_NUDES(NudityLevel.NUDE.ordinal),
     ;
 
-    /** Whether a row of [level] shows under this filter. */
-    fun shows(level: NudityLevel): Boolean = level.ordinal < nudityBelow
-
     companion object {
         val DEFAULT = HIDE_EXPLICIT
 
@@ -50,9 +47,9 @@ object Nudity {
     const val NUDE_GENRE = "Q40446"
 
     /**
-     * A painting's level: the strictest of the release's `nsfw` field (`nude`, `explicit`; an unknown value is
-     * ignored), the list's level for [id] (a bare `Q…` id) and the nude genre among [genres] ([NudityLevel.NUDE]).
-     * Never less strict than any one source: an absent field cannot be told from "none".
+     * A painting's level: the strictest of the release's `nsfw` field (`nude`, `explicit`; an unknown value
+     * counts as `nude`), the list's level for [id] (a bare `Q…` id) and the nude genre among [genres]
+     * ([NudityLevel.NUDE]). Never less strict than any one source: an absent field cannot be told from "none".
      */
     fun levelOf(nsfw: String?, genres: List<String>, id: String): NudityLevel = maxOf(
         fromNsfw(nsfw),
@@ -67,13 +64,14 @@ object Nudity {
         else -> NudityLevel.NONE
     }
 
-    fun isExplicit(wikidataId: String): Boolean = wikidataId in EXPLICIT
-
-    /** A release `nsfw` value; absent or unknown is [NudityLevel.NONE]. */
-    private fun fromNsfw(nsfw: String?): NudityLevel = when (nsfw) {
-        "explicit" -> NudityLevel.EXPLICIT
-        "nude" -> NudityLevel.NUDE
-        else -> NudityLevel.NONE
+    /**
+     * A release `nsfw` value; absent (or blank) is [NudityLevel.NONE]. A value this version does not know (a
+     * later release's new level) counts as [NudityLevel.NUDE], never less strict than a mark it cannot read.
+     */
+    private fun fromNsfw(nsfw: String?): NudityLevel = when {
+        nsfw.isNullOrBlank() -> NudityLevel.NONE
+        nsfw == "explicit" -> NudityLevel.EXPLICIT
+        else -> NudityLevel.NUDE
     }
 
     /** Wikidata ids (bare, `Q…`) of the paintings listed as explicit. */
@@ -88,6 +86,7 @@ object Nudity {
         "Q17494548", // Nymph abducted by a faun (Alexandre Cabanel)
         "Q139556301", // The Sin
         "Q47384936", // The Two Friends (Albert Marquet)
+        "Q167536", // The Great Masturbator (Salvador Dalí)
     )
 
     /** Wikidata ids (bare, `Q…`) of the paintings listed as nude (not explicit). */

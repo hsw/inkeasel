@@ -7,9 +7,9 @@ import java.io.File
 
 /**
  * The committed starter set (`assets/catalog/`, cut from the release by `tools/catalog-export.py
- * --starter-from`) reads with [CatalogRows] without a bad line, is in the release's order, holds no painting
- * listed as explicit ([Nudity.EXPLICIT]) and carries labels for every UI language the app has, one
- * `labels-<lang>` file per language. Unit tests run in the module directory.
+ * --starter-from`) reads with [CatalogRows] without a bad line, is in the release's order, holds no explicit
+ * painting (listed in [Nudity.EXPLICIT] or marked by the release, [Nudity.levelOf]) and carries labels for
+ * every UI language the app has, one `labels-<lang>` file per language. Unit tests run in the module directory.
  */
 class StarterAssetsTest {
     private val dir = File("src/main/assets/catalog")
@@ -59,7 +59,9 @@ class StarterAssetsTest {
 
     @Test
     fun core_holdsNoExplicitPainting() {
-        assertEquals(emptyList<String>(), core.map { it.id }.filter(Nudity::isExplicit))
+        // listed as explicit, or marked so by the release (`nsfw`), as the import computes the level
+        val explicit = core.filter { Nudity.levelOf(it.nsfw, it.genres, it.id) == NudityLevel.EXPLICIT }
+        assertEquals(emptyList<String>(), explicit.map { it.id })
     }
 
     @Test

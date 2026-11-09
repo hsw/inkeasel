@@ -19,11 +19,12 @@ sent to the developer.**
   log (logcat); only a debug build, made for development, does.
 - **Pictures you share to InkEasel** from a gallery or a file manager: the app copies the picture into its own
   storage so it can send it to the frame and show it under "My pictures".
-- **Whether the device restricts what you see.** Each time the app's screen opens (when the app starts or
-  comes back to the foreground) and when its settings open, the app asks Android whether the TV's parental
-  controls are on and whether the user may not change accounts (as in a restricted profile). Either one fixes
-  the Catalog's nudity filter at "Hide all nudity". The answer is used only for that: it is neither stored nor
-  sent.
+- **Whether the device restricts what you see.** Each time the app's screen opens (when the app starts, comes
+  back to the foreground, or its language changes) and when its settings open, the app asks Android whether
+  the TV's parental controls are on and whether the user may not change accounts (as in a restricted
+  profile). Either one fixes the Catalog's nudity filter at "Hide all nudity". The answer is used only for
+  that: it is neither stored nor sent. When the filter in force changes, the app writes it, and which of the
+  two set it, to the device's system log (logcat).
 - **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them, and during
   an upload (also of a poster, in the background) when the chosen frame does not answer at its saved address
   and has to be found again by its name: the search asks Android only for devices that advertise the frame's

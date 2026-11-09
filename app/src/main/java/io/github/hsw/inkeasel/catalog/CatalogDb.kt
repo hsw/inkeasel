@@ -38,7 +38,8 @@ import androidx.room.TypeConverters
     tableName = "picture",
     indices = [
         Index(value = ["rank"], unique = true),
-        Index(value = ["hidden", "rank"]),
+        // the list's order and filter in one index: its counts and scans never read the table rows
+        Index(value = ["hidden", "rank", "nudity"]),
     ],
 )
 data class PictureEntity(
@@ -349,13 +350,14 @@ abstract class CatalogDao {
      * Raises each stored Wikidata row to at least the level the built-in list gives it ([Nudity.listed]), in
      * one transaction: the import computes the level ([Nudity.levelOf]), but a release already imported is not
      * read again when a newer app version brings a longer list (an unchanged file is a 304). Never lowers a
-     * level (the release or the genre may set a stricter one); writes no row whose level is already there.
+     * level (the release or the genre may set a stricter one); writes no row whose level is already there. At
+     * most [chunk] ids per statement ([LISTED_CHUNK]; tests pass a small one to make several).
      */
     @Transaction
-    open suspend fun markListed(): Int {
+    open suspend fun markListed(chunk: Int = LISTED_CHUNK): Int {
         var raised = 0
         for ((level, ids) in listOf(NudityLevel.EXPLICIT to Nudity.EXPLICIT, NudityLevel.NUDE to Nudity.NUDE)) {
-            ids.map { "${CatalogRank.WIKIDATA}:$it" }.chunked(LISTED_CHUNK).forEach { raised += raiseNudity(it, level.ordinal) }
+            ids.map { "${CatalogRank.WIKIDATA}:$it" }.chunked(chunk).forEach { raised += raiseNudity(it, level.ordinal) }
         }
         return raised
     }
@@ -375,7 +377,7 @@ abstract class CatalogDao {
         changes.forEach { p -> place(p.id, p.rank, p.hidden) }
     }
 
-    private companion object {
+    companion object {
         /** Ids per statement of [markListed]: below the 999 bound parameters of SQLite before 3.32. */
         const val LISTED_CHUNK = 900
     }

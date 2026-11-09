@@ -15,7 +15,7 @@ License: [Apache-2.0](LICENSE).
 |---|---|
 | ![The catalog on Android TV: a tab of picture cards in four columns](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
 
-![Settings: the frame search and the "Permissions and features" section](docs/screenshots/settings.png)
+![Settings: the frame search and "Permissions and features" (before the "Catalog" group)](docs/screenshots/settings.png)
 
 ## Supported frames
 
@@ -139,6 +139,10 @@ tablet).
   Backup and device-to-device transfer are off (`allowBackup="false"`, and data extraction rules that exclude
   every domain on Android 12+, `res/xml/data_extraction_rules.xml`: an exclusion of `root` does not reach the
   `file`, `database` and `sharedpref` trees, which the backup walks on their own).
+- At each start of the app's screen and when the settings open, the app asks Android whether the TV's
+  parental controls are on and whether the user may change accounts, only to lock the Catalog's nudity
+  filter; the answer is not stored or sent (the system log gets the filter in force and the lock's kind when
+  it changes). The filter as chosen is kept in prefs `catalog`.
 - A BLE scan runs while the settings search for frames, and during an upload when the chosen frame has to be
   found again by its name (filtered to the frame's service, see "Uploading to the chosen frame").
 
@@ -158,7 +162,11 @@ tablet).
   (and the rows the release marks `"nsfw": "explicit"`) and takes the next ones by fame instead. Each `core`
   row carries a nudity level, `"nsfw": "nude"` or `"explicit"` (left out when none): the strictest of the
   list's level, Wikidata's "depicts" (P180: genitals or sex → explicit; nudity or pubic hair → nude) and the
-  nude genre (P136) → nude. The release published before this field was added does not carry it yet.
+  nude genre (P136) → nude. The release published before this field was added does not carry it yet. To
+  change the list, edit a line `<Q-id> <explicit|nude>  # <title>` and the same id in `Nudity.EXPLICIT` or
+  `Nudity.NUDE` (`catalog/Nudity.kt`; `NudityTest` fails until both agree); for an added explicit id, cut
+  the starter set again with `--starter-from`; installs that hold the release already get the new level at
+  their next process start (`CatalogDao.markListed`).
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -239,8 +247,9 @@ into one scrolling column, the buttons under the title and the picture under the
 The full-screen view (a press on a card, or **View full screen**) shows the picture on black, fitted to the
 screen and never cropped, with the system bars hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
 and stop at its ends (in the Catalog the next one is read from the database, so it does not matter how far
-the grid has loaded; "n / N" is the place in the whole list); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
-tap hides it again. The credit line (title; artist, source and licence, and the image credit where the licence
+the grid has loaded; "n / N" is the place in the whole list as the nudity filter leaves it, see "Catalog
+filter"); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a tap hides it
+again. The credit line (title; artist, source and licence, and the image credit where the licence
 asks for one) shows for 5 s on open, on each new
 picture and with the button. Back returns to the grid when a press opened the view, to the details panel of
 the picture on screen when the panel did. The image is loaded
@@ -282,12 +291,15 @@ published; each process start raises stored rows to it) and Wikidata's nude genr
 rows carry none. The Catalog shows the rows below the bound of the filter in force (**Settings → Catalog →
 Nudity**, below): the paging query, the count and the viewer's "n / N" and Left/Right all leave the hidden
 ones out, and a Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the
-filter. When the filter changes, the grid goes back to its top and an open Catalog viewer closes. The starter
-set never carries an explicit painting.
+filter. When the filter changes, the grid goes back to its top (the D-pad focus moves to the tab first), and
+an open Catalog viewer or the details panel of a Catalog picture closes, as the picture may be one the filter
+now hides (the Bluetooth panel stays but no longer sends its Catalog picture). The starter set never carries
+an explicit painting.
 
-The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
-Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
-same Commons file, or the Cleveland accession number the release has as P11110) is hidden. A source is asked
+The live sources' lists are rows of the same database: every 10th card of the unfiltered order is one of them
+(a filter that leaves rows out before it moves it up), Cleveland and Commons in turn, and they follow the
+last Wikidata row once those run out; one that is a Wikidata row (the same Commons file, or the Cleveland
+accession number the release has as P11110) is hidden. A source is asked
 in the background at app start (and on each return to the foreground), after the release sync, a week
 after its last whole list: its request runs outside the store's write lock (a list request gives up after
 60 s; Commons reads at most 3 pages within 120 s) and its answer replaces the source's rows in one transaction. A failure, an empty answer or a list cut
@@ -311,10 +323,9 @@ The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, o
 `CatalogStore` that the app's screen wakes each time it starts (`MainActivity`'s `onStart`: the app's start,
 each return to the foreground, and a change of the app's language, which re-creates it), so a process that a
 TV keeps for weeks still checks what fell due. On the first start the APK's starter set (the top 1,000, less
-the paintings listed as explicit) goes
-into the empty database with the labels of the app language's chain, English and `mul`, read from those
-languages' own files only. Then, at every such start (a pass), the store checks the files of the GitHub
-release `catalog` that are due:
+the paintings listed as explicit) goes into the empty database with the labels of the app language's chain,
+English and `mul`, read from those languages' own files only. Then, at every such start (a pass), the store
+checks the files of the GitHub release `catalog` that are due:
 `core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
 week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
 later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
@@ -602,7 +613,8 @@ Code:
 - `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
   the viewer
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
-  rows (`CatalogRows`) and their import (`CatalogImport`), the label languages (`LanguageChain`), and its
+  rows (`CatalogRows`) and their import (`CatalogImport`), the nudity levels and filter (`Nudity`,
+  `NudityLevel`, `NudityFilter`, with the built-in list; pure), the label languages (`LanguageChain`), and its
   process-wide owner `CatalogStore`, which runs the starter import, the release sync (`CatalogSync`; which
   files are due and what is recorded: `CatalogSyncPlan`, pure) and the live sources' refresh (`LiveRefresh`;
   its rules in `LiveSourceRows`, pure) and gives the Catalog tab its pages; a row as
@@ -623,8 +635,12 @@ Code:
 - `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
   Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
-- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select) and "Permissions and features"
-  (Bluetooth, the poster switch with its disclosure panel, notification access, the privacy policy row)
+- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
+  "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access,
+  the privacy policy row)
+- `CatalogFilterStore.kt`: the Catalog's nudity filter as chosen (prefs `catalog`) and the device's lock on
+  it (`readLock`: TV parental controls, a restricted profile); `NuditySetting.kt`: the lock decision, the
+  press's next value and the row's texts (pure)
 - `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
   was seen: a dismissed dialog does not count), whether the first-run panel was answered, and App info
 - `BleAsk.kt`: when and how the app asks for Bluetooth: the first-run panel, a pressed or shared picture, its

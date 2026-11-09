@@ -58,9 +58,10 @@ class StarterSet(
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
  * per process: the starter set goes into an empty database, the stored rows are raised to the built-in list's
  * nudity levels ([CatalogDao.markListed]: a painting listed by a newer version is filtered at once, though
- * the release it came with is not imported again), the stored order is computed again ([CatalogRank]) and the
- * old list cache, [legacy], is deleted; then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
- * and a new UI language, which re-creates the activity) runs a pass: the starter's labels of a chain
+ * the release it came with is not imported again; the order does not depend on the level, so nothing is
+ * ranked again) and the old list cache, [legacy], is deleted; then each [start] (every app start, each return
+ * of the app's screen to the foreground, [startOnEachStart], and a new UI language, which re-creates the
+ * activity) runs a pass: the starter's labels of a chain
  * language the database has none of, the release sync, which fetches only the files that are due
  * ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch outside the lock and
  * write under it, so a pass with nothing due makes no request. Passes run one after another; a [start]
@@ -165,13 +166,12 @@ class CatalogStore internal constructor(
 
     private suspend fun work() {
         step("starter import") { starter(chain.value) }
-        // this version's built-in nudity levels and its order ([CatalogRank]) over a database an older version
-        // filled, before the list reads it; each writes nothing when nothing changes
+        // this version's built-in nudity levels over a database an older version filled, before the list reads
+        // it; writes nothing when nothing changes
         step("listed levels") {
             val raised = db.catalog().markListed()
             if (raised > 0) log("nudity raised by the built-in list: $raised rows", null)
         }
-        step("rerank") { db.catalog().rerank() }
         checkEmpty()
         ready.value = true
         legacy?.let(::dropLegacy)

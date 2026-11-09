@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 2,
-    "identityHash": "fc7fc31ff8797059ed64b425bf87698e",
+    "identityHash": "e05ba58eb26db51683791e7c4a42ecbb",
     "entities": [
       {
         "tableName": "picture",
@@ -171,14 +171,15 @@
             "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_picture_rank` ON `${TABLE_NAME}` (`rank`)"
           },
           {
-            "name": "index_picture_hidden_rank",
+            "name": "index_picture_hidden_rank_nudity",
             "unique": false,
             "columnNames": [
               "hidden",
-              "rank"
+              "rank",
+              "nudity"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_hidden_rank` ON `${TABLE_NAME}` (`hidden`, `rank`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_hidden_rank_nudity` ON `${TABLE_NAME}` (`hidden`, `rank`, `nudity`)"
           }
         ],
         "foreignKeys": []
@@ -518,7 +519,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fc7fc31ff8797059ed64b425bf87698e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e05ba58eb26db51683791e7c4a42ecbb')"
     ]
   }
 }

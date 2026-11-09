@@ -21,8 +21,9 @@ import org.robolectric.Shadows.shadowOf
 
 /**
  * The device's lock read again at an activity start ([MainViewModel.readNudityLock], what `MainActivity.onStart`
- * calls): a lock switched on or off while the app was in the background puts its filter in force on its return
- * and closes a Catalog viewer opened under the old one. The TV emulator cannot switch parental controls from a
+ * calls) and when the settings open: a lock switched on or off while the app was in the background puts its
+ * filter in force on its return and takes away what shows a Catalog picture picked under the old one (the
+ * viewer, the details panel, the Bluetooth panel's picture), but nothing of My pictures. The TV emulator cannot switch parental controls from a
  * shell, so this covers the return path; the restricted-profile restriction stands in for either lock.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -35,6 +36,9 @@ class MainViewModelNudityTest {
 
     // never in the catalog database: the viewer shows it alone
     private val picture = Picture("wd:Q0", "Title", "Credit", "", "")
+
+    // a picture of My pictures (a file on the device)
+    private val mine = Picture("local:a.png", "a.png", "", "/nowhere/a.png", "/nowhere/a.png", local = true)
 
     @Before
     fun setUp() {
@@ -105,6 +109,64 @@ class MainViewModelNudityTest {
         idle()
         assertNotNull(vm.viewer)
         assertEquals(NudityFilter.HIDE_EXPLICIT.nudityBelow, store.nudityBelow.value)
+    }
+
+    @Test
+    fun aLockSwitchedOnWhileAway_closesTheDetailsOfACatalogPicture() {
+        vm.openDetails(picture)
+        restricted(true)
+        vm.readNudityLock()
+        idle()
+        assertNull(vm.details)
+    }
+
+    @Test
+    fun aFilterChange_leavesTheDetailsOfAPictureOfMine() {
+        vm.openDetails(mine)
+        restricted(true)
+        vm.readNudityLock()
+        idle()
+        assertEquals(mine, vm.details)
+    }
+
+    @Test
+    fun aFilterChange_leavesAViewerOnMyPicturesOpen() {
+        vm.selectTab(MainViewModel.LOCAL_TAB)
+        vm.openViewer(mine, catalogPicture = { error("not the Catalog") }, byPress = true)
+        idle()
+        assertNotNull(vm.viewer)
+
+        restricted(true)
+        vm.readNudityLock()
+        idle()
+
+        assertEquals(NudityFilter.HIDE_NUDES.nudityBelow, store.nudityBelow.value)
+        assertEquals(mine.id, vm.viewer?.picture?.id)
+    }
+
+    @Test
+    fun aFilterChange_takesTheCatalogPictureOutOfTheBluetoothPanel() {
+        vm.showBlePanel(BleAsk.Stage.FIRST, picture)
+        restricted(true)
+        vm.readNudityLock()
+        idle()
+        // the panel stays for the permission, but sends nothing once it is granted
+        assertEquals(BlePanelState(BleAsk.Stage.FIRST, null), vm.blePanel)
+
+        vm.showBlePanel(BleAsk.Stage.FIRST, mine)
+        restricted(false)
+        vm.readNudityLock()
+        idle()
+        assertEquals(mine, vm.blePanel?.picture)
+    }
+
+    @Test
+    fun openingTheSettings_readsTheLockAgain() {
+        // switched on while the app stays started (the system settings beside it in a split screen)
+        restricted(true)
+        vm.openSettings()
+        assertEquals(NudityLock.RESTRICTED_PROFILE, vm.nudityLock)
+        assertEquals(NudityFilter.HIDE_NUDES.nudityBelow, store.nudityBelow.value)
     }
 
     @Test

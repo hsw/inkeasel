@@ -59,8 +59,8 @@ The starter set never carries an `explicit` painting (listed, or `nsfw: "explici
 from): the cut leaves them out and reads on in fame order to fill --starter-size rows, so its core is the
 release core minus those rows, cut at that size.
 
-`--self-test` checks the row building, the nudity list and the starter cut on a small built-in fixture (no network, nothing
-written outside a temporary directory) and exits 0 when every check passes.
+`--self-test` checks the row building, the nudity list and the starter cut on a small built-in fixture (no
+network, nothing written outside a temporary directory) and exits 0 when every check passes.
 
 Rows are sorted by fame, most famous first (ties by numeric id). A labels file follows the same order:
 each painting, then the entities it references that no earlier painting referenced, so any prefix of a
@@ -491,12 +491,12 @@ def explicit_ids(levels):
     return frozenset(eid for eid, level in levels.items() if level == "explicit")
 
 
-def write_starter(d, core, labels, langs, size, wanted, explicit=frozenset()):
-    """The starter set: the first `size` core rows that are not explicit (`is_explicit`) and their labels in the
-    `wanted` languages, one file per language as in the release (a language with no label of a starter
+def write_starter(d, core, labels, langs, size, wanted):
+    """The starter set: the first `size` core rows not marked `nsfw: "explicit"` (a full run's rows carry the
+    list's level; `starter_from` leaves listed ids out itself) and their labels in the `wanted` languages, one file per language as in the release (a language with no label of a starter
     entity gets no file). Removes the starter files already in `d`. Returns (paintings, languages, label
     rows)."""
-    starter = [row for row in core if not is_explicit(row, explicit)][:size]
+    starter = [row for row in core if row.get("nsfw") != "explicit"][:size]
     order = entity_order(starter)
     clear_old(d)
     write_gz(os.path.join(d, "core.jsonl.gz"), starter)
@@ -709,7 +709,9 @@ def self_test():
         explicit = explicit_ids({"Q9": "explicit", "Q10": "nude"})
         mem_x, cut_x = os.path.join(tmp, "memory-x"), os.path.join(tmp, "cut-x")
         os.makedirs(mem_x)
-        write_starter(mem_x, core, labels, langs, 3, wanted, explicit)
+        # a full run's rows carry the list's level, so its writer leaves the listed ids out by their field
+        write_starter(mem_x, [{**r, "nsfw": "explicit"} if r["id"] in explicit else r for r in core], labels,
+                      langs, 3, wanted)
         got = starter_from(rel, cut_x, 3, wanted, explicit)
         for name in names:
             with open(os.path.join(mem_x, name), "rb") as f1, open(os.path.join(cut_x, name), "rb") as f2:
@@ -751,6 +753,8 @@ def self_test():
         with open(x_list, "a", encoding="utf-8") as f:
             f.write("Q11 maybe\n")
         check(main([main_x, "--starter-from", rel, "--nsfw-list", x_list]) == 1, "main: a bad list -> exit 1")
+        check(main([main_x, "--starter-from", rel, "--nsfw-list", os.path.join(tmp, "no-such-list.txt")]) == 1,
+              "main: a missing list -> exit 1")
         main_out = os.path.join(tmp, "main")
         code = main([main_out, "--starter-from", rel, "--starter-size", "3", "--starter-langs", "en,ru,mul,de,zz"])
         check(code == 0 and sorted(os.listdir(main_out)) == names,
@@ -775,6 +779,15 @@ def self_test():
         except ValueError:
             check(True, "core not in fame order")
         check(main([os.path.join(tmp, "x"), "--starter-from", bad]) == 1, "main --starter-from: error -> exit 1")
+        # the fame order is checked over every row, also one left out as explicit (Q9 after the listed Q4)
+        bad_x = os.path.join(tmp, "unordered-x")
+        os.makedirs(bad_x)
+        write_release(bad_x, [core[0], core[3], core[1]], labels, langs)
+        try:
+            starter_from(bad_x, cut, 3, wanted, frozenset({"Q4"}))
+            check(False, "starter_from fails: core not in fame order after a row left out")
+        except ValueError:
+            check(True, "core not in fame order after a row left out")
 
     for what in failed:
         print(f"FAIL {what}", file=sys.stderr)
@@ -896,7 +909,7 @@ def main(argv=None):
 
     order, n_all = write_release(a.outdir, core, labels, langs)
     n_starter, n_starter_langs, n_starter_labels = write_starter(starter_dir, core, labels, langs,
-                                                                 a.starter_size, wanted, explicit)
+                                                                 a.starter_size, wanted)
 
     log(f"done: {len(core)} paintings, {len(order) - len(core)} referenced entities, {len(langs)} label "
         f"languages ({n_all} label rows); starter: {n_starter} paintings, {n_starter_langs} languages "

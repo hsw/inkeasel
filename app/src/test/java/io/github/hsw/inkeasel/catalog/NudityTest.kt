@@ -1,7 +1,6 @@
 package io.github.hsw.inkeasel.catalog
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -55,10 +54,9 @@ class NudityTest {
 
     @Test
     fun matchesOnlyTheBareId() {
-        assertTrue(Nudity.isExplicit("Q334138"))
-        assertFalse(Nudity.isExplicit("wd:Q334138"))
-        assertFalse(Nudity.isExplicit("Q3341380"))
-        assertFalse(Nudity.isExplicit("Q151047"))
+        assertEquals(NudityLevel.EXPLICIT, Nudity.listed("Q334138"))
+        assertEquals(NudityLevel.NONE, Nudity.listed("wd:Q334138"))
+        assertEquals(NudityLevel.NONE, Nudity.listed("Q3341380"))
         assertEquals(NudityLevel.NUDE, Nudity.listed("Q151047"))
         assertEquals(NudityLevel.NONE, Nudity.listed("wd:Q151047"))
         assertEquals(NudityLevel.NONE, Nudity.listed("Q1510470"))
@@ -85,10 +83,18 @@ class NudityTest {
     }
 
     @Test
-    fun unknownNsfwIsIgnored() {
-        for (value in listOf("", "none", "Explicit", "NUDE", "sex")) {
-            assertEquals(value, NudityLevel.NONE, Nudity.levelOf(value, emptyList(), "Q12418"))
-            assertEquals(value, NudityLevel.NUDE, Nudity.levelOf(value, emptyList(), "Q151047"))
+    fun aBlankNsfwIsNone() {
+        for (value in listOf("", " ")) {
+            assertEquals(NudityLevel.NONE, Nudity.levelOf(value, emptyList(), "Q12418"))
+            assertEquals(NudityLevel.NUDE, Nudity.levelOf(value, emptyList(), "Q151047"))
+        }
+    }
+
+    @Test
+    fun anUnknownNsfwCountsAsNude_neverLessStrict() {
+        for (value in listOf("none", "Explicit", "NUDE", "sex", "suggestive")) {
+            assertEquals(value, NudityLevel.NUDE, Nudity.levelOf(value, emptyList(), "Q12418"))
+            assertEquals(value, NudityLevel.EXPLICIT, Nudity.levelOf(value, emptyList(), "Q334138"))
         }
     }
 
@@ -108,7 +114,8 @@ class NudityTest {
 
     @Test
     fun eachFilterShowsTheRightLevels() {
-        fun shown(f: NudityFilter) = NudityLevel.entries.filter(f::shows)
+        // the list's queries keep a row when its level's ordinal is below the bound (`nudity < :nudityBelow`)
+        fun shown(f: NudityFilter) = NudityLevel.entries.filter { it.ordinal < f.nudityBelow }
         assertEquals(NudityLevel.entries, shown(NudityFilter.SHOW_ALL))
         assertEquals(listOf(NudityLevel.NONE, NudityLevel.NUDE), shown(NudityFilter.HIDE_EXPLICIT))
         assertEquals(listOf(NudityLevel.NONE), shown(NudityFilter.HIDE_NUDES))

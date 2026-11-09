@@ -31,29 +31,27 @@ class CatalogFilterStore(context: Context) {
         /**
          * Whether the device locks the filter now ([NuditySetting.lock]): Android TV's parental controls, or a
          * user that may not change accounts (a restricted profile). Read each time, never stored or sent. There is
-         * no public API for Family Link or a Google TV kids profile, so those are not seen.
+         * no public API for Family Link or a Google TV kids profile, so those are not seen. The TV input service
+         * is missing on a device without `android.software.live_tv`, as most phones and tablets: not locked there.
          */
-        fun readLock(ctx: Context): NudityLock? =
-            readLock(ctx.getSystemService(TvInputManager::class.java), ctx.getSystemService(UserManager::class.java))
+        fun readLock(ctx: Context): NudityLock? {
+            val tv = ctx.getSystemService(TvInputManager::class.java)
+            val users = ctx.getSystemService(UserManager::class.java)
+            return readLock(
+                parentalControls = { tv?.isParentalControlsEnabled == true },
+                accountsRestricted = { users?.hasUserRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS) == true },
+            )
+        }
 
-        /**
-         * [readLock] from the two services; either may be missing ([tv] is `null` on a device without
-         * `android.software.live_tv`, as most phones and tablets), and a failing read counts as not locked.
-         */
-        internal fun readLock(tv: TvInputManager?, users: UserManager?): NudityLock? {
-            val parental = tv != null && try {
-                tv.isParentalControlsEnabled
-            } catch (e: RuntimeException) {
-                Log.w(TAG, "parental controls unreadable", e)
-                false
-            }
-            val restricted = users != null && try {
-                users.userRestrictions.getBoolean(UserManager.DISALLOW_MODIFY_ACCOUNTS)
-            } catch (e: RuntimeException) {
-                Log.w(TAG, "user restrictions unreadable", e)
-                false
-            }
-            return NuditySetting.lock(parental, restricted)
+        /** [readLock] from the two reads, each of which counts as off when it fails (a system service gone). */
+        internal fun readLock(parentalControls: () -> Boolean, accountsRestricted: () -> Boolean): NudityLock? =
+            NuditySetting.lock(read("parental controls", parentalControls), read("user restrictions", accountsRestricted))
+
+        private fun read(what: String, block: () -> Boolean): Boolean = try {
+            block()
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "$what unreadable", e)
+            false
         }
     }
 }

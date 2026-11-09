@@ -16,6 +16,7 @@ Q834119 explicit  # Oinochoe by the Shuvalov Painter (Shuvalov Painter)
 Q17494548 explicit  # Nymph abducted by a faun (Alexandre Cabanel)
 Q139556301 explicit  # The Sin
 Q47384936 explicit  # The Two Friends (Albert Marquet)
+Q167536 explicit  # The Great Masturbator (Salvador Dalí)
 Q29530 nude  # Liberty Leading the People (Eugène Delacroix)
 Q151047 nude  # The Birth of Venus (Sandro Botticelli)
 Q321303 nude  # The Garden of Earthly Delights (Hieronymus Bosch)

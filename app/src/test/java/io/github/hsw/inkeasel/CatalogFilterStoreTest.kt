@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel
 
 import android.content.Context
+import android.media.tv.TvInputManager
 import android.os.Process
 import android.os.UserManager
 import androidx.test.core.app.ApplicationProvider
@@ -37,21 +38,31 @@ class CatalogFilterStoreTest {
     }
 
     @Test
-    fun readLock_noServices_isNotLocked() {
-        // no TvInputManager: a phone or tablet without android.software.live_tv
-        assertNull(CatalogFilterStore.readLock(null, null))
-        assertNull(CatalogFilterStore.readLock(null, users))
+    fun readLock_eachRead_andParentalControlsFirst() {
+        assertNull(CatalogFilterStore.readLock({ false }, { false }))
+        assertEquals(NudityLock.PARENTAL_CONTROLS, CatalogFilterStore.readLock({ true }, { false }))
+        assertEquals(NudityLock.PARENTAL_CONTROLS, CatalogFilterStore.readLock({ true }, { true }))
+        assertEquals(NudityLock.RESTRICTED_PROFILE, CatalogFilterStore.readLock({ false }, { true }))
+    }
+
+    @Test
+    fun readLock_aFailingRead_countsAsOff_andTheOtherStillCounts() {
+        val gone = { throw IllegalStateException("system service gone") }
+        assertNull(CatalogFilterStore.readLock(gone, gone))
+        assertEquals(NudityLock.RESTRICTED_PROFILE, CatalogFilterStore.readLock(gone, { true }))
+        assertEquals(NudityLock.PARENTAL_CONTROLS, CatalogFilterStore.readLock({ true }, gone))
     }
 
     @Test
     fun readLock_deviceWithoutLiveTv_isNotLocked() {
+        // Robolectric publishes no TvInputManager: a phone or tablet without android.software.live_tv
+        assertNull(context.getSystemService(TvInputManager::class.java))
         assertNull(CatalogFilterStore.readLock(context))
     }
 
     @Test
     fun readLock_accountsRestricted_isTheProfileLock() {
         shadowOf(users).setUserRestriction(Process.myUserHandle(), UserManager.DISALLOW_MODIFY_ACCOUNTS, true)
-        assertEquals(NudityLock.RESTRICTED_PROFILE, CatalogFilterStore.readLock(null, users))
         assertEquals(NudityLock.RESTRICTED_PROFILE, CatalogFilterStore.readLock(context))
         shadowOf(users).setUserRestriction(Process.myUserHandle(), UserManager.DISALLOW_MODIFY_ACCOUNTS, false)
         assertNull(CatalogFilterStore.readLock(context))

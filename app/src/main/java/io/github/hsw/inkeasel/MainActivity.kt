@@ -133,9 +133,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val nudityInForce: NudityFilter get() = NudityFilter.effective(nudityChoice, nudityLock != null)
 
     /**
-     * Read the device's lock again and put the filter in force on the Catalog ([CatalogStore.applyFilter]); a
-     * new one re-pages the grid and closes an open Catalog viewer. At each start of the activity, so a lock
-     * switched on while the app was in the background applies on its return, and when the settings open.
+     * Read the device's lock again and put the filter in force on the Catalog ([applyNudity]). At each start of
+     * the activity, so a lock switched on while the app was in the background applies on its return, and when
+     * the settings open (in a split screen the system settings change it while the app stays started).
      */
     fun readNudityLock() {
         nudityLock = CatalogFilterStore.readLock(getApplication())
@@ -150,9 +150,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         applyNudity()
     }
 
+    /**
+     * Puts the filter in force on the Catalog ([CatalogStore.applyFilter]): a new one re-pages the grid, and
+     * whatever shows a Catalog picture picked under the old one goes, as the picture may be one it hides now
+     * (the device's lock found on at a return to the foreground): an open Catalog viewer closes (it steps under
+     * the filter it opened with, so its "n / N" would count another list than the grid's), so does a details
+     * panel on a Catalog picture, and the Bluetooth panel forgets the Catalog picture it was to send.
+     */
     private fun applyNudity() {
         val filter = nudityInForce
-        if (store.nudityBelow.value != filter.nudityBelow) Log.i(TAG, "nudity filter: $filter (choice $nudityChoice, lock $nudityLock)")
+        if (store.nudityBelow.value != filter.nudityBelow) {
+            Log.i(TAG, "nudity filter: $filter (choice $nudityChoice, lock $nudityLock)")
+            if (viewerOnCatalog && viewer != null) {
+                Log.i(TAG, "nudity filter changed: Catalog viewer closed")
+                nav.close()
+            }
+            if (details?.local == false) {
+                Log.i(TAG, "nudity filter changed: details closed")
+                details = null
+            }
+            blePanel?.let { panel ->
+                if (panel.picture?.local == false) {
+                    Log.i(TAG, "nudity filter changed: the Bluetooth panel sends no Catalog picture")
+                    blePanel = panel.copy(picture = null)
+                }
+            }
+        }
         store.applyFilter(filter)
     }
 
@@ -244,19 +267,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The open viewer steps through the Catalog ([CatalogSteps]), not My pictures. */
     private var viewerOnCatalog = false
-
-    init {
-        // a Catalog viewer steps under the filter it opened with: a new one (such as the device's lock found on
-        // at a return to the foreground) closes it, so its "n / N" never counts another list than the grid's
-        viewModelScope.launch {
-            store.nudityBelow.drop(1).collect {
-                if (viewerOnCatalog && viewer != null) {
-                    Log.i(TAG, "nudity filter changed: viewer closed")
-                    nav.close()
-                }
-            }
-        }
-    }
 
     /** The open viewer was opened by a press on a card, not from the details panel. */
     var viewerByPress by mutableStateOf(false)
@@ -614,21 +624,20 @@ fun App(
     val grid = rememberLazyGridState()
     // the Catalog's own grid state: its place in the long list survives a visit to another tab
     val catalogGrid = rememberLazyGridState()
-    // a new nudity filter is another list: the Catalog grid goes back to its top (not at a first composition)
-    val nudityBelow by vm.catalogNudityBelow.collectAsState()
-    var gridFilter by remember { mutableIntStateOf(nudityBelow) }
-    LaunchedEffect(nudityBelow) {
-        if (nudityBelow != gridFilter) {
-            gridFilter = nudityBelow
-            catalogGrid.scrollToItem(0)
-        }
-    }
     val pages = vm.catalogPages.collectAsLazyPagingItems()
     val catalogEmpty by vm.catalogEmpty.collectAsState()
     val names = stringResource(R.string.list_names_separator)
     val density = LocalDensity.current.density
     val tabFocus = remember { FocusRequester() }
     var contentFocused by remember { mutableStateOf(false) }
+    // a new nudity filter is another list: the Catalog grid goes back to its top (not at a first composition);
+    // a focused card goes with the old list, so the D-pad focus moves to the tab first, as Back does it
+    LaunchedEffect(Unit) {
+        vm.catalogNudityBelow.drop(1).collect {
+            if (contentFocused && vm.tab == MainViewModel.CATALOG_TAB) runCatching { tabFocus.requestFocus() }
+            catalogGrid.scrollToItem(0)
+        }
+    }
     val scope = rememberCoroutineScope()
     MaterialTheme(colorScheme = darkColorScheme()) {
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {

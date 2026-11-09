@@ -187,11 +187,16 @@ class CatalogDaoTest {
     }
 
     @Test
-    fun markListedReachesEveryListedId() = runTest {
-        // more ids than one statement may bind: every one of them is raised
+    fun markListedReachesEveryListedId_overManyStatements() = runTest {
+        // each level's ids go in statements of at most `chunk` (SQLite before 3.32 binds 999 at most, and
+        // Robolectric's binds far more, so a small chunk makes several, a last short one included): every id
+        // is raised, none twice
         val ids = (Nudity.EXPLICIT + Nudity.NUDE).toList()
+        val chunk = 7
+        assertTrue(Nudity.EXPLICIT.size > chunk && Nudity.NUDE.size % chunk != 0)
+        assertTrue(CatalogDao.LISTED_CHUNK < 999)
         dao.insertPictures(ids.mapIndexed { i, q -> wd(i).copy(id = "wd:$q", wikidataId = q) })
-        assertEquals(ids.size, dao.markListed())
+        assertEquals(ids.size, dao.markListed(chunk))
         assertEquals(
             ids.map { Nudity.listed(it).ordinal },
             ids.map { dao.picture("wd:$it")!!.nudity },

@@ -4,8 +4,8 @@ Design decisions with their reasons and the options that were turned down, newes
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
 ## 2026-11-09 — The Catalog's nudity filter is a setting with three values; the device can lock it
-**Settings → Catalog → Nudity** chooses the filter: "Hide explicit works" (the default), "Hide all nudity" or
-"Show all"; a press (OK or a tap) moves to the next value in that order, and the choice is stored in plain
+**Settings → Catalog → Nudity** chooses the filter: "Hide explicit works" (the default), "Hide all nudity"
+or "Show all"; a press (OK or a tap) moves to the next value in that order, and the choice is stored in plain
 preferences (`CatalogFilterStore`, like the poster switch). The levels are those the catalog marks (explicit:
 genitals in focus, a sexual act or assault; nude: other nudity), from the release's `nsfw` field, the
 built-in list and Wikidata's nude genre; the row says that some works may not be marked (the live sources
@@ -17,10 +17,12 @@ The device locks the filter at "Hide all nudity" while Android TV's parental con
 (`TvInputManager.isParentalControlsEnabled()`; the service is missing on a device without
 `android.software.live_tv`, so a phone or tablet reads it as off) or while the user may not change accounts
 (`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for every restricted profile; also on some managed devices,
-where a stricter filter does no harm). It is read at each start of the activity and when the settings open,
-never stored or sent, so a lock switched on while the app was in the background applies on its return (the
-grid goes back to its top, an open Catalog viewer closes); the row shows the reason and a press does
-nothing; the stored choice comes back once the lock is off.
+where a stricter filter does no harm). It is read at each start of the activity and when the settings open
+(in a split screen the system settings change it while the app stays started), never stored or sent (the
+system log gets the filter in force and the lock's kind when it changes), so a lock switched on while the
+app was in the background applies on its return (the grid goes back to its top, an open Catalog viewer or
+details panel closes); the row shows the reason and a press does nothing; the stored choice comes back once
+the lock is off.
 Not detected: Family Link supervision and Google TV kids profiles. Android has no public API for either on
 API 26–36 (a supervised account sets no user restriction an app can read, and a kids profile is an ordinary
 user to the app), so the default filter is what protects them.
@@ -29,7 +31,8 @@ user, to cover a case the lock and the setting cover), a filter only in the expo
 see the works hidden, or to hide more), a fixed filter with no switch (the same), guessing a kids profile
 from launcher packages or the account list (no stable signal, and reading the accounts needs a permission
 this app has no other use for), storing the lock (a stale value would outlive the parental controls being
-switched off), an app restriction for device admins (later, if asked for).
+switched off), an app restriction for device admins and Google Play's Age Signals API as another lock source
+(later, if asked for).
 
 ## 2026-11-09 — Each picture stores its nudity level; the Catalog's queries filter on it
 Every catalog row has a `nudity` column (`picture` and `picture_stage`, INTEGER NOT NULL DEFAULT 0): the
@@ -42,15 +45,20 @@ The list's queries take a bound, `nudity < :nudityBelow` (`NudityFilter`: 3 show
 hides all nudes): the paging query, the count, and the viewer's place, count and neighbour ranks, so its
 "n / N" counts the same list as the grid. The stored order holds every row whatever its level (the hard hide
 of listed explicit rows in `CatalogRank.place` is gone), so another filter needs no write: the store starts a
-new pager, the grid goes back to its top, and an open Catalog viewer closes (it steps under the bound it
-opened with). The every-10th live card may move up by the rows a filter leaves out before it. The bound is
-the setting's (see "The Catalog's nudity filter is a setting with three values"), hide explicit by default,
-so explicit works stay hidden as before.
+new pager, the grid goes back to its top (the D-pad focus moves to the tab first, as Back does it, since the
+focused card goes), and whatever shows a Catalog picture picked under the old bound goes, as it may be one the
+new bound hides: an open Catalog viewer closes (it steps under the bound it opened with), so does a details
+panel on a Catalog picture, and the Bluetooth panel keeps asking for the permission but no longer sends its
+Catalog picture. My pictures is not touched. The every-10th live card may move up by the rows a filter
+leaves out before it. The bound is the setting's (see "The Catalog's nudity filter is a setting with three
+values"), hide explicit by default, so explicit works stay hidden as before.
 Whether the catalog has any picture at all ("no pictures yet") is counted without the filter.
 The import reads a release only when it changed, so a newer app version's longer list would not reach a
 release already imported: each process start raises the stored Wikidata rows to the built-in list's level
-(`CatalogDao.markListed`, before the order is computed; it writes nothing when nothing is raised and never
-lowers a level).
+(`CatalogDao.markListed`; it writes nothing when nothing is raised and never lowers a level). The order does
+not depend on the level, so a process start computes no order: the starter import and each release or live
+refresh still do. The index `(hidden, rank, nudity)` serves the order and the filter at once, so the counts
+behind "n / N" and the paging count read only the index.
 The schema goes to version 2 and the database is dropped and created again on the upgrade: the starter set
 imports again and the release downloads again (see "The catalog database holds only data that can be
 downloaded again"). The upgrade test found that `fallbackToDestructiveMigrationOnDowngrade()`, called after
@@ -70,10 +78,18 @@ where a vulva (Q2192288, Q4112929), a penis (Q58) or sexual intercourse (Q5873) 
 nudity (Q10791) or pubic hair (Q54795) makes it `nude`; and the nude genre (P136 Q40446), `nude`. "Depicts"
 breast (Q9103) alone counts for nothing: the review of the thumbnails found it on many works that are not
 nudes, a nursing Madonna among them, and since the rule is a maximum, the list could not undo such a mark; a
-nude that only depicts a breast is left to the list. The starter cut also leaves out a row marked `"nsfw": "explicit"`, besides the listed ids. The field
-appears in the release with its next regeneration; until then the app's built-in list and the genre carry the
-level.
-Rejected: counting "depicts" breast as nude (hides many works that are not nudes), letting the list lower a
+nude that only depicts a breast is left to the list. The starter cut also leaves out a row marked
+`"nsfw": "explicit"`, besides the listed ids. The field appears in the release with its next regeneration;
+until then the app's built-in list and the genre carry the level. The app reads a value it does not know (a
+later release's new level) as `nude`: never less strict than a mark it cannot read.
+A check of the published release against the genitals-or-sex rule found five rows. Three are listed explicit;
+Salvador Dalí's "The Great Masturbator" (Q167536, 377th by fame) was not, as the vision pass saw only a photo
+of it in a gallery: it is listed explicit now, so it leaves the starter set at once. Frans van Mieris's
+"Brothel Scene" (Q17189254, its figures clothed) will be explicit after the regeneration; accepted, as a
+sexual subject. So the rule stays: the review found no classic nude it would hide.
+Rejected: counting "depicts" breast as nude (hides many works that are not nudes), demoting the genitals
+concepts to `nude` (the check above found them only on works that are explicit or show a sexual subject),
+letting the list lower a
 level that "depicts" or the genre sets (an absent list entry cannot be told from "none", and the filter must
 never be less strict than any source), writing P180 into the row for the app to decide (more data in every
 row and two places to keep the concept ids).
@@ -86,7 +102,8 @@ repository keeps a list, `tools/catalog-nsfw.txt`: one Wikidata id per line with
 in focus, a sexual act or assault) or `nude` (other nudity), and the title as a comment. It was built from the
 published release: the top 1,000 by fame, every nude-genre row and every row that depicts nudity, breasts,
 pubic hair, genitals or sex (1,448 candidates); a vision model classified each thumbnail and the explicit and
-borderline ones were checked by eye (10 explicit, 576 nude). It is edited by hand.
+borderline ones were checked by eye (10 explicit, 576 nude; one more explicit since, see "The release marks
+each painting's nudity"). It is edited by hand.
 For now only the `explicit` level is used, at once and on every install: the starter set leaves the listed
 explicit ids out and reads on in fame order to fill its 1,000 rows (`write_starter`, so a full export and
 `--starter-from` agree; three of today's top 1,000 went, the next three by fame came in), and the app holds
@@ -96,7 +113,8 @@ still hides a Cleveland or Commons copy of itself. The release, already publishe
 `CatalogStore` computes the order again once per process after the starter step (a database an older version
 filled loses them before the list reads it; it writes nothing when nothing moves). The `nude` level, a
 setting and an `nsfw` field in the release follow. (Superseded in the app by "Each picture stores its nudity
-level", above: the level hides them under the default filter, and the order no longer leaves them out.)
+level", above: the level hides them under the default filter, and the order no longer leaves them out, so the
+order is no longer computed again at each process start.)
 Amends "The starter set is cut from the published release", below: the starter's rows are the release
 `core`'s lines minus the listed explicit ids, cut at 1,000, no longer exactly its first lines.
 Rejected: waiting for a regenerated release (a published one would keep showing them until then), the nude
@@ -441,13 +459,13 @@ process only (weeks without a check on a TV), a check with a HEAD request first 
 the conditional GET already costs nothing when the file is unchanged).
 
 ## 2026-11-09 — The starter set is cut from the published release
-The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of the release `core` and their
+The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of the release `core` that are
+not explicit, since "Explicit paintings are hidden at once; the starter set leaves them out", and their
 labels in the UI languages plus `mul`, 1.1 MB gzipped; one labels file per language since the entry "The
 starter set is one labels file per language") is cut from the published release files by
 `tools/catalog-export.py --starter-from`, through the same writer as a full export and with no Wikimedia
-request, so its rows are byte for byte lines of the release `core` (the first ones, minus the paintings listed
-as explicit since "Explicit paintings are hidden at once; the starter set leaves them out") and the release import
-replaces them in place. It is committed and cut again after each release upload; the build stays offline. All 75
+request, so its rows are byte for byte lines of the release `core` and the release import replaces them in
+place. It is committed and cut again after each release upload; the build stays offline. All 75
 default languages fit well under the 1.5 MB budget, so the default (`--starter-langs`: the Android UI locales
 that Wikidata covers, plus `mul`) stays. AGP's asset merge decompresses `.gz` assets: the APK holds
 `catalog/core.jsonl` and the labels files without `.gz` (deflated, about the same size), and the app opens
@@ -487,12 +505,13 @@ empty (Room's destructive fallback both ways), and the starter set imports and t
 The order is stored, not computed when the list reads it: every row has a unique `rank` and a `hidden` flag,
 set in the write transaction after each import or live refresh (`CatalogRank`, pure; only the rows that
 change are written), so the paging query is `WHERE hidden = 0 ORDER BY rank` on one index and the viewer
-steps by the neighbour ranks. (Since schema version 2 the query also keeps `nudity < :nudityBelow`, a row
-filter over the same index: "Each picture stores its nudity level", above.) Wikidata rows go in `core` order; a live row that duplicates one (the same
-Commons file, or the same accession number) is hidden; the other live rows take turns by source as every
-10th card. Titles, artists and collections are resolved by the query for the rows of a page only, over the
-language chain, then any stored language; artists come back as a list and are joined only at the edge. The
-SQL keeps to what SQLite 3.18 (Android 8.0) has: no window functions, no UPSERT.
+steps by the neighbour ranks. (Since schema version 2 the query also keeps `nudity < :nudityBelow`, and the
+index is `(hidden, rank, nudity)`: "Each picture stores its nudity level", above.) Wikidata rows go in `core`
+order; a live row that duplicates one (the same Commons file, or the same accession number) is hidden; the
+other live rows take turns by source as every 10th card. Titles, artists and collections are resolved by the
+query for the rows of a page only, over the language chain, then any stored language; artists come back as a
+list and are joined only at the edge. The SQL keeps to what SQLite 3.18 (Android 8.0) has: no window
+functions, no UPSERT.
 Rejected: Room migrations for this database (code to keep for data that downloads again), ranking in the
 paging query (`ROW_NUMBER` needs SQLite 3.25; a sort per page), joining the artists with a visible separator
 in SQL.

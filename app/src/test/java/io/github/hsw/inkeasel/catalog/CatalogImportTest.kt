@@ -251,11 +251,13 @@ class CatalogImportTest {
         core(4, nsfw = "explicit"),
         core(334138), // L'Origine du monde, listed explicit
         core(151047), // The Birth of Venus, listed nude
-        core(6, nsfw = "something else", genres = listOf(134307)), // an unknown value, the portrait genre
+        core(6, nsfw = "something else", genres = listOf(134307)), // an unknown value counts as nude
+        core(7, nsfw = "", genres = listOf(134307)), // a blank one as none; the portrait genre
         core(29530, nsfw = "explicit"), // listed nude, the release stricter
     )
     private val levels = listOf(
-        "wd:Q1|0", "wd:Q2|1", "wd:Q3|1", "wd:Q4|2", "wd:Q334138|2", "wd:Q151047|1", "wd:Q6|0", "wd:Q29530|2",
+        "wd:Q1|0", "wd:Q2|1", "wd:Q3|1", "wd:Q4|2", "wd:Q334138|2", "wd:Q151047|1", "wd:Q6|1", "wd:Q7|0",
+        "wd:Q29530|2",
     )
 
     private fun levels(): List<String> = query("SELECT id, nudity FROM picture ORDER BY rank")

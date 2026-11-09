@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.paging.PagingData
 import androidx.paging.testing.asSnapshot
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
@@ -13,7 +14,12 @@ import io.github.hsw.inkeasel.catalog.CatalogSyncPlan.CORE
 import io.github.hsw.inkeasel.catalog.ReleaseFixtures.core
 import io.github.hsw.inkeasel.catalog.ReleaseFixtures.gzip
 import io.github.hsw.inkeasel.catalog.ReleaseFixtures.label
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
@@ -427,18 +433,29 @@ class CatalogStoreTest {
     fun anotherFilterPagesTheListAgain() {
         release.server.shutdown()
         val s = newStore(withOrigin)
+        // one collection that stays, as the grid's: each new filter must reach it as a new PagingData
+        val got = Channel<PagingData<CatalogRow>>(Channel.UNLIMITED)
+        val collector = CoroutineScope(Dispatchers.Default).launch { s.pages.collect { got.send(it) } }
+        fun next(): List<String> = runBlocking {
+            val data = withTimeout(20_000) { got.receive() }
+            flowOf(data).asSnapshot().map { it.id }
+        }
         try {
             s.start(ruChain)
             awaitPasses(1, s)
-            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), next())
             s.applyFilter(NudityFilter.SHOW_ALL)
             assertEquals(all, s.nudityBelow.value)
-            assertEquals(listOf("wd:Q1", "wd:Q334138", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            assertEquals(listOf("wd:Q1", "wd:Q334138", "wd:Q2", "wd:Q151047"), next())
             s.applyFilter(NudityFilter.HIDE_NUDES)
-            assertEquals(listOf("wd:Q1", "wd:Q2"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            assertEquals(listOf("wd:Q1", "wd:Q2"), next())
             s.applyFilter(NudityFilter.HIDE_EXPLICIT)
-            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), next())
+            // the same filter again starts no new pager
+            s.applyFilter(NudityFilter.HIDE_EXPLICIT)
+            assertNull(runBlocking { withTimeoutOrNull(500) { got.receive() } })
         } finally {
+            collector.cancel()
             s.close()
         }
     }
