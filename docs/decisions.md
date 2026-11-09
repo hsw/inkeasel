@@ -3,6 +3,30 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Explicit paintings never show; the starter set leaves them out
+The Catalog showed Courbet's "L'Origine du monde" twelfth by fame, on the first screen of a TV that a family
+shares. No source gives an age rating, and Wikidata's genre (P136 nude, Q40446) and "depicts" (P180) mark
+nudity unevenly and do not tell a classic nude from a work with genitals in focus or sex shown. So the
+repository keeps a list, `tools/catalog-nsfw.txt`: one Wikidata id per line with a level, `explicit` (genitals
+in focus, a sexual act or assault) or `nude` (other nudity), and the title as a comment. It was built from the
+published release: the top 1,000 by fame, every nude-genre row and every row that depicts nudity, breasts,
+pubic hair, genitals or sex (1,448 candidates); a vision model classified each thumbnail and the explicit and
+borderline ones were checked by eye (10 explicit, 576 nude). It is edited by hand.
+For now only the `explicit` level is used, at once and on every install: the starter set leaves the listed
+explicit ids out and reads on in fame order to fill its 1,000 rows (`write_starter`, so a full export and
+`--starter-from` agree; three of today's top 1,000 went, the next three by fame came in), and the app holds
+the same ids built in (`Nudity.EXPLICIT`; a unit test checks it against the file) and hides such a row in
+`CatalogRank.place`: it takes no place in the order, so the every-10th live card stays where it was, and it
+still hides a Cleveland or Commons copy of itself. The release, already published, still carries them, so
+`CatalogStore` computes the order again once per process after the starter step (a database an older version
+filled loses them before the list reads it; it writes nothing when nothing moves). The `nude` level, a
+setting and an `nsfw` field in the release follow.
+Amends "The starter set is cut from the published release", below: the starter's rows are the release
+`core`'s lines minus the listed explicit ids, cut at 1,000, no longer exactly its first lines.
+Rejected: waiting for a regenerated release (a published one would keep showing them until then), the nude
+genre or "depicts" alone (both miss works and mark classic nudes the same as explicit ones), hiding them only
+in the query (the order and the viewer's place and count would still count them).
+
 ## 2026-11-09 — The details panel shows the picture large, without the frame preview
 The details panel showed the picture above a preview drawn as the chosen frame would show it, each in half of
 the right side, so a portrait painting got half the height twice. The user found the frame preview less
@@ -345,8 +369,9 @@ The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of t
 labels in the UI languages plus `mul`, 1.1 MB gzipped; one labels file per language since the entry "The
 starter set is one labels file per language") is cut from the published release files by
 `tools/catalog-export.py --starter-from`, through the same writer as a full export and with no Wikimedia
-request, so its rows are byte for byte the first lines of the release `core` and the release import replaces
-them in place. It is committed and cut again after each release upload; the build stays offline. All 75
+request, so its rows are byte for byte lines of the release `core` (the first ones, minus the paintings listed
+as explicit since "Explicit paintings never show; the starter set leaves them out") and the release import
+replaces them in place. It is committed and cut again after each release upload; the build stays offline. All 75
 default languages fit well under the 1.5 MB budget, so the default (`--starter-langs`: the Android UI locales
 that Wikidata covers, plus `mul`) stays. AGP's asset merge decompresses `.gz` assets: the APK holds
 `catalog/core.jsonl` and the labels files without `.gz` (deflated, about the same size), and the app opens

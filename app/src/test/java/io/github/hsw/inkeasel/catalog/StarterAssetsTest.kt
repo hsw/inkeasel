@@ -7,9 +7,9 @@ import java.io.File
 
 /**
  * The committed starter set (`assets/catalog/`, cut from the release by `tools/catalog-export.py
- * --starter-from`) reads with [CatalogRows] without a bad line, is in the release's order and carries labels
- * for every UI language the app has, one `labels-<lang>` file per language. Unit tests run in the module
- * directory.
+ * --starter-from`) reads with [CatalogRows] without a bad line, is in the release's order, holds no painting
+ * listed as explicit ([Nudity.EXPLICIT]) and carries labels for every UI language the app has, one
+ * `labels-<lang>` file per language. Unit tests run in the module directory.
  */
 class StarterAssetsTest {
     private val dir = File("src/main/assets/catalog")
@@ -55,6 +55,11 @@ class StarterAssetsTest {
                 a.fame > b.fame || a.fame == b.fame && a.id.drop(1).toLong() < b.id.drop(1).toLong(),
             )
         }
+    }
+
+    @Test
+    fun core_holdsNoExplicitPainting() {
+        assertEquals(emptyList<String>(), core.map { it.id }.filter(Nudity::isExplicit))
     }
 
     @Test

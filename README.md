@@ -154,7 +154,8 @@ tablet).
   Wikidata and Commons as gzipped JSON Lines for the GitHub release `catalog`, which the app downloads (see
   "Catalog"). The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with their labels in the
   UI languages, one file per language as in the release) is cut from that release with `--starter-from <dir
-  of the downloaded release files>`.
+  of the downloaded release files>`; it leaves out the paintings `tools/catalog-nsfw.txt` lists as explicit
+  and takes the next ones by fame instead.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -271,6 +272,12 @@ than showing an empty grid, and the list starts only after it, so its first quer
 import. Should the starter set fail to import and the database stay empty, the tab says the catalog has no
 pictures yet and that it downloads when the device is online.
 
+Paintings listed as explicit in `tools/catalog-nsfw.txt` (genitals in focus or a sexual act shown, such as
+Courbet's "L'Origine du monde") never show: the starter set leaves them out, and the app, which holds the
+same ids built in, hides them when it stores the release, and once at each process start over a database an
+older version filled. A hidden one takes no place in the list, so the viewer's "n / N" does not count it,
+and a Cleveland or Commons copy of it is hidden too.
+
 The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
 Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
 same Commons file, or the Cleveland accession number the release has as P11110) is hidden. A source is asked
@@ -296,7 +303,8 @@ picture in "My pictures" only its name and pixel size.
 The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
 `CatalogStore` that the app's screen wakes each time it starts (`MainActivity`'s `onStart`: the app's start,
 each return to the foreground, and a change of the app's language, which re-creates it), so a process that a
-TV keeps for weeks still checks what fell due. On the first start the APK's starter set (the top 1,000) goes
+TV keeps for weeks still checks what fell due. On the first start the APK's starter set (the top 1,000, less
+the paintings listed as explicit) goes
 into the empty database with the labels of the app language's chain, English and `mul`, read from those
 languages' own files only. Then, at every such start (a pass), the store checks the files of the GitHub
 release `catalog` that are due:

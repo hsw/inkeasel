@@ -55,8 +55,9 @@ class StarterSet(
 /**
  * The process-wide owner of the catalog ([get]): the database, a scope of its own (not tied to a screen) and
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
- * per process: the starter set goes into an empty database (and the old list cache, [legacy], is deleted),
- * then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
+ * per process: the starter set goes into an empty database, the stored order is computed again (a listed
+ * explicit painting stored by an older version goes at once, [CatalogRank]) and the old list cache,
+ * [legacy], is deleted; then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
  * and a new UI language, which re-creates the activity) runs a pass: the starter's labels of a chain
  * language the database has none of, the release sync, which fetches only the files that are due
  * ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch outside the lock and
@@ -146,6 +147,9 @@ class CatalogStore internal constructor(
 
     private suspend fun work() {
         step("starter import") { starter(chain.value) }
+        // the order and what is hidden as this version computes them ([CatalogRank]) over a database an older
+        // version filled, before the list reads it; writes nothing when nothing moves
+        step("rerank") { db.catalog().rerank() }
         checkEmpty()
         ready.value = true
         legacy?.let(::dropLegacy)

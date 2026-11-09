@@ -89,6 +89,44 @@ class CatalogRankTest {
     }
 
     @Test
+    fun aListedExplicitRowIsHiddenAndTakesNoPlaceInTheInterleave() {
+        val plain = (0 until 20).map { wd(it).copy(sourceRank = 2 * it) } + (0 until 2).map { live("cma", it) }
+        // L'Origine du monde between the 3rd and the 4th row of the release
+        val withOrigin = plain + wd(334138).copy(sourceRank = 5)
+        val placed = CatalogRank.place(withOrigin).associateBy { it.id }
+        assertTrue(placed.getValue("wd:Q334138").hidden)
+        // everything else is where it is without it: the same ranks, the 10th card still the live one
+        assertEquals(ranks(plain), ranks(withOrigin) - "wd:Q334138")
+        assertEquals(order(plain), order(withOrigin))
+        assertEquals("cma:0", order(withOrigin)[9])
+        val maxShown = placed.values.filter { !it.hidden }.maxOf { it.rank }
+        assertTrue(placed.getValue("wd:Q334138").rank > maxShown)
+        assertEquals(withOrigin.size, placed.values.map { it.rank }.toSet().size)
+    }
+
+    @Test
+    fun aListedRowIsMatchedOnItsBareWikidataId() {
+        val rows = listOf(
+            wd(1),
+            wd(2).copy(id = "wd:Q3341380"), // a longer id that starts the same
+            live("commons", 0).copy(id = "commons:Q334138.jpg"), // a live row's id is never a Wikidata id
+        )
+        assertTrue(CatalogRank.place(rows).none { it.hidden })
+    }
+
+    @Test
+    fun aLiveCopyOfAListedRowIsHiddenToo() {
+        val rows = (0 until 10).map { wd(it) } +
+            wd(10, file = "Origin of the World.jpg", ref = "X.1").copy(id = "wd:Q334138") +
+            live("commons", 0, file = "Origin_of_the_World.jpg") +
+            live("cma", 0, ref = "X.1") +
+            live("cma", 1)
+        val placed = CatalogRank.place(rows).associateBy { it.id }
+        assertEquals(setOf("wd:Q334138", "commons:0", "cma:0"), placed.values.filter { it.hidden }.map { it.id }.toSet())
+        assertEquals("cma:1", order(rows)[9])
+    }
+
+    @Test
     fun aLiveRowNeverHidesAnotherLiveRow() {
         val rows = listOf(live("commons", 0, file = "A.jpg"), live("cma", 0, ref = "1"), live("cma", 1, ref = "1"))
         assertTrue(CatalogRank.place(rows).none { it.hidden })

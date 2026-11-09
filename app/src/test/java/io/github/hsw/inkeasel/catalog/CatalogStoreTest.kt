@@ -377,6 +377,48 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun aStartOverADatabaseThatShowsAnExplicitPaintingHidesItAtOnce() {
+        release.server.shutdown() // offline: no import reranks for it
+        val withOrigin = StarterSet(
+            core = { ByteArrayInputStream(gzip(listOf(core(1, fame = 50), core(334138, fame = 45), core(2, fame = 40)))) },
+            languages = { emptySet() },
+            labels = { error("no labels") },
+        )
+        val first = newStore(withOrigin)
+        try {
+            first.start(ruChain)
+            awaitPasses(1, first)
+        } finally {
+            first.close()
+        }
+        assertEquals(listOf("wd:Q334138|1"), query("SELECT id, hidden FROM picture WHERE hidden = 1"))
+        // as an older version stored it: L'Origine du monde shown in its place by fame
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET rank = 20 WHERE id = 'wd:Q2'")
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET rank = 10, hidden = 0 WHERE id = 'wd:Q334138'")
+        assertEquals(3, runBlocking { db.catalog().count() })
+        logged.clear()
+
+        // the next process: the database has Wikidata rows, so no starter import, and the sync fails
+        val next = newStore(withOrigin)
+        try {
+            next.start(ruChain)
+            awaitPasses(1, next)
+
+            assertFalse(logged.any { it.startsWith("starter set imported") })
+            assertEquals(listOf("wd:Q1", "wd:Q2"), query("SELECT id FROM picture WHERE hidden = 0 ORDER BY rank"))
+            assertEquals(listOf("wd:Q1", "wd:Q2"), runBlocking { next.pages.asSnapshot() }.map { it.id })
+            val chain = CatalogRow.chainKey(ruChain)
+            assertEquals(2, runBlocking { db.catalog().count() })
+            assertNull(runBlocking { db.catalog().placed("wd:Q334138", chain) })
+            val q2 = runBlocking { db.catalog().placed("wd:Q2", chain) }!!
+            assertEquals(1 to 2, q2.position to q2.count)
+            assertEquals("wd:Q2", runBlocking { db.catalog().next("wd:Q1", 0, chain) }?.row?.id) // the viewer steps over it
+        } finally {
+            next.close()
+        }
+    }
+
+    @Test
     fun scrollingThroughTheWholeListKeepsOnlyAWindowOfRowsLoaded() {
         release.server.shutdown()
         val n = 1000

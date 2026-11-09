@@ -28,7 +28,8 @@ unchanged catalog gives byte-identical files):
     <outdir>/core.jsonl.gz              every painting, language-neutral
     <outdir>/labels-<lang>.jsonl.gz     one file per language present in Wikidata
     <outdir>/labels-all.jsonl.gz        every language in one file
-    <outdir>/starter/core.jsonl.gz      the top --starter-size paintings (the starter set for the APK)
+    <outdir>/starter/core.jsonl.gz      the top --starter-size paintings not listed as explicit (the starter
+                                        set for the APK)
     <outdir>/starter/labels-<lang>.jsonl.gz  their labels, one file per --starter-langs language
     <outdir>/cache/                     WDQS bucket results and the merged fame list (not published)
 
@@ -46,7 +47,14 @@ and options as a full run and no Wikimedia request, so the APK's starter set alw
 release. Run it after each release upload. The starter's labels are one file per language, as in the
 release, so the app's first start reads only the files of its languages.
 
-`--self-test` checks the row building and the starter cut on a small built-in fixture (no network, nothing
+Nudity list: `tools/catalog-nsfw.txt` (`--nsfw-list`) gives some paintings a nudity level, one per line:
+`Q334138 explicit  # L'Origine du monde (Gustave Courbet)` (`explicit` or `nude`; the comment is free text;
+blank lines and `#` lines are ignored; a malformed line or an id listed twice is an error). The starter set
+never carries an `explicit` painting: the cut leaves them out and reads on in fame order to fill
+--starter-size rows, so its core is the release core minus the listed ids, cut at that size. The app keeps
+the same explicit ids built in (a unit test checks they match this file) and hides them in the list.
+
+`--self-test` checks the row building, the nudity list and the starter cut on a small built-in fixture (no network, nothing
 written outside a temporary directory) and exits 0 when every check passes.
 
 Rows are sorted by fame, most famous first (ties by numeric id). A labels file follows the same order:
@@ -118,6 +126,10 @@ SKIP_SITES = {"commonswiki", "specieswiki", "metawiki", "wikidatawiki", "mediawi
 WIKI_LANG = {"no": "nb", "be_x_old": "be-tarask", "zh_yue": "yue", "zh_min_nan": "nan", "zh_classical": "lzh"}
 LANG_RE = re.compile(r"^[a-z]{2,3}(-[a-z0-9]+)*$")
 REF_KEYS = ("creators", "collections", "movements", "genres")
+
+NSFW_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog-nsfw.txt")
+NSFW_LEVELS = ("nude", "explicit")   # least strict first
+NSFW_LINE = re.compile(r"^(Q[1-9][0-9]*)\s+([a-z]+)\s*(?:#.*)?$")
 
 
 def log(msg):
@@ -425,11 +437,34 @@ def write_release(d, core, labels, langs):
     return order, write_gz(os.path.join(d, "labels-all.jsonl.gz"), label_rows(labels, langs, order, True))
 
 
-def write_starter(d, core, labels, langs, size, wanted):
-    """The starter set: the first `size` core rows and their labels in the `wanted` languages, one file per
-    language as in the release (a language with no label of a starter entity gets no file). Removes the
-    starter files already in `d`. Returns (paintings, languages, label rows)."""
-    starter = core[:size]
+def read_nsfw(path):
+    """The nudity list ({id: level}) from `path` (format: see "Nudity list" above). Raises ValueError on a
+    malformed line, an unknown level or an id listed twice."""
+    levels = {}
+    with open(path, encoding="utf-8") as f:
+        for n, line in enumerate(f, 1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            m = NSFW_LINE.match(line)
+            if not m or m.group(2) not in NSFW_LEVELS:
+                raise ValueError(f"{path}:{n}: not '<Q-id> <{'|'.join(NSFW_LEVELS)}>  # <title>': {line!r}")
+            if m.group(1) in levels:
+                raise ValueError(f"{path}:{n}: {m.group(1)} listed twice")
+            levels[m.group(1)] = m.group(2)
+    return levels
+
+
+def explicit_ids(levels):
+    return frozenset(eid for eid, level in levels.items() if level == "explicit")
+
+
+def write_starter(d, core, labels, langs, size, wanted, explicit=frozenset()):
+    """The starter set: the first `size` core rows whose id is not in `explicit` and their labels in the
+    `wanted` languages, one file per language as in the release (a language with no label of a starter
+    entity gets no file). Removes the starter files already in `d`. Returns (paintings, languages, label
+    rows)."""
+    starter = [row for row in core if row["id"] not in explicit][:size]
     order = entity_order(starter)
     clear_old(d)
     write_gz(os.path.join(d, "core.jsonl.gz"), starter)
@@ -458,20 +493,23 @@ def fame_key(row):
     return -row["fame"], qnum(row["id"])
 
 
-def starter_from(src, outdir, size, wanted):
+def starter_from(src, outdir, size, wanted, explicit=frozenset()):
     """The starter set cut from release files in `src` (`core.jsonl.gz`, `labels-all.jsonl.gz`) into
-    `outdir`, through the same writer as a full export; reads only the labels it keeps into memory."""
+    `outdir`, through the same writer as a full export, leaving out the `explicit` ids (it reads on to fill
+    `size` rows); reads only the labels it keeps into memory."""
     if size < 1:
         raise ValueError(f"starter size {size}")
     if os.path.realpath(src) == os.path.realpath(outdir):
         raise ValueError("the output directory must not be the release directory")
-    core = []
+    core, last = [], None
     for row in read_gz(os.path.join(src, "core.jsonl.gz")):
         if len(core) == size:
             break
-        if core and fame_key(row) <= fame_key(core[-1]):
+        if last is not None and fame_key(row) <= last:
             raise ValueError(f"core.jsonl.gz is not in fame order at {row.get('id')}")
-        core.append(row)
+        last = fame_key(row)
+        if row["id"] not in explicit:
+            core.append(row)
     if not core:
         raise ValueError("core.jsonl.gz has no row")
     entities = set(entity_order(core))
@@ -532,6 +570,28 @@ def self_test():
     check(list(row) == ["id", "fame", "img", "w", "h", "lic", "licUrl", "attr", "credit", "creators", "inception",
                         "collections", "movements", "genres", "cma"], "core_row: key order, cma last")
 
+    # the nudity list: format, levels, errors; the committed list reads
+    with tempfile.TemporaryDirectory() as tmp:
+        def nsfw(text):
+            path = os.path.join(tmp, "nsfw.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text)
+            return read_nsfw(path)
+        got = nsfw("# header\n\nQ334138 explicit  # L'Origine du monde (Gustave Courbet)\n"
+                   "Q151047 nude  # The Birth of Venus # (a second #)\n  Q7 nude\n")
+        check(got == {"Q334138": "explicit", "Q151047": "nude", "Q7": "nude"}, "read_nsfw: lines, comments, blanks")
+        check(explicit_ids(got) == {"Q334138"}, "explicit_ids: only the explicit level")
+        for bad, what in (("Q1 sexy  # x\n", "an unknown level"), ("Q1\n", "no level"), ("q1 nude\n", "a lower-case id"),
+                          ("Q01 nude\n", "a leading zero"), ("Q1 nude x\n", "text outside the comment"),
+                          ("Q1 nude\nQ1 explicit\n", "an id listed twice")):
+            try:
+                nsfw(bad)
+                check(False, f"read_nsfw fails: {what}")
+            except ValueError:
+                check(True, what)
+    listed = read_nsfw(NSFW_LIST)
+    check("Q334138" in explicit_ids(listed) and "nude" in listed.values(), "read_nsfw: the committed list")
+
     # the starter cut: from release files == from memory, byte for byte
     def pic(qid, fame, refs=(), cma=None):
         p = {"id": qid, "fame": fame, "img": f"{qid}.jpg"}
@@ -582,6 +642,36 @@ def self_test():
                   "starter_from: a prefix of the release's labels-en")
         starter_from(rel, cut, 99, wanted)
         check(len(list(read_gz(os.path.join(cut, "core.jsonl.gz")))) == 5, "starter_from: size over the core")
+
+        # listed explicit ids stay out, the next rows by fame fill the set; nude ones stay in
+        explicit = explicit_ids({"Q9": "explicit", "Q10": "nude"})
+        mem_x, cut_x = os.path.join(tmp, "memory-x"), os.path.join(tmp, "cut-x")
+        os.makedirs(mem_x)
+        write_starter(mem_x, core, labels, langs, 3, wanted, explicit)
+        got = starter_from(rel, cut_x, 3, wanted, explicit)
+        for name in names:
+            with open(os.path.join(mem_x, name), "rb") as f1, open(os.path.join(cut_x, name), "rb") as f2:
+                check(f1.read() == f2.read(), f"starter_from without explicit: {name} as a full run's starter")
+        with gzip.open(os.path.join(cut_x, "core.jsonl.gz"), "rt", encoding="utf-8") as f:
+            cut_lines = f.read().splitlines()
+        check(cut_lines == [x for x in rel_lines if json.loads(x)["id"] not in explicit][:3],
+              "starter_from: core lines are the release core minus the listed ids, cut at the size")
+        check([json.loads(x)["id"] for x in cut_lines] == ["Q3", "Q10", "Q4"], "starter_from: Q9 out, Q4 in")
+        check(got[0] == 3 and not any(r["id"] == "Q9" for lang in ("en", "ru") for r in
+                                      read_gz(os.path.join(cut_x, f"labels-{lang}.jsonl.gz"))),
+              "starter_from: no label of a left-out painting")
+        x_list = os.path.join(tmp, "nsfw-x.txt")
+        with open(x_list, "w", encoding="utf-8") as f:
+            f.write("Q9 explicit  # nine\nQ10 nude  # ten\n")
+        main_x = os.path.join(tmp, "main-x")
+        code = main([main_x, "--starter-from", rel, "--starter-size", "3", "--starter-langs", "en,ru,mul,de,zz",
+                     "--nsfw-list", x_list])
+        with open(os.path.join(main_x, "core.jsonl.gz"), "rb") as f1, \
+                open(os.path.join(mem_x, "core.jsonl.gz"), "rb") as f2:
+            check(code == 0 and f1.read() == f2.read(), "main --starter-from --nsfw-list: listed explicit ids out")
+        with open(x_list, "a", encoding="utf-8") as f:
+            f.write("Q11 maybe\n")
+        check(main([main_x, "--starter-from", rel, "--nsfw-list", x_list]) == 1, "main: a bad list -> exit 1")
         main_out = os.path.join(tmp, "main")
         code = main([main_out, "--starter-from", rel, "--starter-size", "3", "--starter-langs", "en,ru,mul,de,zz"])
         check(code == 0 and sorted(os.listdir(main_out)) == names,
@@ -635,6 +725,9 @@ def main(argv=None):
     ap.add_argument("--starter-from", metavar="DIR",
                     help="only write the starter set into <outdir>, cut from the release files in DIR "
                          "(core.jsonl.gz, labels-all.jsonl.gz); no Wikimedia request")
+    ap.add_argument("--nsfw-list", default=NSFW_LIST, metavar="FILE",
+                    help="the nudity list; its explicit ids stay out of the starter set "
+                         "(default: catalog-nsfw.txt next to this script)")
     ap.add_argument("--self-test", action="store_true", help="run the built-in checks and exit")
     a = ap.parse_args(argv)
     if a.self_test:
@@ -642,14 +735,20 @@ def main(argv=None):
     if not a.outdir:
         ap.error("the output directory is required")
     wanted = {s.strip() for s in a.starter_langs.split(",") if s.strip()}
+    try:
+        explicit = explicit_ids(read_nsfw(a.nsfw_list))
+    except (OSError, ValueError) as e:
+        log(f"error: {type(e).__name__}: {e}")
+        return 1
 
     if a.starter_from:
         try:
-            n, n_langs, n_labels = starter_from(a.starter_from, a.outdir, a.starter_size, wanted)
+            n, n_langs, n_labels = starter_from(a.starter_from, a.outdir, a.starter_size, wanted, explicit)
         except (OSError, EOFError, ValueError, KeyError, TypeError) as e:
             log(f"error: {type(e).__name__}: {e}")
             return 1
-        log(f"starter: {n} paintings, {n_langs} languages ({n_labels} label rows) in {a.outdir}")
+        log(f"starter: {n} paintings, {n_langs} languages ({n_labels} label rows) in {a.outdir}; "
+            f"left out: the {len(explicit)} explicit ids of {a.nsfw_list}")
         return 0
 
     cache = a.cache or os.path.join(a.outdir, "cache")
@@ -716,7 +815,7 @@ def main(argv=None):
 
     order, n_all = write_release(a.outdir, core, labels, langs)
     n_starter, n_starter_langs, n_starter_labels = write_starter(starter_dir, core, labels, langs,
-                                                                 a.starter_size, wanted)
+                                                                 a.starter_size, wanted, explicit)
 
     log(f"done: {len(core)} paintings, {len(order) - len(core)} referenced entities, {len(langs)} label "
         f"languages ({n_all} label rows); starter: {n_starter} paintings, {n_starter_langs} languages "
