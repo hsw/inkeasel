@@ -344,15 +344,49 @@ class CatalogSyncTest {
 
     @Test
     fun anotherHttpErrorIsAFailureWithItsCode() = runTest {
-        release.overrides["labels-en.jsonl.gz"] = { MockResponse().setResponseCode(503) }
+        release.overrides["labels-en.jsonl.gz"] = { MockResponse().setResponseCode(500) }
 
         val report = sync().run(ruChain)
 
         val failed = report.outcomes.single { it is SyncOutcome.Failed } as SyncOutcome.Failed
         assertEquals("labels-en.jsonl.gz", failed.check.name)
-        assertEquals(503, (failed.error as HttpStatusException).code)
+        assertEquals(500, (failed.error as HttpStatusException).code)
         assertNull(state("labels-en.jsonl.gz"))
         assertNotNull(state(CORE))
+        assertEquals(1, release.asked().count { it == "labels-en.jsonl.gz" })
+    }
+
+    @Test
+    fun aTooManyRequestsAnswerIsAskedAgainFromTheReleaseAddress() = runTest {
+        release.redirect = true
+        var answers = 0
+        release.overrides["labels-en.jsonl.gz"] = {
+            if (answers++ == 0) {
+                MockResponse().setResponseCode(429).setHeader("Retry-After", "0")
+            } else {
+                MockResponse().setBody(Buffer().write(enBytes)).setHeader("ETag", "\"en-1\"")
+            }
+        }
+
+        val report = sync().run(ruChain)
+
+        assertTrue(report.outcomes.none { it is SyncOutcome.Failed })
+        assertEquals("One", title("wd:Q1", listOf("en")))
+        assertEquals("\"en-1\"", state("labels-en.jsonl.gz")!!.etag)
+        val en = release.asked().filter { it.endsWith("labels-en.jsonl.gz") }
+        assertEquals(listOf("labels-en.jsonl.gz", "assets/labels-en.jsonl.gz").let { it + it }, en)
+    }
+
+    @Test
+    fun tooManyRequestsUntilTheRetriesRunOutIsAFailure() = runTest {
+        release.overrides["labels-en.jsonl.gz"] = { MockResponse().setResponseCode(429).setHeader("Retry-After", "0") }
+
+        val report = sync().run(ruChain)
+
+        val failed = report.outcomes.single { it is SyncOutcome.Failed } as SyncOutcome.Failed
+        assertEquals(429, (failed.error as HttpStatusException).code)
+        assertEquals(3, release.asked().count { it == "labels-en.jsonl.gz" })
+        assertNull(state("labels-en.jsonl.gz"))
     }
 
     @Test

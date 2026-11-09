@@ -3,6 +3,7 @@ package io.github.hsw.inkeasel
 import android.app.Application
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.os.Looper
 import android.util.Log
 import io.github.hsw.inkeasel.catalog.LiveRow
 import io.github.hsw.inkeasel.catalog.LiveSource
@@ -13,6 +14,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.Dispatcher
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -94,11 +96,20 @@ object Http {
      */
     private const val LIST_TIMEOUT_S = 60L
 
-    /** Shared by Coil and full-image downloads: big files on slow links may take long. */
+    /** At most this many requests to one host at a time (OkHttp's default is 5): Wikimedia asks for few. */
+    const val MAX_REQUESTS_PER_HOST = 4
+
+    /**
+     * Shared by Coil, full-image downloads, the release sync and the live lists: big files on slow links may
+     * take long. A 429 or 503 answer is asked again after a short wait ([RetryInterceptor]), never on the
+     * main thread.
+     */
     val client: OkHttpClient = OkHttpClient.Builder()
+        .dispatcher(Dispatcher().apply { maxRequestsPerHost = MAX_REQUESTS_PER_HOST })
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .addInterceptor { chain -> chain.proceed(chain.request().newBuilder().header("User-Agent", UA).build()) }
+        .addInterceptor(RetryInterceptor(mayWait = { !Looper.getMainLooper().isCurrentThread }))
         .build()
 
     /** Catalog lists: the same pool and User-Agent, but the whole call gives up after [LIST_TIMEOUT_S]. */

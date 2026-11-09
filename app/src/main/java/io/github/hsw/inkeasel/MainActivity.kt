@@ -76,8 +76,6 @@ import androidx.tv.material3.Tab
 import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
-import coil.Coil
-import coil.ImageLoader
 import coil.compose.AsyncImage
 import io.github.hsw.inkeasel.catalog.CatalogPicture
 import io.github.hsw.inkeasel.catalog.CatalogRow
@@ -439,7 +437,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
-        Coil.setImageLoader(ImageLoader.Builder(this).okHttpClient(Http.client).crossfade(true).build())
+        Images.install(this)
         // the catalog database fills and syncs in the background, process-wide; a new UI language re-creates
         // the activity and so reaches the store here too
         CatalogStore.get(this).start(CatalogStore.chainOf(resources.configuration))

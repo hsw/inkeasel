@@ -3,6 +3,22 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Few requests per host, a short retry on 429 and 503, a fixed image cache
+The one HTTP client (`Http.client`: Coil, full images, artwork, the release sync and the live lists) sends at
+most 4 requests to one host at a time (OkHttp's default is 5), so a fast scroll through Commons thumbnails
+does not burst at `upload.wikimedia.org`. An answer of HTTP 429 or 503 to a GET or HEAD is asked again at
+most twice (`RetryInterceptor`, rules in the pure `RetryPolicy`): after its `Retry-After` (seconds or an
+HTTP date), or 1 s and then 2 s without one; an answer that asks for more than 10 s is final, so a server is
+never asked earlier than it said and nothing waits long. The wait runs on OkHttp's thread in short slices
+and stops at once when the call is cancelled (a cancelled coroutine, a call timeout); on the main thread
+the answer is returned as it is, nothing waits. A retry starts again from the request's own address, so a
+release file is asked from github.com again rather than from the signed address it redirected to. Coil's
+disk cache is set to 150 MB in its own default folder (`cacheDir/image_cache`, kept on an upgrade), with one
+image loader per process because Coil allows one disk cache per folder.
+Rejected: retrying other codes or connection failures (OkHttp already retries those it can; a 4xx stays
+wrong), waiting the 10 s cap when the server asked for longer (asks early), a retry per call site (three
+paths to keep alike), Coil's default size (2 % of the free space, 10 to 250 MB: unknown on a TV).
+
 ## 2026-11-09 — The live sources are rows of the Catalog, every 10th card until the filters
 The Cleveland museum's CC0 landscape paintings and Commons' featured landscapes are no longer tabs: their lists
 are rows of the catalog database (`cma:<api id>` with the accession number, `commons:<file name>` with the

@@ -64,7 +64,7 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
   (ETag) and fingerprint (SHA-256) of the copy that was imported, and for each list when it last came in
   full; a file being downloaded is kept in the app's cache only until it is imported (older versions kept
   the last lists in the app's files instead: the app deletes them);
-- cached catalog images;
+- cached catalog images (at most 150 MB in the app's cache; the least recently used go first);
 - the pictures you shared, and pictures you copied into "My pictures" yourself.
 
 They stay on the device. The pictures under "My pictures" are in the app's own folder on the shared storage

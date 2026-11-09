@@ -288,6 +288,11 @@ it loses its labels at the next import. To watch it:
 
     adb logcat -s CatalogStore CatalogSync LiveRefresh
 
+All requests go through one OkHttp client (`Http.client`, with the app's User-Agent): at most 4 at a time
+to one host, and an HTTP 429 or 503 answer to a GET is asked again at most twice, after its `Retry-After` (or
+1 s, then 2 s), unless it asks for more than 10 s; a cancelled request stops waiting at once, and the main
+thread never waits (`RetryPolicy.kt`). Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
+
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
 than 60 s every time, its rows never come (or stay as they were); asking for fewer results than `limit=200`
 would be the next step then.
@@ -513,7 +518,10 @@ keys appear only in a debug build, a release build logs `<title>` and `<key>` in
 Code:
 - `Catalog.kt`: `Picture`, "My pictures" (`LocalImages`) and the live sources (Cleveland Museum of Art CC0
   paintings, Wikimedia Commons featured landscapes); list requests give up after 60 s, Commons reads at most
-  3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete)
+  3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete); `Http`, the one
+  OkHttp client
+- `RetryPolicy.kt`: when a 429 or 503 answer is asked again (pure) and the interceptor that does it
+- `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
 - `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
   their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
 - `CatalogLoad.kt`: what "My pictures" shows (`CatalogState`), one load of it (`loadCatalog`) and when it
