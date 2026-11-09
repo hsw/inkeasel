@@ -79,7 +79,11 @@ class HttpSetupTest {
             assertEquals(4, most.get())
             assertEquals(6, calls.queuedCallsCount())
 
+            // Coil cancels a disposed request through the main looper, which Robolectric keeps paused: let the
+            // cancellation reach every queued call before the server answers, or the dispatcher may promote one
             cards.forEach { it.dispose() }
+            idleUntil { calls.queuedCalls().all { it.isCanceled() } }
+            assertTrue(calls.queuedCalls().all { it.isCanceled() })
             gate.countDown()
             idleUntil { calls.runningCallsCount() == 0 && calls.queuedCallsCount() == 0 }
             assertEquals(0, calls.runningCallsCount())
