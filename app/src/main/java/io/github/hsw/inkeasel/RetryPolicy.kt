@@ -114,9 +114,10 @@ object Holdable
 
 /**
  * Asks a request again as [RetryPolicy] says. The wait runs on the calling thread (an OkHttp dispatcher
- * thread for an enqueued call) in slices of [sliceMs], checking the call before and while waiting: a cancelled
- * call (a cancelled coroutine, a call timeout) stops at once with an [IOException]. Where [mayWait] is false
- * (the main thread) the answer is returned as it is. The answer that is not used is closed.
+ * thread for an enqueued call: Coil's off the main thread and [Http.bytes]'s are enqueued) in slices of
+ * [sliceMs], checking the call before and while waiting: a cancelled call (a cancelled coroutine, a call
+ * timeout) stops at once with an [IOException]. Where [mayWait] is false (the main thread, where Coil runs
+ * only cache-only requests) the answer is returned as it is. The answer that is not used is closed.
  *
  * A host (with its port) that answered 429 or 503 is held ([RetryPolicy.holdMs]): a [Holdable] request to it
  * before the hold ends, its retries included, waits for it where it may wait no longer than
