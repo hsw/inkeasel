@@ -3,6 +3,22 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The release marks each painting's nudity in an `nsfw` field
+The export writes `"nsfw": "nude"` or `"explicit"` into a `core` row (left out when none), so the app's filter
+does not depend only on the ids it has built in. The level is the strictest of three sources, the same
+maximum the app computes (`Nudity.levelOf`): the list `tools/catalog-nsfw.txt`; Wikidata "depicts" (P180),
+where a vulva (Q2192288, Q4112929), a penis (Q58) or sexual intercourse (Q5873) makes it `explicit` and
+nudity (Q10791) or pubic hair (Q54795) makes it `nude`; and the nude genre (P136 Q40446), `nude`. "Depicts"
+breast (Q9103) alone counts for nothing: the review of the thumbnails found it on many works that are not
+nudes, a nursing Madonna among them, and since the rule is a maximum, the list could not undo such a mark; a
+nude that only depicts a breast is left to the list. The starter cut also leaves out a row marked `"nsfw": "explicit"`, besides the listed ids. The field
+appears in the release with its next regeneration; until then the app's built-in list and the genre carry the
+level.
+Rejected: counting "depicts" breast as nude (hides many works that are not nudes), letting the list lower a
+level that "depicts" or the genre sets (an absent list entry cannot be told from "none", and the filter must
+never be less strict than any source), writing P180 into the row for the app to decide (more data in every
+row and two places to keep the concept ids).
+
 ## 2026-11-09 — Explicit paintings never show; the starter set leaves them out
 The Catalog showed Courbet's "L'Origine du monde" twelfth by fame, on the first screen of a TV that a family
 shares. No source gives an age rating, and Wikidata's genre (P136 nude, Q40446) and "depicts" (P180) mark

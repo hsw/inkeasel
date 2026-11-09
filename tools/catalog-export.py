@@ -28,7 +28,7 @@ unchanged catalog gives byte-identical files):
     <outdir>/core.jsonl.gz              every painting, language-neutral
     <outdir>/labels-<lang>.jsonl.gz     one file per language present in Wikidata
     <outdir>/labels-all.jsonl.gz        every language in one file
-    <outdir>/starter/core.jsonl.gz      the top --starter-size paintings not listed as explicit (the starter
+    <outdir>/starter/core.jsonl.gz      the top --starter-size paintings that are not explicit (the starter
                                         set for the APK)
     <outdir>/starter/labels-<lang>.jsonl.gz  their labels, one file per --starter-langs language
     <outdir>/cache/                     WDQS bucket results and the merged fame list (not published)
@@ -47,12 +47,17 @@ and options as a full run and no Wikimedia request, so the APK's starter set alw
 release. Run it after each release upload. The starter's labels are one file per language, as in the
 release, so the app's first start reads only the files of its languages.
 
-Nudity list: `tools/catalog-nsfw.txt` (`--nsfw-list`) gives some paintings a nudity level, one per line:
+Nudity: `tools/catalog-nsfw.txt` (`--nsfw-list`) gives some paintings a nudity level, one per line:
 `Q334138 explicit  # L'Origine du monde (Gustave Courbet)` (`explicit` or `nude`; the comment is free text;
-blank lines and `#` lines are ignored; a malformed line or an id listed twice is an error). The starter set
-never carries an `explicit` painting: the cut leaves them out and reads on in fame order to fill
---starter-size rows, so its core is the release core minus the listed ids, cut at that size. The app keeps
-the same explicit ids built in (a unit test checks they match this file) and hides them in the list.
+blank lines and `#` lines are ignored; a malformed line or an id listed twice is an error). A core row's
+`nsfw` field is the strictest of: the list's level; `explicit` when the painting depicts (P180) a vulva
+(Q2192288, Q4112929), a penis (Q58) or sexual intercourse (Q5873); `nude` when it depicts nudity (Q10791) or
+pubic hair (Q54795) or its genre (P136) is nude (Q40446). "Depicts" breast (Q9103) alone does not count (it
+marks many works that are not nudes). The app computes the same maximum from the field, the list (built in;
+a unit test checks it matches this file) and the genre, so it never takes a level lower than the list's.
+The starter set never carries an `explicit` painting (listed, or `nsfw: "explicit"` in the rows it is cut
+from): the cut leaves them out and reads on in fame order to fill --starter-size rows, so its core is the
+release core minus those rows, cut at that size.
 
 `--self-test` checks the row building, the nudity list and the starter cut on a small built-in fixture (no network, nothing
 written outside a temporary directory) and exits 0 when every check passes.
@@ -66,8 +71,9 @@ Core row:   {"id", "fame", "img" (Commons file name), "w", "h" (image size in pi
             when Commons gives none, as for public-domain files), "attr" (attribution required), "credit"
             (author/credit text, plain, at most 200 characters), "creators", "inception" (year),
             "collections", "movements", "genres", "cma" (Cleveland Museum of Art ID, Wikidata P11110: the
-            museum's accession number, e.g. "1945.24"; left out when the painting has none)}
-            (lists hold Wikidata ids).
+            museum's accession number, e.g. "1945.24"; left out when the painting has none), "nsfw"
+            (nudity level, "nude" or "explicit", see "Nudity"; left out when none)}
+            (lists hold Wikidata ids; P180 is read for `nsfw` only and not written).
 Label row:  {"id", "l" (label), "a" (aliases), "w" (Wikipedia article title in that language)}; keys
             without a value are left out. In `labels-all` each row also has "lang". The language `mul`
             holds Wikidata's language-independent labels.
@@ -130,6 +136,12 @@ REF_KEYS = ("creators", "collections", "movements", "genres")
 NSFW_LIST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "catalog-nsfw.txt")
 NSFW_LEVELS = ("nude", "explicit")   # least strict first
 NSFW_LINE = re.compile(r"^(Q[1-9][0-9]*)\s+([a-z]+)\s*(?:#.*)?$")
+# Wikidata concepts that set the `nsfw` field (see "Nudity" above). "depicts" breast (Q9103) alone does not
+# count: it marks many works that are not nudes, such as a nursing Madonna.
+NUDE_GENRE = "Q40446"                                  # P136 nude
+NUDE_DEPICTS = frozenset({"Q10791", "Q54795"})         # P180 nudity, pubic hair
+EXPLICIT_DEPICTS = frozenset({"Q2192288", "Q4112929",  # P180 vulva (two items)
+                              "Q58", "Q5873"})         # P180 penis, sexual intercourse
 
 
 def log(msg):
@@ -371,20 +383,40 @@ def painting(eid, e, fame):
     it = {"id": eid, "fame": len(e.get("sitelinks", {})) or fame, "img": imgs[0],
           "creators": claim_values(c, "P170"), "inception": year((claim_values(c, "P571") or [None])[0]),
           "collections": claim_values(c, "P195"), "movements": claim_values(c, "P135"),
-          "genres": claim_values(c, "P136")}
+          "genres": claim_values(c, "P136"), "depicts": claim_values(c, "P180")}
     cma = [v.strip() for v in claim_values(c, "P11110") if isinstance(v, str) and v.strip()]
     if cma:
         it["cma"] = cma[0]
     return it
 
 
-def core_row(it, m):
-    """A core row: the painting's fields around its Commons metadata, in the documented key order."""
+def nsfw_level(eid, genres, depicts, levels):
+    """The nudity level of a painting ("explicit", "nude" or None): the strictest of the list's level
+    (`levels`, from read_nsfw), its "depicts" values and its genres (see "Nudity" above)."""
+    found = [levels.get(eid)]
+    if EXPLICIT_DEPICTS.intersection(depicts):
+        found.append("explicit")
+    if NUDE_DEPICTS.intersection(depicts) or NUDE_GENRE in genres:
+        found.append("nude")
+    return max((lv for lv in found if lv), key=NSFW_LEVELS.index, default=None)
+
+
+def core_row(it, m, levels=None):
+    """A core row: the painting's fields around its Commons metadata, in the documented key order; `nsfw`
+    from the nudity list `levels` ({id: level}), the genres and the "depicts" values."""
     row = {"id": it["id"], "fame": it["fame"], "img": it["img"], **m,
            **{k: it[k] for k in ("creators", "inception", "collections", "movements", "genres")}}
     if "cma" in it:
         row["cma"] = it["cma"]
+    nsfw = nsfw_level(it["id"], it["genres"], it.get("depicts", ()), levels or {})
+    if nsfw:
+        row["nsfw"] = nsfw
     return row
+
+
+def is_explicit(row, explicit):
+    """True for a core row the starter set leaves out: listed in `explicit` or marked `nsfw: "explicit"`."""
+    return row["id"] in explicit or row.get("nsfw") == "explicit"
 
 
 # ---- output
@@ -460,11 +492,11 @@ def explicit_ids(levels):
 
 
 def write_starter(d, core, labels, langs, size, wanted, explicit=frozenset()):
-    """The starter set: the first `size` core rows whose id is not in `explicit` and their labels in the
+    """The starter set: the first `size` core rows that are not explicit (`is_explicit`) and their labels in the
     `wanted` languages, one file per language as in the release (a language with no label of a starter
     entity gets no file). Removes the starter files already in `d`. Returns (paintings, languages, label
     rows)."""
-    starter = [row for row in core if row["id"] not in explicit][:size]
+    starter = [row for row in core if not is_explicit(row, explicit)][:size]
     order = entity_order(starter)
     clear_old(d)
     write_gz(os.path.join(d, "core.jsonl.gz"), starter)
@@ -495,8 +527,8 @@ def fame_key(row):
 
 def starter_from(src, outdir, size, wanted, explicit=frozenset()):
     """The starter set cut from release files in `src` (`core.jsonl.gz`, `labels-all.jsonl.gz`) into
-    `outdir`, through the same writer as a full export, leaving out the `explicit` ids (it reads on to fill
-    `size` rows); reads only the labels it keeps into memory."""
+    `outdir`, through the same writer as a full export, leaving out explicit rows (the `explicit` ids and
+    `nsfw: "explicit"`; it reads on to fill `size` rows); reads only the labels it keeps into memory."""
     if size < 1:
         raise ValueError(f"starter size {size}")
     if os.path.realpath(src) == os.path.realpath(outdir):
@@ -508,7 +540,7 @@ def starter_from(src, outdir, size, wanted, explicit=frozenset()):
         if last is not None and fame_key(row) <= last:
             raise ValueError(f"core.jsonl.gz is not in fame order at {row.get('id')}")
         last = fame_key(row)
-        if row["id"] not in explicit:
+        if not is_explicit(row, explicit):
             core.append(row)
     if not core:
         raise ValueError("core.jsonl.gz has no row")
@@ -569,6 +601,36 @@ def self_test():
     row = core_row({**painting("Q5", {"claims": {"P18": [claim("a.jpg")], "P11110": [claim("1.2")]}}, 3)}, m)
     check(list(row) == ["id", "fame", "img", "w", "h", "lic", "licUrl", "attr", "credit", "creators", "inception",
                         "collections", "movements", "genres", "cma"], "core_row: key order, cma last")
+
+    # nsfw: the strictest of the list, "depicts" and the nude genre; absent when none
+    check(painting("Q5", {"claims": {"P18": [claim("a.jpg")], "P180": [claim({"id": "Q10791"}),
+                                                                         claim({"id": "Q58"}, "deprecated")]}},
+                   3)["depicts"] == ["Q10791"], "painting: depicts from P180, deprecated left out")
+    lv = {"Q1": "explicit", "Q2": "nude"}
+    for args, want, what in ((("Q9", [], [], lv), None, "nothing -> none"),
+                             (("Q9", ["Q40446"], [], {}), "nude", "nude genre -> nude"),
+                             (("Q9", [], ["Q10791"], {}), "nude", "depicts nudity -> nude"),
+                             (("Q9", [], ["Q54795"], {}), "nude", "depicts pubic hair -> nude"),
+                             (("Q9", [], ["Q9103"], {}), None, "depicts breast alone -> none"),
+                             (("Q9", ["Q1234"], ["Q9103", "Q42"], {}), None, "other genres and depicts -> none"),
+                             (("Q9", [], ["Q2192288"], {}), "explicit", "depicts vulva -> explicit"),
+                             (("Q9", [], ["Q4112929"], {}), "explicit", "depicts vulva (second item) -> explicit"),
+                             (("Q9", [], ["Q58"], {}), "explicit", "depicts penis -> explicit"),
+                             (("Q9", [], ["Q5873"], {}), "explicit", "depicts sexual intercourse -> explicit"),
+                             (("Q2", [], [], lv), "nude", "listed nude -> nude"),
+                             (("Q1", [], [], lv), "explicit", "listed explicit -> explicit"),
+                             (("Q1", ["Q40446"], ["Q10791"], lv), "explicit", "listed explicit beats nude marks"),
+                             (("Q2", ["Q40446"], ["Q5873"], lv), "explicit", "depicts explicit beats listed nude"),
+                             (("Q9", ["Q40446"], ["Q9103"], {}), "nude", "nude genre with breast -> nude")):
+        check(nsfw_level(*args) == want, f"nsfw_level: {what}")
+    nude_it = painting("Q2", {"claims": {"P18": [claim("a.jpg")], "P136": [claim({"id": "Q40446"})],
+                                         "P11110": [claim("1.2")]}}, 3)
+    row = core_row(nude_it, m)
+    check(list(row)[-2:] == ["cma", "nsfw"] and row["nsfw"] == "nude", "core_row: nsfw from the genre, last")
+    check(core_row(nude_it, m, {"Q2": "explicit"})["nsfw"] == "explicit", "core_row: nsfw from the list")
+    check("nsfw" not in core_row(painting("Q3", {"claims": {"P18": [claim("a.jpg")]}}, 3), m, lv),
+          "core_row: no nsfw key when none")
+    check("depicts" not in row, "core_row: depicts not written")
 
     # the nudity list: format, levels, errors; the committed list reads
     with tempfile.TemporaryDirectory() as tmp:
@@ -660,6 +722,23 @@ def self_test():
         check(got[0] == 3 and not any(r["id"] == "Q9" for lang in ("en", "ru") for r in
                                       read_gz(os.path.join(cut_x, f"labels-{lang}.jsonl.gz"))),
               "starter_from: no label of a left-out painting")
+
+        # a row marked nsfw "explicit" (not listed) stays out too; "nude" stays in
+        marked = [{**r, "nsfw": "explicit"} if r["id"] == "Q9" else {**r, "nsfw": "nude"} if r["id"] == "Q10" else r
+                  for r in core]
+        rel_m, mem_m, cut_m = (os.path.join(tmp, n) for n in ("release-m", "memory-m", "cut-m"))
+        for d in (rel_m, mem_m):
+            os.makedirs(d)
+        write_release(rel_m, marked, labels, langs)
+        write_starter(mem_m, marked, labels, langs, 3, wanted)
+        got = starter_from(rel_m, cut_m, 3, wanted)
+        cut_rows = list(read_gz(os.path.join(cut_m, "core.jsonl.gz")))
+        check([r["id"] for r in cut_rows] == ["Q3", "Q10", "Q4"] and cut_rows[1]["nsfw"] == "nude",
+              "starter_from: a row marked explicit out, a nude one in")
+        for name in names:
+            with open(os.path.join(mem_m, name), "rb") as f1, open(os.path.join(cut_m, name), "rb") as f2:
+                check(f1.read() == f2.read(), f"starter_from with nsfw marks: {name} as a full run's starter")
+
         x_list = os.path.join(tmp, "nsfw-x.txt")
         with open(x_list, "w", encoding="utf-8") as f:
             f.write("Q9 explicit  # nine\nQ10 nude  # ten\n")
@@ -726,7 +805,8 @@ def main(argv=None):
                     help="only write the starter set into <outdir>, cut from the release files in DIR "
                          "(core.jsonl.gz, labels-all.jsonl.gz); no Wikimedia request")
     ap.add_argument("--nsfw-list", default=NSFW_LIST, metavar="FILE",
-                    help="the nudity list; its explicit ids stay out of the starter set "
+                    help="the nudity list: its levels go into the core rows' nsfw field, its explicit ids "
+                         "stay out of the starter set "
                          "(default: catalog-nsfw.txt next to this script)")
     ap.add_argument("--self-test", action="store_true", help="run the built-in checks and exit")
     a = ap.parse_args(argv)
@@ -736,7 +816,8 @@ def main(argv=None):
         ap.error("the output directory is required")
     wanted = {s.strip() for s in a.starter_langs.split(",") if s.strip()}
     try:
-        explicit = explicit_ids(read_nsfw(a.nsfw_list))
+        levels = read_nsfw(a.nsfw_list)
+        explicit = explicit_ids(levels)
     except (OSError, ValueError) as e:
         log(f"error: {type(e).__name__}: {e}")
         return 1
@@ -748,7 +829,7 @@ def main(argv=None):
             log(f"error: {type(e).__name__}: {e}")
             return 1
         log(f"starter: {n} paintings, {n_langs} languages ({n_labels} label rows) in {a.outdir}; "
-            f"left out: the {len(explicit)} explicit ids of {a.nsfw_list}")
+            f"left out: the {len(explicit)} explicit ids of {a.nsfw_list} and rows marked explicit")
         return 0
 
     cache = a.cache or os.path.join(a.outdir, "cache")
@@ -798,7 +879,7 @@ def main(argv=None):
         if not m:
             missing_files += 1
             continue
-        core.append(core_row(it, m))
+        core.append(core_row(it, m, levels))
     core.sort(key=fame_key)
     if missing_files:
         log(f"{missing_files} painting(s) left out: file not found on Commons")

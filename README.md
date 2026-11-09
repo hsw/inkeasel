@@ -155,7 +155,10 @@ tablet).
   "Catalog"). The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with their labels in the
   UI languages, one file per language as in the release) is cut from that release with `--starter-from <dir
   of the downloaded release files>`; it leaves out the paintings `tools/catalog-nsfw.txt` lists as explicit
-  and takes the next ones by fame instead.
+  (and the rows the release marks `"nsfw": "explicit"`) and takes the next ones by fame instead. Each `core`
+  row carries a nudity level, `"nsfw": "nude"` or `"explicit"` (left out when none): the strictest of the
+  list's level, Wikidata's "depicts" (P180: genitals or sex → explicit; nudity or pubic hair → nude) and the
+  nude genre (P136) → nude. The release published before this field was added does not carry it yet.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
