@@ -6,6 +6,7 @@ import androidx.paging.testing.asSnapshot
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
+import io.github.hsw.inkeasel.Listing
 import io.github.hsw.inkeasel.catalog.CatalogSyncPlan.CORE
 import io.github.hsw.inkeasel.catalog.ReleaseFixtures.core
 import io.github.hsw.inkeasel.catalog.ReleaseFixtures.gzip
@@ -26,6 +27,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -208,6 +210,47 @@ class CatalogStoreTest {
         store.start(LanguageChain.of("en"))
         awaitPasses(2)
         assertEquals("Start", runBlocking { store.pages.asSnapshot() }.first().title)
+    }
+
+    @Test
+    fun aPassRefreshesTheLiveSourcesAfterTheSyncAndTheOldListCacheGoes() {
+        release.server.shutdown()
+        val legacy = File(context.filesDir, "catalog-legacy-test").apply { mkdirs() }
+        File(legacy, "cma.json").writeText("{\"format\": 2, \"savedAt\": 1, \"items\": []}")
+        var asked = 0
+        val cma = object : LiveSource {
+            override val id = "cma"
+            override suspend fun fetch(): Listing<LiveRow> {
+                asked++
+                return Listing(listOf(LiveRow("cma:1", "Fields", museumRef = "1915.534")))
+            }
+        }
+        val down = object : LiveSource {
+            override val id = "commons"
+            override suspend fun fetch(): Listing<LiveRow> = throw UnknownHostException("commons")
+        }
+        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
+        val store = CatalogStore(
+            db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log,
+            live = LiveRefresh(db, listOf(cma, down), log = log), legacy = legacy,
+        )
+        try {
+            store.start(ruChain)
+            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            assertFalse(legacy.exists())
+            assertTrue(logged.any { it == "old list cache deleted" })
+            // offline for the release, the starter set and the live row are listed; the source that is down is logged
+            assertEquals(listOf("wd:Q1", "wd:Q2", "cma:1"), query("SELECT id FROM picture WHERE hidden = 0 ORDER BY rank"))
+            assertTrue(logged.any { it.startsWith("commons: refresh failed") })
+
+            store.start(ruChain)
+            runBlocking { withTimeout(20_000) { store.passes.first { it >= 2 } } }
+            assertEquals(1, asked) // refreshed a moment ago: not asked again
+            assertEquals(1, logged.count { it == "old list cache deleted" })
+        } finally {
+            store.close()
+            legacy.deleteRecursively()
+        }
     }
 
     @Test

@@ -100,7 +100,11 @@ object EntityKind {
     const val GENRE = "genre"
 }
 
-/** A release file's state: its last [etag] and [sha256], when it was checked and imported, [missing] on a 404. */
+/**
+ * A release file's state: its last [etag] and [sha256], when it was checked and imported, [missing] on a 404.
+ * A live source's refresh is kept here too, as `live-<source>` ([LiveSourceRows.stateName]) with the time of
+ * its last whole list in [checkedAt] and [importedAt].
+ */
 @Entity(tableName = "catalog_file")
 data class CatalogFileEntity(
     @PrimaryKey val name: String,

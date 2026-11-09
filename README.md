@@ -116,7 +116,8 @@ tablet).
   with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
   is not sent anywhere. A release build writes no title and no artwork address to the system log (logcat);
   a debug build does, for development (`MediaLog`).
-- Network traffic is limited to the picture sources: the catalog lists and images from the
+- Network traffic is limited to the picture sources: the catalog's lists (at app start, each at most once a
+  week) and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/), the painting catalog's files from the project's
   GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at app start, each file
@@ -237,9 +238,9 @@ or button navigation; the settings dialog does the same. A TV has no bars, so no
 
 ## Catalog
 
-Tabs: "Catalog" (the start tab: famous paintings from the catalog database, below), "My pictures" (the
-app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and "Landscapes" (Wikimedia
-Commons featured pictures); the last two go into the Catalog later.
+Tabs: "Catalog" (the start tab: famous paintings from the catalog database, below, with the Cleveland
+Museum of Art's CC0 landscapes and Wikimedia Commons' featured landscapes among them) and "My pictures" (the
+app's own folder on the device).
 
 The Catalog tab pages through the database (Paging 3): it holds about 9,600 paintings, so only the rows
 near the screen are read. A card not read yet is an empty card of the same size, which the D-pad focus
@@ -249,27 +250,27 @@ language's chain; artists are joined with a translatable separator. While the st
 first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather than
 showing an empty grid, and the list starts only after it, so its first query does not wait for the import.
 
-The other tabs load their whole list. A list request gives up after 20 s; Commons reads at
-most 3 pages within 30 s and shows what came in by then, also when a later page fails. A source that
-answers with no usable picture says so ("The source returned no pictures.") with **Retry**. A failure reads as a sentence (no connection, the
-source is not responding, HTTP code, unreadable answer) with **Retry**. "My pictures" speaks of your pictures, not
-of a catalog, while it reads the folder ("Looking for your pictures…") and if that fails (`Source.local`).
-Empty, it leads with sharing a picture to InkEasel from a gallery or a file manager on the device (see
-"Share → InkEasel"); the folder path and an `adb push` line follow as secondary text for advanced users.
+The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
+Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
+same Commons file, or the Cleveland accession number the release has as P11110) is hidden. A source is asked
+in the background at app start, after the release sync, a week after its last whole list: its request runs
+outside the store's write lock (a list request gives up after 60 s; Commons reads at most 3 pages within
+120 s) and its answer replaces the source's rows in one transaction. A failure, an empty answer or a list cut
+short that is smaller than the stored one keeps the rows, and the next start asks again; there is no note
+and no **Retry** in the Catalog, which always has the starter set. The list cache of older versions
+(`files/catalog/`) is deleted at start.
 
-The last good, non-empty list of each online tab is saved in the app's files (`files/catalog/<source>.json`).
-When the source fails later, that list is shown with a note above it ("Saved list from <date>. <reason>")
-and **Retry**; the list stays on screen while a retry runs, and the note goes once a fresh list arrives.
-An empty answer never replaces a saved list, and a list cut short (by the 30 s limit or a failed later page)
-replaces it only when it is not smaller. Thumbnails of a saved list come from the image cache, so
-offline some may be missing; sending a picture still needs the network.
+"My pictures" reads its folder whole. It speaks of your pictures, not of a catalog, while it reads the folder
+("Looking for your pictures…") and if that fails (with **Retry**). Empty, it leads with sharing a picture to
+InkEasel from a gallery or a file manager on the device (see "Share → InkEasel"); the folder path and an
+`adb push` line follow as secondary text for advanced users.
 
 Each picture carries what its source tells about it (`Picture`; a field the source does not give stays
-empty): Cleveland gives the artists, the date, the museum, the artwork's page, the licence (CC0) and the
-master's pixel size; Commons the author, the date taken, the file's page (its short `curid` link), the
-licence with its link and the original's size; a picture in "My pictures" only its name and pixel size.
-The saved lists keep these fields (format 2); a list saved by an older version still reads, without them,
-until the next good load replaces it.
+empty): a release row its labels (title, artists, museum), the inception year, its Wikidata page, the
+licence with its link and the image credit where the licence asks for one; Cleveland the artists, the date,
+the museum, the artwork's page, the licence (CC0) and the master's pixel size; Commons the author, the date
+taken, the file's page (its short `curid` link), the licence with its link and the original's size; a
+picture in "My pictures" only its name and pixel size.
 
 The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
 `CatalogStore` that the app's start (`MainActivity`) wakes. On the first start the APK's starter set (the
@@ -285,11 +286,11 @@ failed import (or no network) leaves the list as it was and the files are asked 
 A language that joins the chain gets the starter set's labels at once, also offline; a language that leaves
 it loses its labels at the next import. To watch it:
 
-    adb logcat -s CatalogStore CatalogSync
+    adb logcat -s CatalogStore CatalogSync LiveRefresh
 
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
-than 20 s every time, "Paintings" fails each time and its saved list fills only after a fast answer;
-asking for fewer results than `limit=200` would be the next step then.
+than 60 s every time, its rows never come (or stay as they were); asking for fewer results than `limit=200`
+would be the next step then.
 
 ## Share → InkEasel
 
@@ -510,19 +511,20 @@ keys appear only in a debug build, a release build logs `<title>` and `<key>` in
       -s NowPlayingListener FrameController UploadService UploadEngine FrameClient
 
 Code:
-- `Catalog.kt`: picture sources (Cleveland Museum of Art CC0 paintings, Wikimedia Commons featured landscapes);
-  list requests give up after 20 s, Commons reads at most 3 pages within 30 s (`collectPages`, pure; a list
-  cut short is marked incomplete)
-- `SourceMapping.kt`: the sources' JSON (Cleveland, Commons) mapped to `Picture`s with their metadata (pure,
-  tested against fixture answers in `app/src/test/resources/catalog/`)
-- `CatalogLoad.kt`: what a tab shows (`CatalogState`), one load of a tab and its cache rules (`loadCatalog`),
-  and when a tab reloads (pure)
-- `CatalogError.kt`: a failed catalog load in words (no connection, timeout, HTTP code, unreadable answer)
-- `CatalogCache.kt`: the last good list per online source (`files/catalog/`), shown when the source fails
+- `Catalog.kt`: `Picture`, "My pictures" (`LocalImages`) and the live sources (Cleveland Museum of Art CC0
+  paintings, Wikimedia Commons featured landscapes); list requests give up after 60 s, Commons reads at most
+  3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete)
+- `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
+  their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
+- `CatalogLoad.kt`: what "My pictures" shows (`CatalogState`), one load of it (`loadCatalog`) and when it
+  reloads (pure)
+- `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
+  the details preview and the viewer
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
   rows (`CatalogRows`) and their import (`CatalogImport`), the label languages (`LanguageChain`), and its
-  process-wide owner `CatalogStore`, which runs the starter import and the release sync (`CatalogSync`; which
-  files are due and what is recorded: `CatalogSyncPlan`, pure) and gives the Catalog tab its pages; a row as
+  process-wide owner `CatalogStore`, which runs the starter import, the release sync (`CatalogSync`; which
+  files are due and what is recorded: `CatalogSyncPlan`, pure) and the live sources' refresh (`LiveRefresh`;
+  its rules in `LiveSourceRows`, pure) and gives the Catalog tab its pages; a row as
   a `Picture` (`CatalogPicture`, its Commons URLs from `CommonsUrls`, both pure) and the viewer's steps
   through the list (`CatalogSteps`)
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`, or draw

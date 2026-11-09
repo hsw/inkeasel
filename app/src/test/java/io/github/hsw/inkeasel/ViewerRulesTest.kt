@@ -32,30 +32,6 @@ class ViewerRulesTest {
     }
 
     @Test
-    fun commons_smallestStandardStepThatCovers() {
-        assertEquals("$thumb/1920px-Rainbow.jpg?utm_source=x", ViewerRules.rendition(commons(4000, 2000), 1920, 1080))
-        assertEquals("$thumb/1280px-Rainbow.jpg?utm_source=x", ViewerRules.rendition(commons(4000, 2000), 1280, 720))
-        // 2560 px needed: 2560 is no standard width, so 3840
-        assertEquals("$thumb/3840px-Rainbow.jpg?utm_source=x", ViewerRules.rendition(commons(4000, 2500), 2560, 1600))
-        assertEquals("$thumb/3840px-Rainbow.jpg?utm_source=x", ViewerRules.rendition(commons(8000, 4000), 3840, 2160))
-        // a wider window than any step: 3840 at most
-        assertEquals("$thumb/3840px-Rainbow.jpg?utm_source=x", ViewerRules.rendition(commons(16000, 8000), 7680, 4320))
-    }
-
-    @Test
-    fun commons_neverBeyondWhatTheOriginalNeeds() {
-        // a 1250 px wide original in a 4K window: the 1280 step covers all it has
-        val small = commons(1250, 700, full = "$thumb/1920px-Rainbow.jpg")
-        assertEquals("$thumb/1280px-Rainbow.jpg", ViewerRules.rendition(small, 3840, 2160))
-    }
-
-    @Test
-    fun commons_originalNarrowerThanTheFrameRendition_asGiven() {
-        val original = "https://upload.wikimedia.org/wikipedia/commons/a/ad/Rainbow.jpg?utm_content=thumbnail_unscaled"
-        assertEquals(original, ViewerRules.rendition(commons(1800, 1000, full = original), 3840, 2160))
-    }
-
-    @Test
     fun cleveland_webUpToFullHd_printBeyond() {
         assertEquals(cma.thumbUrl, ViewerRules.rendition(cma, 1920, 1080))
         assertEquals(cma.thumbUrl, ViewerRules.rendition(cma, 1080, 2400)) // a phone, either way round
@@ -136,6 +112,14 @@ class ViewerRulesTest {
         assertEquals("$wdThumb/e/e8/Rainbow.jpg/1920px-Rainbow.jpg", ViewerRules.rendition(commons(4000, 2000).copy(commonsFile = "Rainbow.jpg"), 1920, 1080))
         val local = Picture("local:a.jpg", "a", "", "/x/a.jpg", "/x/a.jpg", local = true, commonsFile = "Rainbow.jpg")
         assertEquals("/x/a.jpg", ViewerRules.rendition(local, 1920, 1080))
+    }
+
+    @Test
+    fun liveCommons_renditionFromItsFileName() {
+        val p = Picture("commons:Rainbow.jpg", "Rainbow", "", "", "", width = 4000, height = 2000, commonsFile = "Rainbow.jpg")
+        assertEquals("$wdThumb/e/e8/Rainbow.jpg/1280px-Rainbow.jpg", ViewerRules.rendition(p, 1280, 720))
+        // 2560 px needed: no standard width, so 3840
+        assertEquals("$wdThumb/e/e8/Rainbow.jpg/3840px-Rainbow.jpg", ViewerRules.rendition(p, 2560, 1600))
     }
 
     @Test

@@ -28,9 +28,11 @@ sent to the developer.**
 
 - **To your frame, over Bluetooth:** the picture you choose, or the poster of what plays. The frame is a
   device you own; nothing goes through the internet on the way.
-- **Downloads from public addresses:** the built-in catalogs load their lists and images from the
-  [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
-  [Wikimedia Commons](https://commons.wikimedia.org/). The painting catalog's files come from the app's
+- **Downloads from public addresses:** the catalog's images come from
+  [Wikimedia Commons](https://commons.wikimedia.org/) and the Cleveland Museum of Art. When the app starts, it
+  asks the [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and Wikimedia
+  Commons for their lists of landscapes, each at most once a week (again at the next start when one did not
+  answer in full). The catalog's files come from the app's
   public GitHub release (`github.com`, which redirects to `release-assets.githubusercontent.com`): when the
   app starts, it asks for each file at most once a week, sending the label (ETag) of the copy it already
   has so that an unchanged file is not sent again. The names of the files it asks for include the codes of
@@ -57,10 +59,12 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
   each time it stores a new picture there, the app deletes the oldest ones down to the 20 most recent, but
   never one that a current session or a poster still waiting for the frame needs, so until the next new
   picture there can be more;
-- the catalog database: the paintings of the catalog with their labels in the languages above, and for
-  each catalog file when it was last checked and the label (ETag) and fingerprint (SHA-256) of the copy that
-  was imported; a file being downloaded is kept in the app's cache only until it is imported;
-- the last good catalog lists and cached catalog images;
+- the catalog database: the paintings of the catalog with their labels in the languages above and the
+  pictures of the Cleveland and Commons lists; for each catalog file when it was last checked and the label
+  (ETag) and fingerprint (SHA-256) of the copy that was imported, and for each list when it last came in
+  full; a file being downloaded is kept in the app's cache only until it is imported (older versions kept
+  the last lists in the app's files instead: the app deletes them);
+- cached catalog images;
 - the pictures you shared, and pictures you copied into "My pictures" yourself.
 
 They stay on the device. The pictures under "My pictures" are in the app's own folder on the shared storage

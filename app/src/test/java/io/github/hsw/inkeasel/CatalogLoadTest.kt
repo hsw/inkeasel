@@ -1,5 +1,6 @@
 package io.github.hsw.inkeasel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
@@ -7,111 +8,57 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
-import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.TemporaryFolder
 import java.io.IOException
 import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 
 class CatalogLoadTest {
-    @get:Rule
-    val tmp = TemporaryFolder()
-
     private fun pic(n: Int) = Picture("t:$n", "Picture $n", "", "https://example.org/$n-s.jpg", "https://example.org/$n.jpg")
     private fun pics(n: Int) = (1..n).map(::pic)
 
-    /** A source that answers [answer] (or throws it); [local] like "My pictures". */
-    private class Fake(override val local: Boolean = false, val answer: () -> Listing) : Source {
+    /** A tab's source (as "My pictures") that answers [answer] (or throws it). */
+    private class Fake(val answer: () -> Listing<Picture>) : Source {
         override val id = "fake"
-        override val name = Txt(R.string.tab_paintings)
+        override val name = Txt(R.string.tab_local)
         override suspend fun load() = answer()
     }
-
-    private val offline = Txt(R.string.catalog_err_offline)
 
     // --- loadCatalog ---
 
     @Test
-    fun remoteSuccess_shownAndSaved() = runTest {
-        val cache = CatalogCache(tmp.root)
-        assertEquals(CatalogState.Loaded(pics(3)), loadCatalog(Fake { Listing(pics(3)) }, cache, { 100 }))
-        assertEquals(CachedCatalog(100, pics(3)), cache.read("fake"))
+    fun success_shown() = runTest {
+        assertEquals(CatalogState.Loaded(pics(3)), loadCatalog(Fake { Listing(pics(3)) }))
+        assertEquals(CatalogState.Loaded(emptyList()), loadCatalog(Fake { Listing(emptyList()) }))
     }
 
     @Test
-    fun localTab_neverSavedNorRead() = runTest {
-        val cache = CatalogCache(tmp.root)
-        cache.write("fake", pics(2), 50) // even if a file of that name were there
-        assertEquals(CatalogState.Loaded(pics(1)), loadCatalog(Fake { Listing(pics(1)) }, null, { 100 }))
-        assertEquals(CachedCatalog(50, pics(2)), cache.read("fake"))
-        assertEquals(
-            CatalogState.Failed(offline),
-            loadCatalog(Fake { throw UnknownHostException("example.org") }, null, { 100 }),
-        )
-    }
-
-    @Test
-    fun localTab_loadingAndFailure_speakOfThePictures_notOfACatalog() = runTest {
-        assertEquals(Txt(R.string.local_loading), CatalogState.loadingText(local = true))
-        assertEquals(Txt(R.string.catalog_loading), CatalogState.loadingText(local = false))
+    fun failure_speaksOfThePictures_notOfACatalog() = runTest {
+        val logs = mutableListOf<String>()
         assertEquals(
             CatalogState.Failed(Txt(R.string.local_failed, "Permission denied")),
-            loadCatalog(Fake(local = true) { throw IOException("Permission denied") }, null, { 100 }),
+            loadCatalog(Fake { throw IOException("Permission denied") }) { logs += it },
         )
+        assertEquals(1, logs.size)
         val own = Txt(R.string.share_err_save) // a text of its own is kept
-        assertEquals(CatalogState.Failed(own), loadCatalog(Fake(local = true) { throw TxtException(own) }, null, { 100 }))
+        assertEquals(CatalogState.Failed(own), loadCatalog(Fake { throw TxtException(own) }))
     }
 
     @Test
-    fun emptyAnswer_shown_neverReplacesTheSavedList() = runTest {
-        val cache = CatalogCache(tmp.root)
-        cache.write("fake", pics(2), 50)
-        assertEquals(CatalogState.Loaded(emptyList()), loadCatalog(Fake { Listing(emptyList()) }, cache, { 100 }))
-        assertEquals(CachedCatalog(50, pics(2)), cache.read("fake"))
-    }
-
-    @Test
-    fun failure_showsTheSavedListWithTheReason_orTheFailure() = runTest {
-        val cache = CatalogCache(tmp.root)
-        val down = Fake { throw UnknownHostException("example.org") }
-        assertEquals(CatalogState.Failed(offline), loadCatalog(down, cache, { 100 }))
-        cache.write("fake", pics(2), 50)
-        assertEquals(
-            CatalogState.Loaded(pics(2), staleSince = 50, staleReason = offline),
-            loadCatalog(down, cache, { 100 }),
-        )
-    }
-
-    @Test
-    fun partialList_neverShrinksTheSavedOne() = runTest {
-        val cache = CatalogCache(tmp.root)
-        cache.write("fake", pics(5), 50)
-        val partial = loadCatalog(Fake { Listing(pics(3), complete = false) }, cache, { 100 })
-        assertEquals(CatalogState.Loaded(pics(3)), partial) // shown all the same
-        assertEquals(CachedCatalog(50, pics(5)), cache.read("fake"))
-        loadCatalog(Fake { Listing(pics(5), complete = false) }, cache, { 200 }) // not smaller: saved
-        assertEquals(200L, cache.read("fake")?.savedAt)
-        loadCatalog(Fake { Listing(pics(2)) }, cache, { 300 }) // a complete list is saved whatever its size
-        assertEquals(CachedCatalog(300, pics(2)), cache.read("fake"))
-    }
-
-    @Test
-    fun partialList_savedWhenNothingIs() = runTest {
-        val cache = CatalogCache(tmp.root)
-        loadCatalog(Fake { Listing(pics(3), complete = false) }, cache, { 100 })
-        assertEquals(CachedCatalog(100, pics(3)), cache.read("fake"))
+    fun cancellation_isNotAFailure() = runTest {
+        try {
+            loadCatalog(Fake { throw CancellationException("gone") })
+            fail("no exception")
+        } catch (e: CancellationException) {
+            assertEquals("gone", e.message)
+        }
     }
 
     // --- needsLoad ---
 
     @Test
-    fun needsLoad_neverLoadedFailedOrStale_notWhileRetrying() {
-        val stale = CatalogState.Loaded(pics(1), staleSince = 50, staleReason = offline)
+    fun needsLoad_neverLoadedOrFailed() {
         assertTrue((null as CatalogState?).needsLoad())
-        assertTrue(CatalogState.Failed(offline).needsLoad())
-        assertTrue(stale.needsLoad())
-        assertFalse(stale.copy(retrying = true).needsLoad())
+        assertTrue(CatalogState.Failed(Txt(R.string.local_failed, "x")).needsLoad())
         assertFalse(CatalogState.Loaded(pics(1)).needsLoad())
         assertFalse(CatalogState.Loaded(emptyList()).needsLoad())
         assertFalse(CatalogState.Loading.needsLoad())
@@ -122,7 +69,7 @@ class CatalogLoadTest {
     /** Pages of [perPage] pictures, numbered on; page [last] has no next one. */
     private class Pages(val perPage: Int, val last: Int = Int.MAX_VALUE, val delayMs: Long = 0, val failOn: Int = 0) {
         val asked = mutableListOf<String?>()
-        suspend fun fetch(token: String?): Page {
+        suspend fun fetch(token: String?): Page<Picture> {
             asked += token
             val n = asked.size
             delay(delayMs)

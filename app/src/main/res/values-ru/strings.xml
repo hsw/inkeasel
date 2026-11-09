@@ -5,8 +5,6 @@
     <!-- catalog -->
     <string name="tab_catalog">Каталог</string>
     <string name="tab_local">Мои картинки</string>
-    <string name="tab_paintings">Картины</string>
-    <string name="tab_landscapes">Пейзажи</string>
     <string name="header_frame">Рамка: %1$s</string>
     <string name="header_no_frame">Рамка не выбрана</string>
     <string name="catalog_loading">Загрузка каталога…</string>
@@ -18,9 +16,6 @@
     <string name="catalog_err_http">Источник ответил HTTP %1$d.</string>
     <string name="catalog_err_unreadable">Источник прислал ответ, который не удалось прочитать.</string>
     <string name="retry">Повторить</string>
-    <string name="catalog_stale">Сохранённый список от %1$s. %2$s</string>
-    <string name="catalog_retrying">Повторная загрузка…</string>
-    <string name="catalog_empty">Источник не вернул ни одной картинки.</string>
     <string name="local_loading">Поиск ваших картинок…</string>
     <string name="local_failed">Не удалось прочитать ваши картинки: %1$s</string>
     <string name="local_empty">Здесь пока нет картинок. Поделитесь картинкой с InkEasel из галереи или файлового менеджера на этом устройстве: она сохранится здесь и отправится на рамку.</string>

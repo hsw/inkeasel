@@ -3,6 +3,30 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The live sources are rows of the Catalog, every 10th card until the filters
+The Cleveland museum's CC0 landscape paintings and Commons' featured landscapes are no longer tabs: their lists
+are rows of the catalog database (`cma:<api id>` with the accession number, `commons:<file name>` with the
+file name), shown in the one Catalog list. Until the filters give them a place, they take every 10th card,
+Cleveland and Commons in turn, and follow the last Wikidata row once those run out; a live row that is a
+Wikidata row (the same Commons file, or a Cleveland accession number equal to the release's P11110 value) is
+hidden, so a painting shows once. A source is asked in the background at app start, after the release sync,
+a week after its last whole list (the state is kept in `catalog_file` as `live-<source>`, so it goes with the
+database); the request runs outside the store's write lock with a longer limit than a screen could wait for
+(60 s per list request, Commons 3 pages within 120 s), and the answer replaces the source's rows in one
+transaction that also redoes rank and dedupe. A failure, an empty answer or a list cut short that is smaller
+than the stored one keeps the rows; a list cut short that is not smaller replaces them; both are asked again
+at the next start. The Catalog has no stale note and no **Retry**: the starter set always shows, a source
+that is down only lacks its newest rows, and failures go to the log. The old per-source list cache
+(`files/catalog/`) is deleted at every process start (nothing to do once it is gone); My pictures keeps its
+own load and its **Retry**. Commons rows build their renditions from the file name like the release's (the
+list request no longer asks for a 1920 px thumbnail URL), and their author, whom the licence asks to name,
+is their artist, shown on the card, in the details and in the viewer. Portrait paintings of the release stay
+in the list until the "fits the frame" filter; the live sources keep their own landscape-only choice.
+Rejected: live rows after all Wikidata rows (about 2,400 rows of cards down on a TV), keeping the tabs (a tab
+per source does not scale and repeats paintings), a stale note or **Retry** in the Catalog, a table of its
+own for the refresh state (a schema version for two rows), refreshing at every start (the lists change
+slowly, and two sources' APIs would see each start).
+
 ## 2026-11-09 — The Catalog tab pages from the database; the viewer steps by rank
 The Catalog is the first tab and the one the app starts on; My pictures and, until the live sources move
 into the database, Paintings and Landscapes follow. It shows `CatalogStore`'s Paging 3 list
@@ -352,7 +376,7 @@ come from the catalog in the UI language, falling back to English, then to the o
 feedback goes to GitHub Issues.
 Rejected: keeping English and Russian as the two first-class languages.
 
-## 2026-11-08 — One "Catalog" section, sorted by fame, with filters and search (*planned*)
+## 2026-11-08 — One "Catalog" section, sorted by fame, with filters and search
 Every source (the Wikidata catalog and the live museum and Commons sources) is mapped to one schema in a local
 Room database and shown as one Catalog section instead of a tab per source. The default order is fame: the
 number of Wikipedia articles (Wikidata sitelinks), found for museum pictures through the museum's
@@ -360,6 +384,8 @@ external-ID property on Wikidata; pictures without a match rank by the source's 
 ones. The same painting from two sources is one entry, joined by its Wikidata id. Filters (museum, artist,
 period, movement, genre, orientation, fits the frame) and search narrow the same Paging 3 list; "Landscapes"
 becomes a genre filter. Navigation shrinks to Catalog, My pictures and Settings.
+Implemented: the one section over Room and Paging, sorted by fame, the live sources as its rows (deduplicated,
+interleaved for now: 2026-11-09) and the navigation; the filters and the search are still *planned*.
 Rejected: a tab per source (does not scale past a few sources and repeats the same painting), sorting by
 source order or at random by default.
 

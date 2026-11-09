@@ -102,26 +102,15 @@ object ViewerRules {
     /**
      * What the viewer loads for [p] in a window of [w] × [h] px: the local file as is (its path); a picture
      * with a [Picture.commonsFile] its [CommonsUrls.url] for [neededWidth], at least the [COMMONS_WIDTHS] first
-     * step (the original when that is a JPEG, PNG or WebP no wider, a TIFF always as a thumbnail); for the
-     * Commons source the smallest [COMMONS_WIDTHS] step that covers [neededWidth], or the original's width
-     * when that is smaller, 3840 at most, or the URL as given when it is the original itself (narrower than
-     * the frame's 1920 px rendition); for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
+     * step (the original when that is a JPEG, PNG or WebP no wider, a TIFF always as a thumbnail): the
+     * release's rows and the Commons source's; for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
      * `print` ([Picture.fullUrl]) beyond; any other source its [Picture.fullUrl].
      */
     fun rendition(p: Picture, w: Int, h: Int): String = when {
         p.local -> p.fullUrl
         p.commonsFile != null -> CommonsUrls.url(p.commonsFile, max(neededWidth(p, w, h), COMMONS_WIDTHS.first()), p.width)
-        p.source == "commons" -> commons(p, w, h)
         p.source == "cma" -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
         else -> p.fullUrl
-    }
-
-    private fun commons(p: Picture, w: Int, h: Int): String {
-        val frameStep = "/${CommonsMapping.FULL_WIDTH}px-"
-        if (frameStep !in p.fullUrl) return p.fullUrl // the original, no wider than the frame's rendition
-        val need = min(neededWidth(p, w, h), p.width ?: Int.MAX_VALUE)
-        val step = COMMONS_WIDTHS.firstOrNull { it >= need } ?: COMMONS_WIDTHS.last()
-        return p.fullUrl.replace(frameStep, "/${step}px-")
     }
 
     /**

@@ -6,6 +6,7 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import io.github.hsw.inkeasel.Http
+import io.github.hsw.inkeasel.liveSources
 import io.github.hsw.inkeasel.logTo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -50,11 +51,13 @@ class StarterSet(
 /**
  * The process-wide owner of the catalog ([get]): the database, a scope of its own (not tied to a screen) and
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
- * per process: the starter set goes into an empty database, then each [start] (every app start, and a new
- * UI language, which re-creates the activity) runs a pass: the starter's labels of a language that joined the
- * [chain] since, then the release sync, which fetches only the files that are due ([CatalogSyncPlan]), so a
- * pass with nothing due makes no request. Passes run one after another; a [start] during a pass asks for one
- * more. A failed step is logged and the next pass tries again. The Catalog tab reads the list through [pages].
+ * per process: the starter set goes into an empty database (and the old list cache, [legacy], is deleted),
+ * then each [start] (every app start, and a new UI language, which re-creates the activity) runs a pass: the
+ * starter's labels of a language that joined the [chain] since, the release sync, which fetches only the
+ * files that are due ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh], asked outside
+ * the lock), so a pass with nothing due makes no request. Passes run one after another; a [start] during a
+ * pass asks for one more. A failed step is logged and the next pass tries again. The Catalog tab reads the
+ * list through [pages].
  */
 class CatalogStore internal constructor(
     val db: CatalogDb,
@@ -63,6 +66,8 @@ class CatalogStore internal constructor(
     chain: List<String>,
     private val log: (String, Throwable?) -> Unit = { _, _ -> },
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val live: LiveRefresh? = null,
+    private val legacy: File? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
     private val writeLock = Mutex()
@@ -127,10 +132,12 @@ class CatalogStore internal constructor(
         step("starter import") { starter(chain.value) }
         checkEmpty()
         ready.value = true
+        legacy?.let(::dropLegacy)
         for (signal in wake) {
             val chain = chain.value
             step("starter labels") { starterLabels(chain) }
             step("release sync") { sync.run(chain) }
+            live?.let { refreshLive(it) }
             checkEmpty()
             _passes.update { it + 1 }
         }
@@ -153,6 +160,29 @@ class CatalogStore internal constructor(
             throw e
         } catch (e: Exception) {
             log("$what failed", e)
+        }
+    }
+
+    /** The live sources' lists: asked without the lock, each written under it ([LiveRefresh]). */
+    private suspend fun refreshLive(live: LiveRefresh) {
+        try {
+            live.run { block -> write(block) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("live refresh failed", e)
+        }
+    }
+
+    /**
+     * The list cache of older versions (`files/catalog/`, a file per live source): the database holds those
+     * lists now. Deleted at every process start, which costs nothing once it is gone.
+     */
+    private fun dropLegacy(dir: File) {
+        try {
+            if (dir.exists() && dir.deleteRecursively()) log("old list cache deleted", null)
+        } catch (e: Exception) {
+            log("old list cache not deleted", e)
         }
     }
 
@@ -181,6 +211,9 @@ class CatalogStore internal constructor(
 
     companion object {
         private const val TAG = "CatalogStore"
+
+        /** The list cache of older versions, in the app's files ([dropLegacy]). */
+        private const val LEGACY_DIR = "catalog"
 
         /** Rows per page of the list: about 15 rows of 4 cards on a TV. */
         const val PAGE = 60
@@ -223,6 +256,8 @@ class CatalogStore internal constructor(
                 CatalogSync(db, Http.client, File(app.cacheDir, "catalog-sync"), log = logTo("CatalogSync")),
                 chainOf(app.resources.configuration),
                 logTo(TAG),
+                live = LiveRefresh(db, liveSources, log = logTo("LiveRefresh")),
+                legacy = File(app.filesDir, LEGACY_DIR),
             )
         }
     }

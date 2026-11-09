@@ -290,7 +290,10 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
 
 private const val WD = "'${CatalogRank.WIKIDATA}'"
 
-/** The staging tables, the swap's statements and the release files' state ([CatalogImport], [CatalogSync]). */
+/**
+ * The staging tables, the swap's statements and the release files' state ([CatalogImport], [CatalogSync]),
+ * and the live sources' rows ([LiveRefresh]).
+ */
 @Dao
 abstract class ImportDao {
     @Query("SELECT EXISTS(SELECT 1 FROM picture WHERE source = $WD)")
@@ -298,6 +301,14 @@ abstract class ImportDao {
 
     @Query("SELECT MIN(rank) FROM picture")
     abstract suspend fun lowestRank(): Long?
+
+    /** How many rows of [source] (a live source's id) are stored, shown or hidden. */
+    @Query("SELECT COUNT(*) FROM picture WHERE source = :source")
+    abstract suspend fun sourceCount(source: String): Int
+
+    /** Removes every row of [source] (a live source's id), which its new list replaces. */
+    @Query("DELETE FROM picture WHERE source = :source")
+    abstract suspend fun deleteSource(source: String): Int
 
     /** Whether any label in [lang] is stored. */
     @Query("SELECT EXISTS(SELECT 1 FROM label WHERE lang = :lang)")

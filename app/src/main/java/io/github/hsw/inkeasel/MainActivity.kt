@@ -116,7 +116,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The catalog database has no picture once its starter step has run ([CatalogStore.empty]). */
     val catalogEmpty: StateFlow<Boolean> = store.empty
 
-    /** The tabs after the Catalog, each a list loaded whole ([loadCatalog]). */
+    /** The tabs after the Catalog, each a list loaded whole ([loadCatalog]): My pictures. */
     val sources = buildSources(app)
 
     /** The tab names: the Catalog ([CATALOG_TAB]), then [sources]. */
@@ -130,12 +130,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The source of tab [i]; `null` for the Catalog. */
     private fun sourceOf(i: Int): Source? = sources.getOrNull(i - 1)
 
-    /** The last good list of each remote source, shown when it fails. */
-    private val cache = CatalogCache(File(app.filesDir, "catalog"))
     private val loads = mutableMapOf<Int, Job>()
 
     /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
-    val localTab = sources.indexOfFirst { it.local }.let { if (it < 0) -1 else it + 1 }
+    val localTab = sources.indexOfFirst { it is LocalImages }.let { if (it < 0) -1 else it + 1 }
     private var localReload: Job? = null
     private val localWatcher: FileObserver? = (sourceOf(localTab) as? LocalImages)?.let { src ->
         val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO or
@@ -335,7 +333,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localReload = viewModelScope.launch {
             delay(300)
             val src = sourceOf(localTab) ?: return@launch
-            catalogs[localTab] = loadCatalog(src, cache = null, System::currentTimeMillis) { Log.w(TAG, it) }
+            catalogs[localTab] = loadCatalog(src) { Log.w(TAG, it) }
         }
     }
 
@@ -348,16 +346,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         const val CATALOG_TAB = 0
     }
 
-    /**
-     * Load tab [i] (again), unless it is loading already ([loadCatalog]: a remote source's good list is saved,
-     * and shown with a note when the source fails; the local folder is not cached).
-     */
+    /** Load tab [i] (again), unless it is loading already ([loadCatalog]). */
     fun load(i: Int) {
         if (loads[i]?.isActive == true) return
         val src = sourceOf(i) ?: return
-        catalogs[i] = CatalogState.reloading(catalogs[i])
+        catalogs[i] = CatalogState.Loading
         loads[i] = viewModelScope.launch {
-            catalogs[i] = loadCatalog(src, cache.takeIf { i != localTab }, System::currentTimeMillis) { Log.w(TAG, it) }
+            catalogs[i] = loadCatalog(src) { Log.w(TAG, it) }
         }
     }
 }
@@ -608,19 +603,13 @@ fun App(
                                 else -> Text(stringResource(R.string.catalog_loading))
                             }
                         } else when (st) {
-                            CatalogState.Loading -> Text(CatalogState.loadingText(local = vm.tab == vm.localTab).text())
+                            CatalogState.Loading -> Text(stringResource(R.string.local_loading))
                             is CatalogState.Failed -> Column {
                                 Text(st.reason.text())
                                 Spacer(Modifier.height(12.dp))
                                 Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
                             }
-                            is CatalogState.Loaded -> Column {
-                                if (st.staleSince != null) StaleNote(st) { vm.load(vm.tab) }
-                                CatalogGrid(
-                                    st, aspect, layout, grid, local = vm.tab == vm.localTab,
-                                    onRetry = { vm.load(vm.tab) }, onSend = onSend, onDetails = vm::openDetails,
-                                )
-                            }
+                            is CatalogState.Loaded -> CatalogGrid(st, aspect, layout, grid, onSend = onSend, onDetails = vm::openDetails)
                         }
                     }
                 }
@@ -715,37 +704,17 @@ private fun Header(vm: MainViewModel, split: Boolean, tabFocus: FocusRequester) 
     }
 }
 
-/** Above a saved list shown because its source failed: from when, why, and a retry. */
-@Composable
-private fun StaleNote(st: CatalogState.Loaded, onRetry: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            stringResource(R.string.catalog_stale, dateTimeText(st.staleSince ?: 0L), st.staleReason?.text().orEmpty()),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(16.dp))
-        if (st.retrying) {
-            Text(stringResource(R.string.catalog_retrying), style = MaterialTheme.typography.bodyMedium)
-        } else {
-            Button(onClick = onRetry, modifier = Modifier.onTap(onRetry)) { Text(stringResource(R.string.retry)) }
-        }
-    }
-}
-
+/** My pictures: the whole list in a grid, or, while the folder is empty, how to add pictures. */
 @Composable
 private fun CatalogGrid(
     st: CatalogState.Loaded,
     aspect: Float,
     layout: CatalogLayout,
     grid: LazyGridState,
-    local: Boolean,
-    onRetry: () -> Unit,
     onSend: (Picture) -> Unit,
     onDetails: (Picture) -> Unit,
 ) {
-    if (st.items.isEmpty() && local) { // Share first; the folder and adb only for advanced users
+    if (st.items.isEmpty()) { // Share first; the folder and adb only for advanced users
         Column {
             Text(stringResource(R.string.local_empty), style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(12.dp))
@@ -754,12 +723,6 @@ private fun CatalogGrid(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    } else if (st.items.isEmpty()) { // a remote source answered with nothing usable
-        Column {
-            Text(stringResource(R.string.catalog_empty))
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = onRetry, modifier = Modifier.onTap(onRetry)) { Text(stringResource(R.string.retry)) }
         }
     } else LazyVerticalGrid(
         columns = GridCells.Fixed(layout.columns),

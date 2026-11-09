@@ -9,8 +9,6 @@
     <!-- catalog -->
     <string name="tab_catalog">Catalog</string>
     <string name="tab_local">My pictures</string>
-    <string name="tab_paintings">Paintings</string>
-    <string name="tab_landscapes">Landscapes</string>
     <string name="header_frame">Frame: %1$s</string>
     <string name="header_no_frame">No frame selected</string>
     <string name="catalog_loading">Loading the catalog…</string>
@@ -23,10 +21,6 @@
     <string name="catalog_err_http">The source answered HTTP %1$d.</string>
     <string name="catalog_err_unreadable">The source sent an answer that could not be read.</string>
     <string name="retry">Retry</string>
-    <!-- a saved list shown because its source failed: %1$s when it was saved, %2$s why (a catalog_err_* sentence) -->
-    <string name="catalog_stale">Saved list from %1$s. %2$s</string>
-    <string name="catalog_retrying">Retrying…</string>
-    <string name="catalog_empty">The source returned no pictures.</string>
     <string name="local_loading">Looking for your pictures…</string>
     <string name="local_failed">Could not read your pictures: %1$s</string>
     <string name="local_empty">No pictures here yet. Share one to InkEasel from a gallery or a file manager on this device: it is saved here and sent to the frame.</string>
