@@ -31,9 +31,11 @@ data class SyncReport(
  * file is fetched from [base] (github.com, which redirects to a signed address that is never stored) with
  * `If-None-Match` and streamed to a temporary file in [tempDir] while its SHA-256 is computed; files whose
  * hash differs from the one imported last are imported together in one swap ([CatalogImport.release]), and
- * their ETag and hash are recorded inside that swap. Requests run one at a time. A failed file (no network,
- * a body cut short) or a failed import changes nothing and is tried again at the next start; a 404 waits a
- * week. The caller holds the store's write lock.
+ * their ETag and hash are recorded inside that swap. Requests run one at a time, outside the store's write
+ * lock; the import and the state writes run under it. A failed request (no network, a body cut short)
+ * changes nothing and is tried again at the next start; a failed import a day later; a 404 a week later.
+ * The [client] should limit a whole call ([CALL_TIMEOUT_MIN]): a link that trickles bytes would otherwise keep
+ * the pass from ever finishing.
  */
 class CatalogSync(
     private val db: CatalogDb,
@@ -46,38 +48,57 @@ class CatalogSync(
     private val import = CatalogImport(db)
     private val dao = db.imports()
 
-    suspend fun run(chain: List<String>): SyncReport = withContext(Dispatchers.IO) {
+    /**
+     * Checks the files the [chain] has due, fetching them outside the lock, then imports and records them
+     * through [write] (the store's write lock; `null`: in the caller's own context).
+     */
+    suspend fun run(
+        chain: List<String>,
+        write: (suspend (suspend () -> Unit) -> Unit)? = null,
+    ): SyncReport = withContext(Dispatchers.IO) {
         clearTemp()
-        val stored = dao.files().associateBy { it.name }
-        val checks = CatalogSyncPlan.due(chain, stored, now())
+        val checks = CatalogSyncPlan.due(chain, dao.files().associateBy { it.name }, now())
         if (checks.isEmpty()) return@withContext SyncReport()
         val outcomes = ArrayList<SyncOutcome>(checks.size)
         try {
             for (check in checks) outcomes += fetch(check)
-            val changed = outcomes.filterIsInstance<SyncOutcome.Downloaded>()
-                .filter { CatalogSyncPlan.changed(it, stored[it.check.name]) }
-            var result: ImportResult? = null
-            var error: Throwable? = null
-            if (changed.isNotEmpty()) {
-                val core = changed.firstOrNull { it.check.lang == null }?.let(::importFile)
-                val labels = changed.filter { it.check.lang != null }.map(::importFile)
-                try {
-                    result = import.release(core, labels, chain) { commit(changed, chain) }
-                    log("imported ${changed.joinToString { it.check.name }}: $result", null)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    error = e
-                    log("import of ${changed.joinToString { it.check.name }} failed", e)
-                }
-            }
-            val at = now()
-            val checked = outcomes.mapNotNull { CatalogSyncPlan.checked(stored[it.check.name], it, at) }
-            if (checked.isNotEmpty()) dao.saveFiles(checked)
-            SyncReport(outcomes, result, error)
+            var report = SyncReport(outcomes)
+            val block: suspend () -> Unit = { report = apply(outcomes, chain) }
+            if (write != null) write(block) else block()
+            report
         } finally {
             outcomes.forEach { if (it is SyncOutcome.Downloaded) it.file.delete() }
         }
+    }
+
+    /** Imports the changed downloads in one swap and records what each check found; under the write lock. */
+    private suspend fun apply(outcomes: List<SyncOutcome>, chain: List<String>): SyncReport {
+        // read again under the lock: the state the import is decided on is the one it writes over
+        val stored = dao.files().associateBy { it.name }
+        val changed = outcomes.filterIsInstance<SyncOutcome.Downloaded>()
+            .filter { CatalogSyncPlan.changed(it, stored[it.check.name]) }
+        var result: ImportResult? = null
+        var error: Throwable? = null
+        if (changed.isNotEmpty()) {
+            val core = changed.firstOrNull { it.check.lang == null }?.let(::importFile)
+            val labels = changed.filter { it.check.lang != null }.map(::importFile)
+            try {
+                result = import.release(core, labels, chain) { commit(changed, chain) }
+                log("imported ${changed.joinToString { it.check.name }}: $result", null)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = e
+                log("import of ${changed.joinToString { it.check.name }} failed", e)
+            }
+        }
+        val at = now()
+        val checked = outcomes.mapNotNull { CatalogSyncPlan.checked(stored[it.check.name], it, at) }
+        val failed = if (error == null) emptyList() else {
+            changed.map { CatalogSyncPlan.importFailed(stored[it.check.name], it, at) }
+        }
+        if (checked.isNotEmpty() || failed.isNotEmpty()) dao.saveFiles(checked + failed)
+        return SyncReport(outcomes, result, error)
     }
 
     /**
@@ -157,6 +178,9 @@ class CatalogSync(
     companion object {
         /** The release's address; never `releases/latest`, which is the newest APK release. */
         const val RELEASE = "https://github.com/hsw/inkeasel/releases/download/catalog/"
+
+        /** The longest one release file may take, from connect to the last byte (a few MB on a slow link). */
+        const val CALL_TIMEOUT_MIN = 10L
 
         private const val TEMP_PREFIX = "release-"
         private const val TEMP_SUFFIX = ".part"

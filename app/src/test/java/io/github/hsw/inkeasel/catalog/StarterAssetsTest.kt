@@ -1,7 +1,6 @@
 package io.github.hsw.inkeasel.catalog
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -65,8 +64,6 @@ class StarterAssetsTest {
         val order = entities.distinct().withIndex().associate { (i, id) -> id to i }
         labels.forEach { (lang, rows) ->
             assertTrue("$lang: empty file", rows.isNotEmpty())
-            // rows as in the release's labels-<lang>: the language is the file's
-            rows.forEach { assertNull("$lang: ${it.id} carries a language", it.lang) }
             // every label is of a starter painting or an entity one references, in the order a prefix import needs
             val positions = rows.map { order[it.id] ?: error("$lang: label of ${it.id}, not in the starter core") }
             assertEquals(lang, positions.sorted(), positions)

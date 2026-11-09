@@ -73,17 +73,6 @@ object CatalogRank {
         return place(rows).filter { p -> now.getValue(p.id).let { it.rank != p.rank || it.hidden != p.hidden } }
     }
 
-    /**
-     * Whether writing [changes] straight over [rows] could break the unique rank: some row's new rank is held
-     * now by another row. When none is, each row can move to its rank at once; otherwise the moving rows go
-     * to free ranks first.
-     */
-    fun clash(rows: List<RankKey>, changes: List<Placement>): Boolean {
-        val held = HashMap<Long, String>(rows.size * 2)
-        rows.forEach { held[it.rank] = it.id }
-        return changes.any { p -> held[p.rank].let { it != null && it != p.id } }
-    }
-
     /** Commons file names as the same file: underscores are spaces in a page title. */
     fun fileKey(name: String): String = name.replace('_', ' ').trim()
 

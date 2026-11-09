@@ -3,13 +3,63 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Only a card's thumbnail is held; what a user asks for is always sent
+Found in the review of the host hold (below): it held a host for every request on the one client, so after a
+thumbnail storm on `upload.wikimedia.org` (`Retry-After: 11`, held up to a minute) **Send to frame** (the
+full image, `UploadEngine`) and the viewer's image failed at once with a 429 the app made up, the server never
+asked. The hold now applies only to requests tagged `Holdable`: the cards' thumbnails, tagged on Coil's
+`ImageRequest`, which passes its tags to OkHttp. Every other request (the frame upload, the viewer, the
+lists, the release files) is sent as before and gets the server's own answer, retried after a short
+`Retry-After` like any other; its 429 or 503 still holds the host for the thumbnails, and a shorter later
+pause never shortens a hold.
+Rejected: waiting out what is left of the hold before a user's request (up to a minute with no feedback after
+a press), holding every request but on the main thread (the upload and the viewer run off it), a client of
+its own for the grid (the hold, the per-host limit and the disk cache would split between two clients).
+
+## 2026-11-09 — The release sync downloads outside the write lock and waits a day after a failed import
+Found in the review: the release sync ran inside the store's write lock, downloads included, with only a
+read timeout, so a link trickling bytes could keep the pass (and every write after it) from ever finishing;
+and a download that could not be imported (a broken upload, a core or labels file with no valid row, a full
+disk) recorded nothing, so every app start downloaded it again, several MB on a TV. Now the sync fetches the
+due files first, outside the lock, each call within 10 minutes (`CatalogSync.CALL_TIMEOUT_MIN`, a
+`newBuilder()` of `Http.client`), then takes the lock only to import and record (reading the files' state
+again under it). A changed file whose import failed is recorded as checked with `importFailed` and no new
+ETag or hash, so it is due again a day later (`CatalogSyncPlan.RETRY_FAILED_IMPORT_MS`) and downloads in full
+then, never answered 304 for content that was never stored; a failed request still records nothing and is
+asked again at the next start. A labels file whose every line is bad is refused like a core with no valid row
+(an empty one still empties its language), so a broken upload no longer wipes a language for a week. The
+starter's labels of a chain language the database has none of are looked for at every pass (one query for a
+language the starter set lacks), so a language that leaves the chain and comes back gets them again, also
+offline. The release's labels come only as `labels-<lang>` files, so the import no longer reads a file of
+several languages (the tool's `labels-all`), and the reader no longer hashes what the sync already hashed
+while downloading.
+Rejected: the failed file weekly like a 404 (a re-upload would wait a week), a failure count with growing
+waits (state for a rare case; a day is cheap), retrying the swap without the failing labels file (one bad
+file then hides behind a partial import; the core waits a day instead).
+
+## 2026-11-09 — The Catalog grid keys its cards by place
+Found in the review: the paged grid keyed a card by its row id, and paging-compose keys a row not loaded yet
+by its index, so the key of a focused placeholder changed when its page arrived, the grid replaced the card
+and the D-pad focus was lost: after Back and Down at once on a list scrolled past the 360 rows kept loaded, or
+with Down held past the prefetch. The grid now keys its cards by place (the count includes the rows not
+loaded, so a place is stable), and a placeholder is the same card node (`PictureCard` with no picture), so a
+focused card keeps the focus when its picture arrives. Checked on the TV emulator with release builds: 130 or
+200 Down presses at once (to card 521 of 9,818), then Back and Down at once: before, the focus fell back to
+the Catalog tab and the next Right switched tabs; now it stays on the first card, and Right goes to the second
+(twice in a row); the held Down kept the focus on a card in both builds. The viewer steps from where its
+picture is now (an import or a live refresh may have moved it since it was read), and a picture hidden as a
+duplicate since the grid read it opens alone, with no place in the list.
+Rejected: keeping the id keys and moving the focus by hand after each load (a race with the D-pad), item
+keys of `rank` (a rerank moves them too).
+
 ## 2026-11-09 — A host that asks for a pause gets none; a refused thumbnail is asked again
 Found in the acceptance check on the TV emulator: a fast D-pad scroll through the Catalog asks
 `upload.wikimedia.org` for a thumbnail per card, and Wikimedia soon answers HTTP 429 with `Retry-After: 11`.
 That is longer than a retry may wait, so the answer was final: 430 of 469 thumbnail requests of one scroll
 were refused, and the cards where the scroll stopped stayed grey for good, because Coil does not ask again.
 Now the retry interceptor holds a host (with its port) that answered 429 or 503 for the wait it asked for
-(the first default wait without one, at most a minute): a request to it before the hold ends waits for it
+(the first default wait without one, at most a minute): a request to it (only a card's thumbnail since the
+entry "Only a card's thumbnail is held", above) before the hold ends waits for it
 where it may wait (not on the main thread, at most the 10 s retry cap) and is otherwise answered by the app
 itself with a 429 whose `Retry-After` is what is left, without being sent. A catalog card whose thumbnail was
 refused with 429 or 503 asks again after that wait (at least 1 s, at most a minute, three times at most), as
@@ -75,7 +125,8 @@ The Catalog is the first tab and the one the app starts on; My pictures follows 
 Landscapes stayed only until the live sources moved into the database, see above). It shows `CatalogStore`'s Paging 3 list
 (`collectAsLazyPagingItems`, pages of 60 rows, placeholders on): a row not read yet is an empty card of the
 same size that takes the D-pad focus and does nothing when pressed, so the grid has its full length at once
-and the focus never jumps when a page arrives. A row becomes a picture at the edge (`CatalogPicture.of`)
+and the focus never jumps when a page arrives (the cards keyed by place since the entry "The Catalog grid
+keys its cards by place", above). A row becomes a picture at the edge (`CatalogPicture.of`)
 with a translatable `list_names_separator` for the artists and a 330 or 500 px thumbnail, the smallest
 standard width that covers the card's column in pixels. The viewer opened from a Catalog picture steps
 through the database, not through what the grid has loaded: the shown neighbour by rank, with its place
@@ -101,7 +152,8 @@ release, one `labels-<lang>.jsonl.gz` per language (`--starter-from` writes them
 more than one file), and a start opens only the files of its chain, English and `mul`. The import also lost
 its regular expressions (a matcher per id and language code; plain loops now), writes the starter's rows at
 their final ranks when the table is empty (no rank pass afterwards), and the rank pass moves rows through
-free ranks only when a new rank is taken. On the same emulator (five alternating fresh installs of each
+free ranks only when a new rank is taken (always since the review: the starter's rows need no pass, so the
+check saved little). On the same emulator (five alternating fresh installs of each
 release build), from the process start to the starter set in the database: 6.8–10.6 s before, 1.7–2.1 s
 after; the import itself, the database's creation included, 1.0–1.3 s, about 0.5 s when nothing else
 runs (the app's first frame and the TV launcher compete for the CPU). A debug build is several times
@@ -122,7 +174,8 @@ percent-encoding (so the URLs match the API's and share its caches), only the st
 a name over 160 bytes is `<W>px-thumbnail.<ext>`, a TIFF `lossy-page1-<W>px-<File>.jpg`, an SVG
 `<W>px-<File>.png`. Commons does not scale a picture up, so a JPEG, PNG, WebP or GIF no wider than the
 asked step is loaded as its original, a TIFF that narrow at the largest standard width it has (never the TIFF
-itself), an SVG at any width. The card takes a 500 px thumbnail by default, the frame the 1920 px step, the
+itself), an SVG at any width. The card takes a 500 px thumbnail by default (330 or 500 by column width since
+the entry "The Catalog tab pages from the database"), the frame the 1920 px step, the
 viewer the step that covers the window (`ViewerRules`, for any picture with a Commons file name). The
 licence link is the release's `licUrl`, else the Creative Commons deed for `CC0` and `CC BY`/`CC BY-SA`
 short names (with a jurisdiction port before 4.0); any other licence gets no link rather than a guess. Where
@@ -137,24 +190,24 @@ and other licences (not a Creative Commons deed; a wrong link is worse than none
 
 ## 2026-11-09 — The catalog syncs at app start, file by file, from the fixed release address
 One process-wide `CatalogStore` owns the catalog database, a coroutine scope of its own (not a screen's) and
-the one write lock every catalog write takes. The app's start (`MainActivity.onCreate`, also after a change
-of the UI language, which re-creates it) wakes it: once per process the starter set goes into an empty
-database, and every start runs a pass that checks only the release files that are due (`CatalogSyncPlan`,
-pure): `core` and `labels-<lang>` for the chain's languages, English and `mul`, each a week after its own
-last check, a language new to the chain at once, a 404 again a week later. A pass with nothing due makes no
-request, so passes run at every start rather than once per process: on a TV the notification listener keeps
-the process alive for weeks. A check always starts at
-`https://github.com/hsw/inkeasel/releases/download/catalog/<file>` (the signed address it redirects to
-expires and is never stored) with `If-None-Match`, streams a 200 to a temporary file while hashing it, and
-skips the import when the SHA-256 is the one imported last (a re-upload gets a new ETag even for the same
-bytes). The changed files go into one swap (`CatalogImport.release`), and their ETag and hash are written in
-that transaction, so a failed import, a body cut short or no network leaves both the list and the state as
-they were, and the files are asked for again at the next start; one file's failure does not hold back the
-others. A language that leaves the chain loses its labels at the next swap, and its file's state goes in the
-same transaction, so a return downloads it again instead of getting a 304 for labels no longer stored. A
-language that joins the chain gets the starter set's labels at once (offline too), looked for once per
-process. The UI language is the configuration's first locale: the per-app language where Android 13+ sets
-one, else the system's.
+the one write lock every catalog write takes. The app's start (`MainActivity.onCreate`, also after a change of
+the UI language, which re-creates it) wakes it: once per process the starter set goes into an empty database,
+and every start runs a pass that checks only the release files that are due (`CatalogSyncPlan`, pure): `core`
+and `labels-<lang>` for the chain's languages, English and `mul`, each a week after its own last check, a
+language new to the chain at once, a 404 again a week later. A pass with nothing due makes no request, so
+passes run at every start rather than once per process: on a TV the notification listener keeps the process
+alive for weeks. A check always starts at `https://github.com/hsw/inkeasel/releases/download/catalog/<file>`
+(the signed address it redirects to expires and is never stored) with `If-None-Match`, streams a 200 to a
+temporary file while hashing it, and skips the import when the SHA-256 is the one imported last (a re-upload
+gets a new ETag even for the same bytes). The changed files go into one swap (`CatalogImport.release`), and
+their ETag and hash are written in that transaction, so a failed import, a body cut short or no network leaves
+both the list and the state as they were, and the files are asked for again at the next start (a failed import
+a day later since the entry "The release sync downloads outside the write lock", above); one file's failure
+does not hold back the others. A language that leaves the chain loses its labels at the next swap, and its
+file's state goes in the same transaction, so a return downloads it again instead of getting a 304 for labels
+no longer stored. A language that joins the chain gets the starter set's labels at once (offline too), looked
+for at every pass. The UI language is the configuration's first locale: the per-app language where Android 13+
+sets one, else the system's.
 Rejected: WorkManager (a scheduler and a dependency for a check that only matters while the app is used;
 periodic work would wake a TV for a list nobody looks at), `releases/latest` (it is the newest APK release),
 recording the ETag as soon as the answer arrives (a 304 would then hide a failed import), checking once per
@@ -187,7 +240,7 @@ release import (`CatalogImport`) first clears the `_stage` tables, then streams 
 into them in batch transactions (one batch in memory), and only then swaps in one transaction: the staged
 pictures replace the Wikidata rows by id (a row already there keeps its rank, so the starter's top 1,000 do
 not move), rows absent from the new `core` are swept, its entity links replace all links, each imported
-labels file replaces its language (a file of every language replaces every chain language), labels outside
+labels file replaces its language (each is a `labels-<lang>` file), labels outside
 the chain are dropped, and rank and dedupe are computed again. A broken file (a truncated gzip, a failed
 download) or a `core` with no valid row fails the whole import before the swap, so nothing visible changes
 and the paging source, which reads only live tables, is invalidated once, by the swap; leftover staging is
@@ -226,8 +279,8 @@ Android's Latin American Spanish); Chinese by script (`Hant`, or Taiwan, Hong Ko
 Traditional: `zh-hant`, the regional codes with the user's own first, `zh`; else `zh-hans`, …, `zh`);
 Serbian `sr-el` or `sr-ec`, then `sr`; Norwegian `nb`, `no` (Nynorsk `nn` first, then those two). The chain
 names only codes the release can have a labels file for, since each one is a download and a weekly check.
-The release's JSON Lines are read in batches (`JsonLinesReader`, gzip or plain, with the SHA-256 of the file
-as downloaded): a line that is not a valid row (no Wikidata id, no image, no size) is skipped and counted,
+The release's JSON Lines are read in batches (`JsonLinesReader`, gzip or plain; the sync hashes a file while
+downloading it): a line that is not a valid row (no Wikidata id, no image, no size) is skipped and counted,
 unknown keys and optional values of the wrong type are ignored, so a newer export never stops an older app;
 a broken stream (a truncated gzip) fails the whole file.
 Rejected: `<language>-<region>` for every region (a 404 per user each week for `ru-ru`, `fr-fr`, …), English

@@ -142,4 +142,23 @@ class CatalogLoadTest {
             assertEquals(30_000L, currentTime)
         }
     }
+
+    // --- what the Catalog tab shows ---
+
+    @Test
+    fun catalogView_anyRowShowsTheGrid() {
+        assertEquals(CatalogView.GRID, CatalogView.of(1, empty = false, refreshing = false))
+        // rows already there stay while a new pass reads the list again, even with a stale "empty"
+        assertEquals(CatalogView.GRID, CatalogView.of(9_818, empty = true, refreshing = true))
+    }
+
+    @Test
+    fun catalogView_noneOnlyWhenTheStarterStepLeftItEmptyAndNothingIsBeingRead() {
+        assertEquals(CatalogView.NONE, CatalogView.of(0, empty = true, refreshing = false))
+        // the list is being read: it may still bring rows
+        assertEquals(CatalogView.LOADING, CatalogView.of(0, empty = true, refreshing = true))
+        // the starter set is on its way (the store has not said it is empty)
+        assertEquals(CatalogView.LOADING, CatalogView.of(0, empty = false, refreshing = false))
+        assertEquals(CatalogView.LOADING, CatalogView.of(0, empty = false, refreshing = true))
+    }
 }

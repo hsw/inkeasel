@@ -29,15 +29,20 @@ sent to the developer.**
 - **To your frame, over Bluetooth:** the picture you choose, or the poster of what plays. The frame is a
   device you own; nothing goes through the internet on the way.
 - **Downloads from public addresses:** the catalog's images come from
-  [Wikimedia Commons](https://commons.wikimedia.org/) and the Cleveland Museum of Art. When the app starts, it
-  asks the [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and Wikimedia
-  Commons for their lists of landscapes, each at most once a week (again at the next start when one did not
-  answer in full). The catalog's files come from the app's
-  public GitHub release (`github.com`, which redirects to `release-assets.githubusercontent.com`): when the
-  app starts, it asks for each file at most once a week, sending the label (ETag) of the copy it already
-  has so that an unchanged file is not sent again. The names of the files it asks for include the codes of
-  the label languages it needs (your UI language, English and `mul`, Wikidata's language-independent labels),
-  so GitHub can tell your UI language from them. A poster whose artwork the playing app gives as a web
+  [Wikimedia Commons](https://commons.wikimedia.org/) and the Cleveland Museum of Art. Each time the app's
+  screen opens (when the app starts, and when its language changes), it asks the
+  [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and Wikimedia Commons
+  for their lists of landscapes, each at most once a week (again at the next start when a request failed or
+  its answer was empty or cut short). The catalog's files come from the app's public GitHub release
+  (`github.com`, which redirects to `release-assets.githubusercontent.com`): at those same moments it asks
+  for each file at most once a week (again at the next start when a request failed, and a day later when a
+  downloaded file could not be stored), sending the label (ETag) of the copy it already has so that an
+  unchanged file is not sent again; the file of a language the app has just started to need is asked for at
+  once. The names of the files it asks for include the codes of the label languages it needs: the app's
+  language (the device's, unless you chose another one for the app), for some languages also its region or
+  script (for example `en-us`, `pt-br`, `es-419` or `zh-hant`), then English and `mul` (Wikidata's
+  language-independent labels). So GitHub can tell that language, and for those languages its region or
+  script, from them. A poster whose artwork the playing app gives as a web
   link is downloaded from that link. All of these go over https: the app refuses unencrypted connections,
   also when a server redirects to one. These are ordinary downloads: the server that answers sees your
   device's IP address and the request, as with any web page, under its own privacy policy. Besides the

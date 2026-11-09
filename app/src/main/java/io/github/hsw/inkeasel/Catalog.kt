@@ -72,7 +72,10 @@ data class Picture(
  */
 data class Listing<T>(val items: List<T>, val complete: Boolean = true)
 
-/** A tab that loads its whole list ([loadCatalog]): "My pictures" ([LocalImages]). */
+/**
+ * A tab that loads its whole list ([loadCatalog]): "My pictures" ([LocalImages]). The live sources are rows of
+ * the Catalog ([liveSources]).
+ */
 interface Source {
     /** Stable key of the source; never shown. */
     val id: String
@@ -296,12 +299,6 @@ class LocalImages(private val app: Application) : Source {
         return if (o.outWidth > 0 && o.outHeight > 0) o.outWidth to o.outHeight else null
     }
 }
-
-/**
- * The tabs after the Catalog that load a whole list, in order: only "My pictures" ([LocalImages] needs a
- * context, so the list is built per-app). The live sources are rows of the Catalog ([liveSources]).
- */
-fun buildSources(app: Application): List<Source> = listOf(LocalImages(app))
 
 /** The live sources whose lists the catalog database keeps as its rows ([LiveRefresh]). */
 val liveSources: List<LiveSource> = listOf(ClevelandPaintings, CommonsLandscapes)

@@ -22,7 +22,6 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
@@ -95,8 +94,7 @@ class CatalogImportTest {
         .apply { if (cma != null) put("cma", cma) }
         .toString()
 
-    private fun label(q: Int, text: String, lang: String? = null): String = JSONObject()
-        .apply { if (lang != null) put("lang", lang) }
+    private fun label(q: Int, text: String): String = JSONObject()
         .put("id", "Q$q").put("l", text)
         .toString()
 
@@ -112,10 +110,8 @@ class CatalogImportTest {
 
     private fun labelsFile(lang: String, lines: List<String>) = file("labels-$lang.jsonl.gz", gzip(lines), lang)
 
-    private fun fixture(name: String) = ImportFile(name) { javaClass.getResourceAsStream("/catalog/$name")!! }
-
-    private fun sha256(bytes: ByteArray) =
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    private fun fixture(name: String, lang: String? = null) =
+        ImportFile(name, lang) { javaClass.getResourceAsStream("/catalog/$name")!! }
 
     // --- the database as rows of text ---
 
@@ -165,16 +161,10 @@ class CatalogImportTest {
     private suspend fun starter(): ImportResult = CatalogImport(db).starter(
         coreFile(listOf(core(1, fame = 50), core(2, fame = 40, creators = listOf(100)), core(3, fame = 30))),
         listOf(
-            file(
-                "labels.jsonl.gz",
-                gzip(
-                    listOf(
-                        label(1, "Один", "ru"), label(1, "One", "en"), label(1, "Eins", "de"),
-                        label(2, "Два", "ru"), label(2, "Two", "en"), label(3, "Three", "en"),
-                        label(100, "Художник", "ru"), label(100, "Painter", "mul"),
-                    ),
-                ),
-            ),
+            labelsFile("ru", listOf(label(1, "Один"), label(2, "Два"), label(100, "Художник"))),
+            labelsFile("en", listOf(label(1, "One"), label(2, "Two"), label(3, "Three"))),
+            labelsFile("de", listOf(label(1, "Eins"))),
+            labelsFile("mul", listOf(label(100, "Painter"))),
         ),
         ruChain,
     )!!
@@ -205,9 +195,10 @@ class CatalogImportTest {
 
     @Test
     fun theStarterReadsTheRealReleaseRows() = runTest {
-        val result = CatalogImport(db).starter(fixture("core.jsonl"), listOf(fixture("labels-all.jsonl")), ruChain)!!
+        val labels = listOf(fixture("labels-ru.jsonl", "ru"), fixture("labels-en.jsonl", "en"))
+        val result = CatalogImport(db).starter(fixture("core.jsonl"), labels, ruChain)!!
         assertEquals(5, result.added)
-        assertEquals(listOf("core.jsonl", "labels-all.jsonl"), result.files.map { it.name })
+        assertEquals(listOf("core.jsonl", "labels-ru.jsonl", "labels-en.jsonl"), result.files.map { it.name })
         val mona = dao.row("wd:Q12418", ru)!!
         assertEquals("Мона Лиза", mona.title)
         assertEquals("Mona Lisa, by Leonardo da Vinci, from C2RMF retouched.jpg", mona.commonsFile)
@@ -343,15 +334,21 @@ class CatalogImportTest {
     }
 
     @Test
-    fun aFileOfEveryLanguageReplacesEveryChainLanguage() = runTest {
+    fun aLabelsFileWithNoValidRowChangesNothing() = runTest {
         starter()
-        CatalogImport(db).release(
-            null,
-            listOf(file("labels-all.jsonl.gz", gzip(listOf(label(1, "Uno", "it"), label(3, "Три", "ru"))))),
-            ruChain,
-        )
-        // ru, en and mul all came from the file: only Q3's Russian label is left
-        assertEquals(listOf("Q3|ru|Три"), query("SELECT entityId, lang, label FROM label"))
+        val before = visible()
+        val labels = query("SELECT entityId, lang, label FROM label ORDER BY entityId, lang")
+        // a broken upload or a 200 page that is not the file: every line is bad, so it is not the language's labels
+        val garbage = labelsFile("ru", listOf("<html>", "not json"))
+        val thrown = assertFails { CatalogImport(db).release(coreFile(listOf(core(9))), listOf(garbage), ruChain) }
+        assertTrue(thrown.toString(), thrown is IOException)
+        assertEquals(before, visible())
+        assertEquals(labels, query("SELECT entityId, lang, label FROM label ORDER BY entityId, lang"))
+        assertEquals(emptyList<String>(), staged())
+
+        // an empty file is a language with no label: it empties that language
+        CatalogImport(db).release(null, listOf(labelsFile("ru", emptyList())), ruChain)
+        assertEquals(emptyList<String>(), query("SELECT entityId FROM label WHERE lang = 'ru'"))
     }
 
     @Test
@@ -408,17 +405,16 @@ class CatalogImportTest {
     }
 
     @Test
-    fun repeatedIdsAndBadLinesAreSkippedAndTheHashIsTheFiles() = runTest {
+    fun repeatedIdsAndBadLinesAreSkippedAcrossBatches() = runTest {
         val bytes = gzip(listOf(core(1, file = "First.jpg"), "{\"id\":\"Q2\"}", core(2), core(1, file = "Again.jpg")))
-        val result = CatalogImport(db).release(file("core.jsonl.gz", bytes), emptyList(), ruChain)
-        assertEquals(listOf("wd:Q1", "wd:Q2"), ids())
-        assertEquals("First.jpg", dao.picture("wd:Q1")!!.commonsFile)
-        assertEquals(1, dao.picture("wd:Q2")!!.sourceRank)
-        val read = result.files.single()
-        assertEquals(3, read.rows)
-        assertEquals(1, read.badLines)
-        assertEquals(sha256(bytes), read.sha256)
-        assertEquals(bytes.size.toLong(), read.bytes)
+        // one batch, then a batch per row: the first row of an id wins across batches too
+        for (batch in listOf(CatalogImport.BATCH, 1)) {
+            val result = CatalogImport(db, batch).release(file("core.jsonl.gz", bytes), emptyList(), ruChain)
+            assertEquals("batch $batch", listOf("wd:Q1", "wd:Q2"), ids())
+            assertEquals("batch $batch", "First.jpg", dao.picture("wd:Q1")!!.commonsFile)
+            assertEquals("batch $batch", 1, dao.picture("wd:Q2")!!.sourceRank)
+            assertEquals(FileRead("core.jsonl.gz", rows = 3, badLines = 1), result.files.single())
+        }
     }
 
     // --- the commit hook and labels added from the starter ---
@@ -472,7 +468,7 @@ class CatalogImportTest {
         val before = visible()
         settled()
         invalidations.set(0)
-        val none = listOf(file("labels.jsonl", gzip(listOf(label(1, "Un", "fr")))))
+        val none = listOf(labelsFile("de", emptyList()))
 
         assertNull(CatalogImport(db).addLabels(none, listOf("de"), LanguageChain.of("de")))
         assertNull(CatalogImport(db).addLabels(none, listOf("it"), ruChain)) // not in the chain: nothing read

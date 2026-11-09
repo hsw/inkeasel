@@ -37,7 +37,9 @@ sealed interface SyncOutcome {
  * Each file is checked when it never was, or [CHECK_EVERY_MS] after its last check (a 404 included), so a
  * language that joins the chain is fetched at once. A file's ETag and SHA-256 are recorded only together with
  * the import of its content ([imported], inside the swap); a 304, an unchanged hash or a 404 records only the
- * check ([checked]); a failure records nothing, so the file is checked again at the next start.
+ * check ([checked]); a failed request records nothing, so the file is checked again at the next start; a
+ * download whose import failed is checked again [RETRY_FAILED_IMPORT_MS] later ([importFailed]), so a broken
+ * upload or a full disk is not downloaded again at every start.
  */
 object CatalogSyncPlan {
     const val CORE = "core.jsonl.gz"
@@ -45,19 +47,28 @@ object CatalogSyncPlan {
     /** A week: how long a file's check holds. */
     const val CHECK_EVERY_MS = 7L * 24 * 60 * 60 * 1000
 
+    /** A day: how long a file whose download could not be imported waits before it is checked again. */
+    const val RETRY_FAILED_IMPORT_MS = 24L * 60 * 60 * 1000
+
     private const val LABELS_PREFIX = "labels-"
     private const val SUFFIX = ".jsonl.gz"
 
-    /** The release's file of every language at once; the sync never fetches it. */
-    private const val ALL = "all"
-
     fun labels(lang: String): String = "$LABELS_PREFIX$lang$SUFFIX"
 
-    /** The language of a `labels-<lang>` file name, `null` for any other file. */
-    fun langOf(name: String): String? =
-        name.takeIf { it.startsWith(LABELS_PREFIX) && it.endsWith(SUFFIX) }
-            ?.substring(LABELS_PREFIX.length, name.length - SUFFIX.length)
-            ?.takeIf { it.isNotEmpty() && it != ALL }
+    /** The language of a release `labels-<lang>` file name, `null` for any other file (`labels-all` too). */
+    fun langOf(name: String): String? = labelsLang(name, SUFFIX)
+
+    /**
+     * The language of a `labels-<lang>[suffix]` file name (the release's or the starter's), `null` for any
+     * other file or a code that is not a language's ([CatalogRows.isLang]; `all` is not).
+     */
+    fun labelsLang(name: String, suffix: String): String? =
+        name.takeIf { it.startsWith(LABELS_PREFIX) && it.endsWith(suffix) }
+            ?.substring(LABELS_PREFIX.length, name.length - suffix.length)
+            ?.takeIf { CatalogRows.isLang(it) && it != ALL }
+
+    /** The tool's file of every language at once; the sync never fetches it. */
+    private const val ALL = "all"
 
     /** The files the [chain] needs: `core` first, then the labels of each stored language in chain order. */
     fun files(chain: List<String>): List<SyncCheck> =
@@ -71,10 +82,14 @@ object CatalogSyncPlan {
             else check.copy(etag = state?.takeIf { it.sha256 != null }?.etag)
         }
 
-    /** Never checked, checked a week or more ago, or "checked" in the future (the clock was set back). */
+    /**
+     * Never checked, checked a week or more ago (a day after a failed import, [importFailed]), or "checked"
+     * in the future (the clock was set back).
+     */
     fun isDue(state: CatalogFileEntity?, now: Long): Boolean {
         val at = state?.checkedAt ?: return true
-        return at > now || now - at >= CHECK_EVERY_MS
+        val every = if (state.importFailed) RETRY_FAILED_IMPORT_MS else CHECK_EVERY_MS
+        return at > now || now - at >= every
     }
 
     /** Whether a downloaded file must be imported: its content differs from the one imported last. */
@@ -88,15 +103,23 @@ object CatalogSyncPlan {
      */
     fun checked(stored: CatalogFileEntity?, outcome: SyncOutcome, now: Long): CatalogFileEntity? {
         val base = stored ?: CatalogFileEntity(outcome.check.name)
+        val checked = base.copy(checkedAt = now, missing = false, importFailed = false)
         return when (outcome) {
-            is SyncOutcome.NotModified -> base.copy(checkedAt = now, missing = false)
+            is SyncOutcome.NotModified -> checked
             is SyncOutcome.Downloaded ->
-                if (changed(outcome, stored)) null
-                else base.copy(etag = outcome.etag, size = outcome.size, checkedAt = now, missing = false)
-            is SyncOutcome.Missing -> base.copy(checkedAt = now, missing = true)
+                if (changed(outcome, stored)) null else checked.copy(etag = outcome.etag, size = outcome.size)
+            is SyncOutcome.Missing -> checked.copy(missing = true)
             is SyncOutcome.Failed -> null
         }
     }
+
+    /**
+     * The state of a downloaded, changed file whose import failed: checked again [RETRY_FAILED_IMPORT_MS]
+     * later. It keeps the ETag and hash of the content imported before, so the next check downloads the new
+     * content again (a 304 would leave it never imported).
+     */
+    fun importFailed(stored: CatalogFileEntity?, file: SyncOutcome.Downloaded, now: Long): CatalogFileEntity =
+        (stored ?: CatalogFileEntity(file.check.name)).copy(checkedAt = now, missing = false, importFailed = true)
 
     /** The state of a downloaded file whose content was just imported. */
     fun imported(file: SyncOutcome.Downloaded, now: Long): CatalogFileEntity =

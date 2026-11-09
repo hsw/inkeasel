@@ -125,6 +125,22 @@ class CatalogSyncTest {
     }
 
     @Test
+    fun theDownloadsRunOutsideTheWriteLockAndTheImportUnderIt() = runTest {
+        var askedBeforeTheLock = -1
+        var writes = 0
+        sync().run(ruChain) { block ->
+            askedBeforeTheLock = release.requests.size
+            writes++
+            block()
+        }
+        // every file was fetched before the lock was taken, once, for the import and the state
+        assertEquals(4, askedBeforeTheLock)
+        assertEquals(1, writes)
+        assertEquals("Один", title("wd:Q1"))
+        assertEquals(4, states().size)
+    }
+
+    @Test
     fun aRunWithinTheWeekMakesNoRequest() = runTest {
         sync().run(ruChain)
         release.requests.clear()
@@ -262,7 +278,7 @@ class CatalogSyncTest {
         assertEquals("Старт", title("wd:Q1"))
         assertTrue(states().isEmpty())
         // nothing recorded, so every file is due again
-        assertEquals(4, CatalogSyncPlan.due(ruChain, emptyMap(), clock).size)
+        assertEquals(4, CatalogSyncPlan.due(ruChain, db.imports().files().associateBy { it.name }, clock).size)
         assertTrue(temp.listFiles().orEmpty().isEmpty())
     }
 
@@ -296,7 +312,7 @@ class CatalogSyncTest {
     }
 
     @Test
-    fun aBrokenFileFailsTheImportSoNoHashIsRecordedButChecksAre() = runTest {
+    fun aBrokenFileFailsTheImportSoNoHashIsRecordedAndItIsAskedAgainADayLater() = runTest {
         starter()
         val before = visible()
         val truncated = coreBytes.copyOf(coreBytes.size / 2) // a complete answer holding half a gzip
@@ -308,11 +324,35 @@ class CatalogSyncTest {
         assertNotNull(report.importError)
         assertNull(report.import)
         assertEquals(before, visible())
-        // the files of the failed import keep no state; the 404 is recorded
-        assertEquals(listOf("labels-mul.jsonl.gz"), states())
+        // the files of the failed import keep no hash, only the failed check; the 404 is recorded
+        assertEquals(listOf(CORE, "labels-en.jsonl.gz", "labels-mul.jsonl.gz", "labels-ru.jsonl.gz"), states())
+        for (name in listOf(CORE, "labels-en.jsonl.gz", "labels-ru.jsonl.gz")) {
+            val failed = state(name)!!
+            assertTrue(name, failed.importFailed)
+            assertNull(name, failed.sha256)
+            assertNull(name, failed.etag)
+            assertEquals(name, clock, failed.checkedAt)
+        }
         assertEquals(true, state("labels-mul.jsonl.gz")!!.missing)
         assertTrue(query("SELECT id FROM picture_stage").isEmpty())
         assertTrue(query("SELECT entityId FROM label_stage").isEmpty())
+
+        // the next start within the day downloads nothing again
+        release.requests.clear()
+        clock += day - 1
+        sync().run(ruChain)
+        assertTrue(release.requests.isEmpty())
+
+        // a day later the files are asked again (with no ETag: nothing of them was imported), and a sound core
+        // goes in
+        release.serve(CORE, coreBytes)
+        clock += 1
+        sync().run(ruChain)
+        assertEquals(listOf(CORE, "labels-ru.jsonl.gz", "labels-en.jsonl.gz"), release.asked())
+        assertTrue(release.requests.all { it.getHeader("If-None-Match") == null })
+        assertNotNull(db.catalog().picture("wd:Q3"))
+        assertEquals(false, state(CORE)!!.importFailed)
+        assertEquals(sha256(coreBytes), state(CORE)!!.sha256)
     }
 
     @Test

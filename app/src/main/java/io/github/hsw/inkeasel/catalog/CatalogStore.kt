@@ -28,6 +28,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -53,11 +54,11 @@ class StarterSet(
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
  * per process: the starter set goes into an empty database (and the old list cache, [legacy], is deleted),
  * then each [start] (every app start, and a new UI language, which re-creates the activity) runs a pass: the
- * starter's labels of a language that joined the [chain] since, the release sync, which fetches only the
- * files that are due ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh], asked outside
- * the lock), so a pass with nothing due makes no request. Passes run one after another; a [start] during a
- * pass asks for one more. A failed step is logged and the next pass tries again. The Catalog tab reads the
- * list through [pages].
+ * starter's labels of a chain language the database has none of, the release sync, which fetches only the
+ * files that are due ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch
+ * outside the lock and write under it, so a pass with nothing due makes no request. Passes run one after
+ * another; a [start] during a pass asks for one more. A failed step is logged and the next pass tries again.
+ * The Catalog tab reads the list through [pages].
  */
 class CatalogStore internal constructor(
     val db: CatalogDb,
@@ -74,9 +75,6 @@ class CatalogStore internal constructor(
     private val import = CatalogImport(db)
     private val started = AtomicBoolean()
     private val wake = Channel<Unit>(Channel.CONFLATED)
-
-    /** Languages whose starter labels were looked for in this process (only under the write lock). */
-    private val starterLangs = HashSet<String>()
 
     private val _chain = MutableStateFlow(chain)
 
@@ -138,8 +136,8 @@ class CatalogStore internal constructor(
         for (signal in wake) {
             val chain = chain.value
             step("starter labels") { starterLabels(chain) }
-            step("release sync") { sync.run(chain) }
-            live?.let { refreshLive(it) }
+            unlocked("release sync") { sync.run(chain) { block -> write(block) } }
+            live?.let { unlocked("live refresh") { it.run { block -> write(block) } } }
             checkEmpty()
             _passes.update { it + 1 }
         }
@@ -155,24 +153,17 @@ class CatalogStore internal constructor(
         }
     }
 
-    private suspend fun step(what: String, block: suspend () -> Unit) {
+    /** Runs [block] under the write lock; a failure is logged. */
+    private suspend fun step(what: String, block: suspend () -> Unit) = unlocked(what) { write { block() } }
+
+    /** Runs [block], which takes the write lock itself where it writes; a failure is logged. */
+    private suspend fun unlocked(what: String, block: suspend () -> Unit) {
         try {
-            write { block() }
+            block()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log("$what failed", e)
-        }
-    }
-
-    /** The live sources' lists: asked without the lock, each written under it ([LiveRefresh]). */
-    private suspend fun refreshLive(live: LiveRefresh) {
-        try {
-            live.run { block -> write(block) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            log("live refresh failed", e)
         }
     }
 
@@ -193,19 +184,18 @@ class CatalogStore internal constructor(
         val start = System.nanoTime()
         val langs = CatalogImport.languages(chain)
         val result = import.starter(starter.coreFile(), starter.labelsFiles(langs), chain) ?: return
-        starterLangs += langs
         log("starter set imported in ${(System.nanoTime() - start) / 1_000_000} ms: $result", null)
     }
 
     /**
      * The starter's labels of each language the [chain] stores but the database has none of (it joined the
-     * chain after the first start), so the list shows it while its release file downloads, also offline. Each
-     * language is looked for once per process.
+     * chain after the first start, or left it and came back), so the list shows it while its release file
+     * downloads, also offline. Looked for at every pass: a language the starter set lacks costs one query.
      */
     private suspend fun starterLabels(chain: List<String>) {
-        val fresh = CatalogImport.languages(chain).filter { starterLangs.add(it) }
         val dao = db.imports()
-        val missing = fresh.filter { !dao.hasLabels(it) }
+        val have = starter.languages()
+        val missing = CatalogImport.languages(chain).filter { it in have && !dao.hasLabels(it) }
         if (missing.isEmpty()) return
         val result = import.addLabels(starter.labelsFiles(missing), missing, chain) { sync.forgetOutside(chain) }
         log("starter labels of $missing: ${result ?: "none"}", null)
@@ -235,10 +225,7 @@ class CatalogStore internal constructor(
         fun labelsAsset(lang: String) = "$ASSETS/$LABELS_PREFIX$lang$LABELS_SUFFIX"
 
         /** The language of a starter labels file named [name] (in the assets' `catalog` folder); `null` for another file. */
-        fun assetLanguage(name: String): String? =
-            name.takeIf { it.startsWith(LABELS_PREFIX) && it.endsWith(LABELS_SUFFIX) }
-                ?.substring(LABELS_PREFIX.length, name.length - LABELS_SUFFIX.length)
-                ?.takeIf(CatalogRows::isLang)
+        fun assetLanguage(name: String): String? = CatalogSyncPlan.labelsLang(name, LABELS_SUFFIX)
 
         @Volatile
         private var instance: CatalogStore? = null
@@ -258,7 +245,12 @@ class CatalogStore internal constructor(
                     languages = { app.assets.list(ASSETS).orEmpty().mapNotNullTo(HashSet(), ::assetLanguage) },
                     labels = { lang -> app.assets.open(labelsAsset(lang)) },
                 ),
-                CatalogSync(db, Http.client, File(app.cacheDir, "catalog-sync"), log = logTo("CatalogSync")),
+                CatalogSync(
+                    db,
+                    Http.client.newBuilder().callTimeout(CatalogSync.CALL_TIMEOUT_MIN, TimeUnit.MINUTES).build(),
+                    File(app.cacheDir, "catalog-sync"),
+                    log = logTo("CatalogSync"),
+                ),
                 chainOf(app.resources.configuration),
                 logTo(TAG),
                 live = LiveRefresh(db, liveSources, log = logTo("LiveRefresh")),

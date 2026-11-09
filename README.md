@@ -48,7 +48,9 @@ Requirements: Android 8.0 or newer with Bluetooth LE; Android TV, a tablet or a 
       JAVA_HOME=<JDK 21> ./gradlew assembleDebug
       adb install -r app/build/outputs/apk/debug/app-debug.apk
 
-  Unit tests (JVM, JUnit 4 + `kotlinx-coroutines-test`; same `JAVA_HOME`):
+  Unit tests (JVM: JUnit 4 and `kotlinx-coroutines-test`; the Room database under Robolectric, whose first
+  run downloads about 200 MB of Android jars from Maven Central; HTTP against MockWebServer; same
+  `JAVA_HOME`):
 
       ./gradlew testDebugUnitTest
 
@@ -116,12 +118,13 @@ tablet).
   with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
   is not sent anywhere. A release build writes no title and no artwork address to the system log (logcat);
   a debug build does, for development (`MediaLog`).
-- Network traffic is limited to the picture sources: the catalog's lists (at app start, each at most once a
-  week) and images from the
+- Network traffic is limited to the picture sources: the catalog's lists (at app start or a change of the
+  app's language, each at most once a week) and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/), the painting catalog's files from the project's
-  GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at app start, each file
-  at most once a week, and the names of the labels files asked for show the UI language), a picture URL
+  GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at the same moments,
+  each file at most once a week, and the names of the labels files asked for show the app's language and,
+  for some languages, its region or script, such as `en-us` or `pt-br`), a picture URL
   given to the upload service from adb (debug builds only), and the poster artwork, downloaded over https
   from the address the playing app publishes.
 - Pictures are sent to the frame over BLE only. The chosen frame, the catalog database (the painting
@@ -178,7 +181,10 @@ tablet).
 
 The UI is in English, and in Russian when the device language (or the app's language in the system
 settings, Android 13+: Settings → Apps → InkEasel → Language, listed from the locale config the build
-generates from `res/`) is Russian. All texts are string resources: English in `res/values/strings.xml`,
+generates from `res/`) is Russian. The catalog's titles, artists and museums follow that language whether or
+not the UI has a translation for it (on a German device the UI is English and the titles German): the
+language, its regional or script variant where Wikidata has one, then English, `mul`, then any stored label
+(`LanguageChain`). All texts are string resources: English in `res/values/strings.xml`,
 Russian in `res/values-ru/strings.xml`. Code that runs as JVM unit tests has no `Context`, so it returns a
 `Txt` (a string resource id and its format arguments, which may be `Txt` themselves) that the UI puts into
 words where it is shown; an upload failure meant for the user is a `TxtException` carrying one. Other
@@ -214,7 +220,8 @@ emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan m
 
 A press on a card (CENTER, or a tap) sends the picture at once. A long press (CENTER held, or a long touch)
 opens its details instead, in Google's "content details" layout: the title, every field the source gave
-(artist, date, collection, source, licence and its link, original size, web page; links as text, since a TV
+(artist, date, collection, source, licence and its link, the image credit where the licence asks for one,
+original size, web page; links as text, since a TV
 opens no browser), **Send to frame** (focused; it closes the panel and takes the card's own path), **View
 full screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it:
 the same crop and dithering onto the frame's inks as an upload. Without a frame, or with one the app cannot
@@ -225,10 +232,12 @@ one scrolling column, the buttons under the title.
 hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
 and stop at its ends (in the Catalog the next one is read from the database, so it does not matter how far
 the grid has loaded; "n / N" is the place in the whole list); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
-tap hides it again. The credit line (title; artist, source and licence) shows for 5 s on open, on each new
+tap hides it again. The credit line (title; artist, source and licence, and the image credit where the licence
+asks for one) shows for 5 s on open, on each new
 picture and with the button. Back returns to the details panel of the picture on screen. The image is loaded
 in a size that fits the screen: for a Commons file (the release paintings and the Commons landscapes) a
-standard width (960, 1280, 1920 or 3840 px), for Cleveland the `web` image up to a Full HD screen and the
+standard width (960, 1280, 1920 or 3840 px), or the original when a JPEG, PNG or WebP is narrower (TIFF and
+SVG always as a thumbnail), for Cleveland the `web` image up to a Full HD screen and the
 `print` image on larger ones, your own pictures as they are;
 it is decoded to at most the screen's size, and the card's thumbnail shows while it loads. The screen is not
 kept on, so the screen saver starts as usual.
@@ -246,11 +255,14 @@ app's own folder on the device).
 The Catalog tab pages through the database (Paging 3): it holds about 9,600 paintings, so only the rows
 near the screen are read, and at most 360 rows stay loaded (pages far from the screen are dropped and read
 again when scrolled back to). A card not read yet is an empty card of the same size, which the D-pad focus
-moves through like any other (a press on it does nothing), so a long scroll never jumps. Cards take a 330 or
-500 px Commons thumbnail, whichever covers their width. Titles, artists and museums are the labels of the UI
-language's chain; artists are joined with a translatable separator. While the starter set imports at the
-first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather than
-showing an empty grid, and the list starts only after it, so its first query does not wait for the import.
+moves through like any other (a press on it does nothing), so a long scroll never jumps; a card keeps its
+place in the grid when its row arrives, so a focused card keeps the focus. Cards take a 330 or
+500 px Commons thumbnail, whichever covers their width. Titles, artists and museums are the labels of the
+app language's chain (see "Language"); artists are joined with a translatable separator. While the starter
+set imports at the first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather
+than showing an empty grid, and the list starts only after it, so its first query does not wait for the
+import. Should the starter set fail to import and the database stay empty, the tab says the catalog has no
+pictures yet and that it downloads when the device is online.
 
 The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
 Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
@@ -275,9 +287,10 @@ taken, the file's page (its short `curid` link), the licence with its link and t
 picture in "My pictures" only its name and pixel size.
 
 The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
-`CatalogStore` that the app's start (`MainActivity`) wakes. On the first start the APK's starter set (the
-top 1,000) goes into the empty database with the labels of the UI language's chain, English and `mul`,
-read from those languages' own files only. Then, at every start, the store checks the files of the GitHub release `catalog` that are due:
+`CatalogStore` that the app's start (`MainActivity`, also re-created by a change of the app's language)
+wakes. On the first start the APK's starter set (the top 1,000) goes into the empty database with the labels
+of the app language's chain, English and `mul`, read from those languages' own files only. Then, at every
+start, the store checks the files of the GitHub release `catalog` that are due:
 `core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
 week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
 later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
@@ -286,22 +299,28 @@ file is unchanged); a downloaded file whose SHA-256 is the one imported last is 
 files are first streamed into staging tables (one batch in memory at a time), then swapped in by one
 transaction that replaces the release rows (a row already there keeps its place), removes those the new
 `core` no longer has, computes the stored order and the hidden duplicates again and stores the files' ETag
-and hash, so a failed import (or no network) leaves the list as it was and the files are asked for again at
-the next start. In short: starter set at the first start → staged release import in the background → a
-check of each file a week later.
-A language that joins the chain gets the starter set's labels at once, also offline; a language that leaves
-it loses its labels at the next import. To watch it:
+and hash, so a failed import (or no network) leaves the list as it was. A failed request is asked again at the
+next start; a download that could not be imported (a broken upload, a full disk) a day later, so it is not
+downloaded again at every start. The downloads run outside the store's write lock, each within 10 minutes;
+only the import and the files' state are written under it. A labels file whose every line is bad is refused
+(an empty one empties its language). In short: starter set at the first start → staged release import in
+the background → a check of each file a week later.
+A language that joins the chain (or comes back to it) gets the starter set's labels at once, also offline; a
+language that leaves it loses its labels at the next import. To watch it:
 
     adb logcat -s CatalogStore CatalogSync LiveRefresh
 
 All requests go through one OkHttp client (`Http.client`, with the app's User-Agent): at most 4 at a time
 to one host, and an HTTP 429 or 503 answer to a GET is asked again at most twice, after its `Retry-After` (or
 1 s, then 2 s), unless it asks for more than 10 s; a cancelled request stops waiting at once, and the main
-thread never waits (`RetryPolicy.kt`). A host that answered 429 or 503 gets no request until the pause it
-asked for is over (at most a minute): a request to it in the meantime is answered 429 by the app itself, so a
-fast scroll past hundreds of cards does not send hundreds of thumbnail requests to `upload.wikimedia.org`
-when it asks for a pause (it answers `Retry-After: 11`), and a card whose thumbnail was refused so asks
-again once the pause is over, up to three times while it is on screen. Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
+thread never waits (`RetryPolicy.kt`). A host that answered 429 or 503 gets no card thumbnail request until
+the pause it asked for is over (at most a minute): a thumbnail asked for in the meantime is answered 429 by
+the app itself, so a fast scroll past hundreds of cards does not send hundreds of thumbnail requests to
+`upload.wikimedia.org` when it asks for a pause (it answers `Retry-After: 11`), and a card whose thumbnail
+was refused so asks again once the pause is over, up to three times while it is on screen. Only the cards'
+thumbnails are held (Coil passes their `Holdable` tag to OkHttp): what a user asked for (the picture sent to
+the frame, the viewer's image) and the lists and release files are always sent, and get the server's own
+answer. Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
 
 Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
 than 60 s every time, its rows never come (or stay as they were); asking for fewer results than `limit=200`
@@ -531,12 +550,13 @@ Code:
   3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete); `Http`, the one
   OkHttp client
 - `RetryPolicy.kt`: when a 429 or 503 answer is asked again, how long its host is held and when a card asks
-  for its thumbnail again (pure), and the interceptor that retries and holds
+  for its thumbnail again (pure), and the interceptor that retries and holds (only requests tagged
+  `Holdable`: the cards' thumbnails)
 - `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
 - `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
   their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
 - `CatalogLoad.kt`: what "My pictures" shows (`CatalogState`), one load of it (`loadCatalog`) and when it
-  reloads (pure)
+  reloads, and what the Catalog tab shows (`CatalogView`: the grid, "none yet" or loading) (pure)
 - `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
   the details preview and the viewer
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
@@ -582,7 +602,9 @@ Code:
 - `DetailsPanel.kt`: the details panel of a long-pressed card, with its frame preview; `PictureDetails.kt`:
   its lines, source names, which preview a selected frame gets and why one failed (pure)
 - `FullscreenViewer.kt`: the full-screen view opened from the details panel; `ViewerRules.kt`: which
-  rendition it loads for the window, its credit line, its list position, overlay and swipe rules (pure)
+  rendition it loads for the window, its credit line, its list position, overlay and swipe rules, and its
+  moves through the list (`ViewerNav`: a step pressed during a read is dropped, a late result is ignored)
+  (pure)
 - `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
 - `CatalogBack.kt`: what Back does on the catalog screen before it leaves the app (pure)
 - `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the

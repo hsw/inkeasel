@@ -6,10 +6,8 @@ import org.json.JSONObject
 import java.io.BufferedInputStream
 import java.io.BufferedReader
 import java.io.Closeable
-import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.InputStreamReader
-import java.security.MessageDigest
 import java.util.zip.GZIPInputStream
 
 /*
@@ -46,13 +44,11 @@ data class CoreRow(
 )
 
 /**
- * One row of a labels file: an entity's label, aliases and Wikipedia article title in one language.
- * [lang] is set only in the files that hold several languages (`labels-all`, the starter's `labels`); in a
- * `labels-<lang>` file it comes from the file name.
+ * One row of a `labels-<lang>` file: an entity's label, aliases and Wikipedia article title in that file's
+ * language (a `lang` key, which only the tool's `labels-all` file carries, is ignored).
  */
 data class LabelRow(
     val id: String,
-    val lang: String?,
     val label: String?,
     val aliases: List<String>,
     val wikiTitle: String?,
@@ -86,15 +82,11 @@ object CatalogRows {
         )
     }
 
-    /** A labels row, with or without `lang`. */
+    /** A labels row. */
     fun label(line: String): LabelRow {
         val o = JSONObject(line)
-        val lang = o.opt("lang")?.takeUnless { it == JSONObject.NULL }
-            ?.let { it as? String ?: bad("lang") }
-            ?.also { if (!isLang(it)) bad("lang") }
         return LabelRow(
             id = item(o),
-            lang = lang,
             label = o.text("l"),
             aliases = o.texts("a"),
             wikiTitle = o.text("w"),
@@ -147,20 +139,20 @@ object CatalogRows {
  * Reads a JSON Lines file, gzip-compressed or plain (told by its first two bytes), in batches of parsed rows,
  * so an import holds one batch at a time. A line that does not parse is skipped and counted in [badLines],
  * never aborting the file; blank lines are skipped. A broken stream (a truncated gzip, a failed download)
- * throws its [java.io.IOException]. [sha256] covers the bytes as read, compressed, so it is the hash of the
- * downloaded file.
+ * throws its [java.io.IOException]. It owns [input]: closed by [close], or at once when the reader cannot be
+ * built (a broken gzip header).
  */
 class JsonLinesReader<T : Any>(input: InputStream, private val parse: (String) -> T) : Closeable {
-    private val hashing = HashingInputStream(input)
-    private val raw = BufferedInputStream(hashing)
-    private val lines: BufferedReader = run {
+    private val lines: BufferedReader = try {
+        val raw = BufferedInputStream(input)
         raw.mark(2)
         val gzip = raw.read() == 0x1f && raw.read() == 0x8b
         raw.reset()
         BufferedReader(InputStreamReader(if (gzip) GZIPInputStream(raw) else raw, Charsets.UTF_8))
+    } catch (e: Throwable) {
+        runCatching { input.close() }
+        throw e
     }
-    /** The hash, set once the last line was read. */
-    private var hash: String? = null
 
     /** Rows parsed so far. */
     var rows = 0
@@ -175,11 +167,7 @@ class JsonLinesReader<T : Any>(input: InputStream, private val parse: (String) -
         require(max > 0) { "batch size $max" }
         val batch = ArrayList<T>(minOf(max, 1024))
         while (batch.size < max) {
-            val line = lines.readLine()
-            if (line == null) {
-                finish()
-                break
-            }
+            val line = lines.readLine() ?: break
             if (line.isBlank()) continue
             try {
                 batch += parse(line)
@@ -202,56 +190,5 @@ class JsonLinesReader<T : Any>(input: InputStream, private val parse: (String) -
         }
     }
 
-    /**
-     * The lowercase hex SHA-256 of the whole input (bytes after the last line, such as a gzip trailer,
-     * included). Only after the last batch; it stays readable after [close].
-     */
-    fun sha256(): String = checkNotNull(hash) { "the file is not read to its end" }
-
-    private fun finish() {
-        if (hash != null) return
-        val buf = ByteArray(8192)
-        while (raw.read(buf) >= 0) Unit
-        hash = hashing.digest.digest().joinToString("") { "%02x".format(it) }
-    }
-
-    /** Bytes of the input read so far: all of it once the last batch was read. */
-    val bytes: Long get() = hashing.count
-
     override fun close() = lines.close()
-}
-
-/** Hashes and counts every byte read through it. */
-private class HashingInputStream(input: InputStream) : FilterInputStream(input) {
-    val digest: MessageDigest = MessageDigest.getInstance("SHA-256")
-    var count = 0L
-        private set
-
-    override fun read(): Int = super.read().also {
-        if (it >= 0) {
-            digest.update(it.toByte())
-            count++
-        }
-    }
-
-    override fun read(b: ByteArray, off: Int, len: Int): Int = super.read(b, off, len).also {
-        if (it > 0) {
-            digest.update(b, off, it)
-            count += it
-        }
-    }
-
-    /** Skipped bytes are read, so they are hashed too. */
-    override fun skip(n: Long): Long {
-        val buf = ByteArray(minOf(n, 8192L).toInt().coerceAtLeast(1))
-        var left = n
-        while (left > 0) {
-            val r = read(buf, 0, minOf(left, buf.size.toLong()).toInt())
-            if (r < 0) break
-            left -= r
-        }
-        return n - left
-    }
-
-    override fun markSupported() = false
 }

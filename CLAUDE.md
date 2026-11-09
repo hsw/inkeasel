@@ -17,13 +17,17 @@ or deviation made in a change gets its entry in the same commit.
 - Room 2.6.1 (compiler through KSP `2.0.21-1.0.28`) and Paging 3.3.6 are pinned: Room 2.7+ pulls
   kotlin-stdlib 2.1 over the 2.0.21 compiler, paging-compose 3.4+ pulls Compose foundation over the BOM.
   After a dependency change check `./gradlew :app:dependencies` that Compose stays on the BOM and
-  kotlin-stdlib on 2.0.x. Room exports each schema version to `app/schemas/` (committed).
+  kotlin-stdlib on 2.0.x. Room exports each schema version to `app/schemas/` (committed). MockWebServer is
+  pinned to 4.12.0 so the test classpath keeps the app's OkHttp 4.12.0 (5.x pulls OkHttp 5). After an entity
+  change KSP's incremental output can go stale (a `*_Impl.java` constructor mismatch in
+  `compileDebugJavaWithJavac`): delete `app/build/generated/ksp` and build again.
 - Room DAOs and the database run as JVM unit tests under Robolectric 4.16.1 at SDK 36
   (`app/src/test/resources/robolectric.properties`; it needs JDK 21). Its first run downloads
   `android-all-instrumented` (about 200 MB) from Maven Central into `~/.m2/repository`; a sandboxed shell
   without network or write access there fails at that point, so run it once outside the sandbox. Its SQLite
   is newer than minSdk 26's (3.18): a passing test does not make newer SQL safe (UPSERT needs 3.24, window
-  functions 3.25, `RETURNING` 3.35).
+  functions 3.25, `RETURNING` 3.35). OkHttp's own `RetryAndFollowUpInterceptor` repeats a 503 carrying
+  `Retry-After: 0` once: a test that counts requests answers another code (`CatalogSyncTest` uses 500).
 - The catalog starter set (`app/src/main/assets/catalog/`) is cut from the published `catalog` release, never
   edited by hand: download its `core.jsonl.gz` and `labels-all.jsonl.gz`, then
   `python3 tools/catalog-export.py app/src/main/assets/catalog --starter-from <dir>` (no Wikimedia request;
@@ -62,6 +66,12 @@ or deviation made in a change gets its entry in the same commit.
   returns black frames on the TV emulator: use `adb shell screencap -p /sdcard/s.png`, `adb pull`, then
   delete the file. README screenshots live in `docs/screenshots/` (English UI, nothing identifying, the
   tablet's status bar in demo mode, compressed with pngquant).
+- Catalog on an emulator: watch it with `adb logcat -s CatalogStore CatalogSync LiveRefresh` ("starter set
+  imported in N ms"). Measure import times only on a release build: a debug build is several times slower
+  (5–9 s against 1–2 s). An app locale outside the generated localeConfig (e.g. `doi-IN`) is not applied by
+  Android, so a label chain with no labels file is testable only in Robolectric (`CatalogStoreTest`). A fast
+  D-pad scroll makes `upload.wikimedia.org` answer 429 with `Retry-After: 11`: the case the host hold covers
+  (`RetryInterceptor`), visible in logcat after a scroll.
 - Poster path on an emulator: a poster needs a media session with artwork, and YouTube does not run there,
   so use a throwaway media-session helper app (never committed, uninstalled afterwards). Unbind the listener
   to test the hold fallback with
@@ -76,6 +86,8 @@ or deviation made in a change gets its entry in the same commit.
   English in `res/values/strings.xml`, Russian in `res/values-ru/strings.xml`; every new string goes into
   both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin, nor
   capitalisation, punctuation or separators added to a resolved text (`list_separator`, `*_sentence` forms).
+  Name lists (a painting's artists) come from the database as lists and are joined at the edge with the
+  translatable `list_names_separator`, never in SQL or in a mapper.
   Keys are `<area>_<what>` (`catalog_`, `details_`, `viewer_`, `settings_`, `frame_`, `perm_`, `access_`,
   `feature_`, `advert_`, `reason_`, `bt_`, `scan_`, `upload_`, `share_`), in that area's block of the file; a lowercase fragment
   nested in another text (an error's reason) is `<area>_err_<what>`, `<area>_toast_<what>` is only a toast.
@@ -124,15 +136,25 @@ or deviation made in a change gets its entry in the same commit.
   capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
   with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on
   Android 13+ (no notification permission), so the share reports its own outcome while in the foreground.
+- Network: every request goes through `Http.client` (User-Agent, `maxRequestsPerHost = 4`,
+  `RetryInterceptor`); a `newBuilder()` of it is fine (a call timeout), a new `OkHttpClient` is not. The
+  interceptor's host hold applies only to requests tagged `Holdable` (a card's thumbnail, tagged on Coil's
+  `ImageRequest`, which passes its tags to OkHttp); a request a user asked for (the frame upload, the
+  viewer's image) is never tagged, so it is never refused locally. Coil's loader is installed only by
+  `Images.install` (once per process; Coil allows one `DiskCache` per folder, `cacheDir/image_cache`).
 - Catalog (`catalog/`): `CatalogStore` is the one owner of `CatalogDb` and its scope (never a screen's), and
-  every catalog write (starter, release swap, live refresh) takes its write `Mutex`; network requests run
-  outside it. A release import streams into the `_stage` tables, then swaps in one transaction that also
-  writes the files' ETag and SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes
-  nothing. `rank` (unique) and `hidden` are stored, recomputed by `CatalogDao.rerank` (rules in the pure
-  `CatalogRank`) inside the write transaction, never in the paging query (`WHERE hidden = 0 ORDER BY rank`).
-  Catalog files come only from `releases/download/catalog/<file>` (`CatalogSync.RELEASE`), never
-  `releases/latest` (the APK). The Pager keeps a bounded window (`maxSize = MAX_ROWS`); no DAO returns the
-  whole list. Every id keeps its `<source>:` prefix (`wd:`, `cma:`, `commons:`). The database holds only
+  every catalog write (starter, release swap, live refresh) takes its write `Mutex`; network requests run outside
+  it (the release sync and `LiveRefresh` fetch first, then write through the lock they are given). A release
+  import streams into the `_stage` tables, then swaps in one transaction that also writes the files' ETag and
+  SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes nothing. `rank` (unique) and `hidden`
+  are stored, recomputed by `CatalogDao.rerank` (rules in the pure `CatalogRank`) inside the write transaction,
+  never in the paging query (`WHERE hidden = 0 ORDER BY rank`). Catalog files come only from
+  `releases/download/catalog/<file>` (`CatalogSync.RELEASE`), never `releases/latest` (the APK). The Pager keeps
+  a bounded window (`maxSize = MAX_ROWS`); no DAO returns the whole list. Every id keeps its `<source>:` prefix
+  (`wd:`, `cma:`, `commons:`). The paged grid keys its items by index, not by row id (an id key replaces a
+  focused placeholder when its page arrives, and the D-pad focus is lost), and a placeholder is the same
+  `PictureCard` node, empty. Live sources (`LiveRefresh`, rules in the pure `LiveSourceRows`) keep their weekly
+  state as `live-<source>` rows in `catalog_file`; no release file may take that prefix. The database holds only
   re-downloadable data: a schema change bumps the version (destructive fallback both ways) and its export in
   `app/schemas/` is committed.
 

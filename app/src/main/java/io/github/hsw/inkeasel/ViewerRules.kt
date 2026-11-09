@@ -1,6 +1,9 @@
 package io.github.hsw.inkeasel
 
 import io.github.hsw.inkeasel.catalog.CommonsUrls
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -42,6 +45,60 @@ class ListSteps(private val items: List<Picture>) : ViewerSteps {
     }
 }
 
+/**
+ * The open viewer ([state]) and its moves, run in [scope]: [open] shows a picture at once and may read its
+ * place in the list afterwards; [step] reads a neighbour, and a step pressed while the previous one (or the
+ * place) is still being read is dropped (a held key repeats faster); a result is applied only while the viewer
+ * still shows what it was read from, so a late one never replaces a newer picture, a closed viewer or one
+ * opened again. Every change of [state] goes to [onChange] (the screen's state). Pure.
+ */
+class ViewerNav(private val scope: CoroutineScope, private val onChange: (ViewerState?) -> Unit = {}) {
+    var state: ViewerState? = null
+        private set(value) {
+            field = value
+            onChange(value)
+        }
+
+    private var steps: ViewerSteps? = null
+    private var move: Job? = null
+
+    /**
+     * Shows [shown] at once, stepping through [steps]. [place], when given, reads [shown]'s place in the list
+     * (`null`: it stays alone), applied only while the viewer still shows [shown].
+     */
+    fun open(shown: ViewerState, steps: ViewerSteps, place: (suspend () -> ViewerState?)? = null) {
+        move?.cancel()
+        this.steps = steps
+        state = shown
+        if (place != null) {
+            move = scope.launch {
+                val placed = place() ?: return@launch
+                if (state == shown) state = placed
+            }
+        }
+    }
+
+    /** Left/Right: the picture [delta] places on; nothing past either end, or while a read is running. */
+    fun step(delta: Int) {
+        val from = state ?: return
+        val steps = steps ?: return
+        if (move?.isActive == true) return
+        move = scope.launch {
+            val to = steps.step(from, delta) ?: return@launch
+            if (state == from) state = to
+        }
+    }
+
+    /** Closes the viewer, dropping a read still running; the picture it showed, if it was open. */
+    fun close(): Picture? {
+        move?.cancel()
+        val shown = state?.picture
+        steps = null
+        if (state != null) state = null
+        return shown
+    }
+}
+
 /** What the viewer shows over the picture. */
 enum class ViewerOverlay {
     /** The picture alone. */
@@ -74,10 +131,10 @@ enum class ViewerOverlay {
  */
 object ViewerRules {
     /**
-     * Wikimedia's standard thumbnail widths at or above the 960 px step (mediawiki.org "Common thumbnail
-     * sizes"): a direct request for any other width is refused (HTTP 400 or 429).
+     * The narrowest Commons rendition the viewer loads: the 960 px step of Wikimedia's standard thumbnail
+     * widths ([CommonsUrls.WIDTHS]; a request for any other width is refused with HTTP 400 or 429).
      */
-    val COMMONS_WIDTHS = listOf(960, 1280, 1920, 3840)
+    const val MIN_COMMONS_WIDTH = 960
 
     /**
      * Cleveland's `web` image is about 893 px high; up to a Full HD window (short side 1080 px) it is shown
@@ -101,14 +158,14 @@ object ViewerRules {
 
     /**
      * What the viewer loads for [p] in a window of [w] × [h] px: the local file as is (its path); a picture
-     * with a [Picture.commonsFile] its [CommonsUrls.url] for [neededWidth], at least the [COMMONS_WIDTHS] first
-     * step (the original when that is a JPEG, PNG or WebP no wider, a TIFF always as a thumbnail): the
-     * release's rows and the Commons source's; for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
+     * with a [Picture.commonsFile] its [CommonsUrls.url] for [neededWidth], at least [MIN_COMMONS_WIDTH] (the
+     * original when that is a JPEG, PNG or WebP no wider, a TIFF always as a thumbnail): the release's rows
+     * and the Commons source's; for Cleveland `web` ([Picture.thumbUrl]) up to [CLEVELAND_WEB_UP_TO] and
      * `print` ([Picture.fullUrl]) beyond; any other source its [Picture.fullUrl].
      */
     fun rendition(p: Picture, w: Int, h: Int): String = when {
         p.local -> p.fullUrl
-        p.commonsFile != null -> CommonsUrls.url(p.commonsFile, max(neededWidth(p, w, h), COMMONS_WIDTHS.first()), p.width)
+        p.commonsFile != null -> CommonsUrls.url(p.commonsFile, max(neededWidth(p, w, h), MIN_COMMONS_WIDTH), p.width)
         p.source == "cma" -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
         else -> p.fullUrl
     }

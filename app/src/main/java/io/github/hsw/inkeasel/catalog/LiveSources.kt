@@ -45,7 +45,10 @@ enum class LiveOutcome {
     /** Refreshed less than a week ago: not asked. */
     FRESH,
 
-    /** The request failed (no network, a timeout, an HTTP error): the rows stay, asked again next start. */
+    /**
+     * The request failed (no network, a timeout, an HTTP error), or writing its answer did: the rows stay,
+     * asked again next start.
+     */
     FAILED,
 
     /** The answer was empty, or cut short and smaller than the stored list: the rows stay, asked again next start. */
@@ -128,7 +131,8 @@ object LiveSourceRows {
  * outside the write lock (a slow source holds up no import), and its answer replaces the source's rows in
  * one transaction under the lock, which also recomputes rank and dedupe ([CatalogDao.rerank]: interleaved
  * every 10th card, hidden where a Wikidata row is the same picture) and, after a whole list, records the
- * refresh. A failure is logged and changes nothing; the rows stay, and the next start asks again.
+ * refresh. A failure (of the request or of the write) is logged and changes nothing for that source; the rows
+ * stay, the other sources are still refreshed, and the next start asks again.
  */
 class LiveRefresh(
     private val db: CatalogDb,
@@ -155,7 +159,15 @@ class LiveRefresh(
                 return@map LiveResult(source.id, LiveOutcome.FAILED, dao.sourceCount(source.id))
             }
             var result: LiveResult? = null
-            write { result = store(source.id, got) }
+            try {
+                write { result = store(source.id, got) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // a database failure of one source leaves the others to be refreshed
+                log("${source.id}: storing the list failed", e)
+                return@map LiveResult(source.id, LiveOutcome.FAILED, dao.sourceCount(source.id))
+            }
             checkNotNull(result).also { log("${source.id}: ${it.outcome}, ${it.rows} rows", null) }
         }
     }

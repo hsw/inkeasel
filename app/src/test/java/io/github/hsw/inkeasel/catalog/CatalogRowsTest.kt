@@ -8,7 +8,6 @@ import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
-import java.security.MessageDigest
 import java.util.zip.GZIPOutputStream
 
 /** Rows copied from the real `catalog` release (the `.jsonl` files in the test resources' `catalog` folder). */
@@ -17,9 +16,6 @@ class CatalogRowsTest {
 
     private fun gzip(bytes: ByteArray): ByteArray =
         ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(bytes) } }.toByteArray()
-
-    private fun sha256(bytes: ByteArray) =
-        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun <T : Any> readAll(bytes: ByteArray, parse: (String) -> T, batch: Int = 100): Pair<List<List<T>>, JsonLinesReader<T>> {
         val reader = JsonLinesReader(ByteArrayInputStream(bytes), parse)
@@ -129,15 +125,15 @@ class CatalogRowsTest {
     @Test
     fun labels_ruAndEnWithEntities() {
         val ru = readAll(fixture("labels-ru.jsonl"), CatalogRows::label).first.flatten()
-        assertEquals(LabelRow("Q12418", null, "Мона Лиза", listOf("Джоконда"), "Мона Лиза"), ru[0])
-        assertEquals(LabelRow("Q762", null, "Леонардо да Винчи", emptyList(), "Леонардо да Винчи"), ru[1])
+        assertEquals(LabelRow("Q12418", "Мона Лиза", listOf("Джоконда"), "Мона Лиза"), ru[0])
+        assertEquals(LabelRow("Q762", "Леонардо да Винчи", emptyList(), "Леонардо да Винчи"), ru[1])
         // an entity label (a collection) with neither aliases nor an article
-        assertEquals(LabelRow("Q3044768", null, "Отдел живописи Лувра", emptyList(), null), ru[2])
+        assertEquals(LabelRow("Q3044768", "Отдел живописи Лувра", emptyList(), null), ru[2])
         val en = readAll(fixture("labels-en.jsonl"), CatalogRows::label).first.flatten()
         assertEquals(listOf("Q12418", "Q762", "Q3044768", "Q609572"), en.map { it.id })
         assertEquals(
             LabelRow(
-                "Q3044768", null, "Department of Paintings of the Louvre",
+                "Q3044768", "Department of Paintings of the Louvre",
                 listOf("Louvre paintings department", "Louvre department of paintings", "Louvre Department of Paintings"),
                 null,
             ),
@@ -146,26 +142,23 @@ class CatalogRowsTest {
     }
 
     @Test
-    fun labels_withLanguage() {
+    fun labels_aLangKeyIsIgnored() {
+        // the tool's labels-all file carries one; a labels-<lang> file takes its language from its name
         val all = readAll(fixture("labels-all.jsonl"), CatalogRows::label).first.flatten()
-        assertEquals(listOf("mul", "ru", "en"), all.map { it.lang })
-        assertEquals(LabelRow("Q12418", "mul", "Mona Lisa", listOf("La Joconde", "La Gioconda", "Monna Lisa"), null), all[0])
-        assertEquals("be-tarask", CatalogRows.label("""{"lang":"be-tarask","id":"Q1","l":"x"}""").lang)
+        assertEquals(LabelRow("Q12418", "Mona Lisa", listOf("La Joconde", "La Gioconda", "Monna Lisa"), null), all[0])
+        assertEquals(LabelRow("Q1", "x", emptyList(), null), CatalogRows.label("""{"lang":5,"id":"Q1","l":"x"}"""))
     }
 
     @Test
     fun labels_onlyAnIdIsStillARow() {
-        assertEquals(LabelRow("Q5", null, null, emptyList(), null), CatalogRows.label("""{"id":"Q5","l":"","x":1}"""))
+        assertEquals(LabelRow("Q5", null, emptyList(), null), CatalogRows.label("""{"id":"Q5","l":"","x":1}"""))
     }
 
     @Test
-    fun labels_badIdOrLanguageAreBadRows() {
+    fun labels_badIdIsABadRow() {
         for (line in listOf(
             """{"l":"x"}""",
             """{"id":"P31","l":"x"}""",
-            """{"lang":"RU","id":"Q1","l":"x"}""",
-            """{"lang":"ru/../x","id":"Q1","l":"x"}""",
-            """{"lang":5,"id":"Q1","l":"x"}""",
         )) {
             val (batches, reader) = readAll(line.toByteArray(), CatalogRows::label)
             assertEquals(line, 0, batches.flatten().size)
@@ -188,26 +181,12 @@ class CatalogRowsTest {
     }
 
     @Test
-    fun reader_gzipGivesTheSameRowsAndTheHashOfTheCompressedFile() {
+    fun reader_gzipGivesTheSameRows() {
         val plain = fixture("core.jsonl")
-        val gz = gzip(plain)
-        val (fromPlain, plainReader) = readAll(plain, CatalogRows::core)
-        val (fromGzip, gzipReader) = readAll(gz, CatalogRows::core, batch = 3)
+        val (fromPlain, _) = readAll(plain, CatalogRows::core)
+        val (fromGzip, gzipReader) = readAll(gzip(plain), CatalogRows::core, batch = 3)
         assertEquals(fromPlain.flatten(), fromGzip.flatten())
-        assertEquals(sha256(plain), plainReader.sha256())
-        assertEquals(sha256(gz), gzipReader.sha256())
-        assertEquals(gz.size.toLong(), gzipReader.bytes)
-        // asking again gives the same hash
-        assertEquals(sha256(gz), gzipReader.sha256())
-    }
-
-    @Test
-    fun reader_hashCoversBytesAfterTheLastGzipMember() {
-        // a gzip member followed by trailing bytes that are not one: the file's hash still covers them
-        val bytes = gzip(fixture("labels-en.jsonl")) + ByteArray(3)
-        val (batches, reader) = readAll(bytes, CatalogRows::label)
-        assertEquals(4, batches.flatten().size)
-        assertEquals(sha256(bytes), reader.sha256())
+        assertEquals(5, gzipReader.rows)
     }
 
     @Test
@@ -238,7 +217,6 @@ class CatalogRowsTest {
             assertEquals(emptyList<List<CoreRow>>(), batches)
             assertEquals(0, reader.rows)
             assertEquals(0, reader.badLines)
-            assertEquals(sha256(bytes), reader.sha256())
         }
     }
 
@@ -259,12 +237,16 @@ class CatalogRowsTest {
     }
 
     @Test
-    fun reader_hashOnlyAfterTheEnd() {
-        val reader = JsonLinesReader(ByteArrayInputStream(fixture("core.jsonl")), CatalogRows::core)
-        reader.use {
-            assertEquals(2, it.nextBatch(2).size)
-            assertFalse(runCatching { it.sha256() }.isSuccess)
+    fun reader_closesItsInputWhenItCannotBeBuilt() {
+        // a gzip magic followed by a broken header: the constructor throws, and the stream is closed all the same
+        var closed = false
+        val input = object : ByteArrayInputStream(byteArrayOf(0x1f, 0x8b.toByte(), 0, 0)) {
+            override fun close() {
+                closed = true
+            }
         }
+        assertTrue(runCatching { JsonLinesReader(input, CatalogRows::core) }.exceptionOrNull() is IOException)
+        assertTrue(closed)
     }
 
     @Test

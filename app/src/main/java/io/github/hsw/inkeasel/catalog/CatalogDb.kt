@@ -34,9 +34,6 @@ import androidx.room.TypeConverters
     indices = [
         Index(value = ["rank"], unique = true),
         Index(value = ["hidden", "rank"]),
-        Index(value = ["wikidataId"]),
-        Index(value = ["commonsFile"]),
-        Index(value = ["museumRef"]),
     ],
 )
 data class PictureEntity(
@@ -101,9 +98,10 @@ object EntityKind {
 }
 
 /**
- * A release file's state: its last [etag] and [sha256], when it was checked and imported, [missing] on a 404.
- * A live source's refresh is kept here too, as `live-<source>` ([LiveSourceRows.stateName]) with the time of
- * its last whole list in [checkedAt] and [importedAt].
+ * A release file's state: the [etag] and [sha256] of the content last imported, when it was checked and
+ * imported, [missing] on a 404, [importFailed] when its last download could not be imported (checked again
+ * sooner, [CatalogSyncPlan.isDue]). A live source's refresh is kept here too, as `live-<source>`
+ * ([LiveSourceRows.stateName]) with the time of its last whole list in [checkedAt] and [importedAt].
  */
 @Entity(tableName = "catalog_file")
 data class CatalogFileEntity(
@@ -114,6 +112,7 @@ data class CatalogFileEntity(
     val checkedAt: Long? = null,
     val importedAt: Long? = null,
     val missing: Boolean = false,
+    val importFailed: Boolean = false,
 )
 
 /** A Wikidata picture of an import, staged before the swap; the columns of [PictureEntity] the release sets. */
@@ -263,8 +262,8 @@ abstract class CatalogDao {
     @Query("$ROW WHERE p.hidden = 0 AND p.rank < :rank ORDER BY p.rank DESC LIMIT 1")
     abstract suspend fun previous(rank: Long, chain: String): CatalogRow?
 
-    /** A picture by id, hidden or not. */
-    @Query("$ROW WHERE p.id = :id")
+    /** A picture by id if the list shows it (a hidden one is not found). */
+    @Query("$ROW WHERE p.id = :id AND p.hidden = 0")
     abstract suspend fun row(id: String, chain: String): CatalogRow?
 
     @Query("SELECT * FROM picture WHERE id = :id")
@@ -291,19 +290,16 @@ abstract class CatalogDao {
 
     /**
      * Recomputes every rank and the dedupe ([CatalogRank]) in one transaction, writing only the rows that
-     * change. When a new rank is held by another row ([CatalogRank.clash]), they move to free negative ranks
-     * first, so the unique index holds at every step; otherwise (new rows placed for the first time, such as
-     * the starter set's) each row is written once.
+     * change (none for the starter set going into an empty database, which is written at its places). The
+     * moving rows go to free negative ranks first, then to their new ones, so the unique index holds at every
+     * step.
      */
     @Transaction
     open suspend fun rerank() {
-        val keys = rankKeys()
-        val changes = CatalogRank.changes(keys)
+        val changes = CatalogRank.changes(rankKeys())
         if (changes.isEmpty()) return
-        if (CatalogRank.clash(keys, changes)) {
-            val free = minOf(0L, lowestRank() ?: 0L) - 1
-            changes.forEachIndexed { i, p -> place(p.id, free - i, p.hidden) }
-        }
+        val free = minOf(0L, lowestRank() ?: 0L) - 1
+        changes.forEachIndexed { i, p -> place(p.id, free - i, p.hidden) }
         changes.forEach { p -> place(p.id, p.rank, p.hidden) }
     }
 }
@@ -326,16 +322,11 @@ abstract class CatalogDb : RoomDatabase() {
         const val NAME = "catalog.db"
 
         /**
-         * The database file [name] (in memory when `null`). Any other schema version, older or newer, is
-         * dropped and created empty: the catalog downloads and the starter set imports again.
+         * The database file [name]. Any other schema version, older or newer, is dropped and created empty:
+         * the catalog downloads and the starter set imports again.
          */
-        fun open(context: Context, name: String? = NAME): CatalogDb = configure(
-            if (name == null) {
-                Room.inMemoryDatabaseBuilder(context, CatalogDb::class.java)
-            } else {
-                Room.databaseBuilder(context, CatalogDb::class.java, name)
-            },
-        ).build()
+        fun open(context: Context, name: String = NAME): CatalogDb =
+            configure(Room.databaseBuilder(context, CatalogDb::class.java, name)).build()
 
         /** The builder settings every catalog database gets, tests included. */
         fun configure(builder: Builder<CatalogDb>): Builder<CatalogDb> = builder

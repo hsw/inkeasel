@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "0db2036119ca4efad618159181b470b6",
+    "identityHash": "a79843552dd9db000a4d7f32f9aeba13",
     "entities": [
       {
         "tableName": "picture",
@@ -172,33 +172,6 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_hidden_rank` ON `${TABLE_NAME}` (`hidden`, `rank`)"
-          },
-          {
-            "name": "index_picture_wikidataId",
-            "unique": false,
-            "columnNames": [
-              "wikidataId"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_wikidataId` ON `${TABLE_NAME}` (`wikidataId`)"
-          },
-          {
-            "name": "index_picture_commonsFile",
-            "unique": false,
-            "columnNames": [
-              "commonsFile"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_commonsFile` ON `${TABLE_NAME}` (`commonsFile`)"
-          },
-          {
-            "name": "index_picture_museumRef",
-            "unique": false,
-            "columnNames": [
-              "museumRef"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_picture_museumRef` ON `${TABLE_NAME}` (`museumRef`)"
           }
         ],
         "foreignKeys": []
@@ -290,7 +263,7 @@
       },
       {
         "tableName": "catalog_file",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `etag` TEXT, `sha256` TEXT, `size` INTEGER, `checkedAt` INTEGER, `importedAt` INTEGER, `missing` INTEGER NOT NULL, PRIMARY KEY(`name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `etag` TEXT, `sha256` TEXT, `size` INTEGER, `checkedAt` INTEGER, `importedAt` INTEGER, `missing` INTEGER NOT NULL, `importFailed` INTEGER NOT NULL, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
@@ -331,6 +304,12 @@
           {
             "fieldPath": "missing",
             "columnName": "missing",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "importFailed",
+            "columnName": "importFailed",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -525,7 +504,7 @@
     "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '0db2036119ca4efad618159181b470b6')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a79843552dd9db000a4d7f32f9aeba13')"
     ]
   }
 }

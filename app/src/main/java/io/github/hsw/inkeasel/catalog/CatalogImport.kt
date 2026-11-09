@@ -17,18 +17,17 @@ import kotlin.coroutines.coroutineContext
 /**
  * A release file to import: [name] as the release (or the APK's assets) names it, its bytes from [open]
  * (called once, on an IO thread; the stream is closed after reading). [lang] is the language of a
- * `labels-<lang>` file; `null` for `core` and for a labels file whose rows carry their language
- * (`labels-all`, the starter's `labels`).
+ * `labels-<lang>` file, which every labels file has; `null` for `core`.
  */
 class ImportFile(val name: String, val lang: String? = null, val open: () -> InputStream)
 
-/** What was read from one file: valid [rows], skipped [badLines], the file's [sha256] and size in [bytes]. */
-data class FileRead(val name: String, val rows: Int, val badLines: Int, val sha256: String, val bytes: Long)
+/** What was read from one file: valid [rows] and skipped [badLines]. */
+data class FileRead(val name: String, val rows: Int, val badLines: Int)
 
 /**
  * What an import changed: Wikidata pictures [added], [replaced] (present before, written again) and
  * [removed] (absent from the new `core`); [labels] written; [labelsDropped], labels of languages outside the
- * chain removed. [files] lists what was read, for the caller to record each file's hash.
+ * chain removed. [files] lists what was read (for the log).
  */
 data class ImportResult(
     val files: List<FileRead>,
@@ -61,9 +60,9 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
     }
 
     /**
-     * Imports the starter set ([core] and its [labels] files: `labels-<lang>`, or one whose rows carry their
-     * language) into a database that has no Wikidata row, keeping only labels in the [chain]'s languages,
-     * English and `mul`; a single-language file outside them is not read. All or nothing (one transaction).
+     * Imports the starter set ([core] and its `labels-<lang>` files, [labels]) into a database that has no
+     * Wikidata row, keeping only labels in the [chain]'s languages, English and `mul`; a file outside them is
+     * not read. All or nothing (one transaction).
      * `null` when the database already has Wikidata rows: nothing is read.
      */
     suspend fun starter(core: ImportFile, labels: List<ImportFile>, chain: List<String>): ImportResult? =
@@ -82,8 +81,8 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
                 }
                 if (added == 0) throw IOException("${core.name}: no valid row")
                 var written = 0
-                val labelsRead = labels.filter { it.lang == null || it.lang in langs }.map { file ->
-                    readLabels(file, langs) { rows ->
+                val labelsRead = labels.filter { labelsLang(it) in langs }.map { file ->
+                    readLabels(file) { rows ->
                         catalog.insertLabels(rows.map { it.live() })
                         written += rows.size
                     }
@@ -94,13 +93,13 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         }
 
     /**
-     * Imports release files: a new [core] (or `null` to keep the stored rows) and [labels] files. A
-     * `labels-<lang>` file replaces that language's labels, a file whose rows carry their language replaces
-     * every language of the [chain]; a single-language file outside the chain is not read. Labels outside the
-     * chain (and English and `mul`) are dropped at the swap. Throws on a broken file (an [IOException]) or a
-     * `core` with no valid row, leaving the live tables as they were; the staging tables are cleared then
-     * and again at the start of the next import. [commit] runs last inside the swap transaction, so what it
-     * writes (the files' state) is stored together with the rows or not at all.
+     * Imports release files: a new [core] (or `null` to keep the stored rows) and `labels-<lang>` files
+     * ([labels]), each replacing that language's labels; a file outside the [chain] is not read. Labels
+     * outside the chain (and English and `mul`) are dropped at the swap. Throws on a broken file (an
+     * [IOException]), a `core` with no valid row or a labels file whose every line is bad (an empty one is
+     * fine: the language has no label), leaving the live tables as they were; the staging tables are cleared
+     * then and again at the start of the next import. [commit] runs last inside the swap transaction, so what
+     * it writes (the files' state) is stored together with the rows or not at all.
      */
     suspend fun release(
         core: ImportFile?,
@@ -124,9 +123,12 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
                 }
                 val replacedLangs = LinkedHashSet<String>()
                 for (file in labels) {
-                    if (file.lang != null && file.lang !in langs) continue
-                    files += readLabels(file, langs) { rows -> dao.stageLabels(rows) }
-                    if (file.lang != null) replacedLangs += file.lang else replacedLangs += langs
+                    val lang = labelsLang(file)
+                    if (lang !in langs) continue
+                    val read = readLabels(file) { rows -> dao.stageLabels(rows) }
+                    if (read.rows == 0 && read.badLines > 0) throw IOException("${file.name}: no valid row")
+                    files += read
+                    replacedLangs += lang
                 }
                 swap(files, core != null, replacedLangs, langs, commit)
             } catch (e: Throwable) {
@@ -137,10 +139,10 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
 
     /**
      * Adds the labels of the languages [add] (those of them the [chain] stores) from [labels] (the starter's
-     * `labels-<lang>` files, or a file whose rows carry their language), each replacing that language: the
-     * starter set as the offline source of a language that joined the chain later. Staged and swapped like
-     * [release] (labels outside the chain are dropped, [commit] runs inside the swap); `null` when the files
-     * have no row in those languages, and then nothing is swapped.
+     * `labels-<lang>` files), each replacing that language: the starter set as the offline source of a
+     * language that joined the chain later. Staged and swapped like [release] (labels outside the chain are
+     * dropped, [commit] runs inside the swap); `null` when the files have no row in those languages, and then
+     * nothing is swapped.
      */
     suspend fun addLabels(
         labels: List<ImportFile>,
@@ -153,8 +155,8 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         if (wanted.isEmpty()) return@withContext null
         dao.clearStage()
         try {
-            val read = labels.filter { it.lang == null || it.lang in wanted }.map { file ->
-                readLabels(file, wanted) { rows -> dao.stageLabels(rows) }
+            val read = labels.filter { labelsLang(it) in wanted }.map { file ->
+                readLabels(file) { rows -> dao.stageLabels(rows) }
             }
             if (dao.stagedLabels() == 0) {
                 dao.clearStage()
@@ -217,18 +219,14 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         }
     }
 
-    /** Reads a labels file in batches, keeping only rows in [langs]; the file's language wins over the row's. */
-    private suspend fun readLabels(
-        file: ImportFile,
-        langs: Collection<String>,
-        each: suspend (List<LabelStage>) -> Unit,
-    ): FileRead = read(file, CatalogRows::label) { rows ->
-        val kept = rows.mapNotNull { row ->
-            val lang = file.lang ?: row.lang
-            if (lang != null && lang in langs) row.stage(lang) else null
-        }
-        if (kept.isNotEmpty()) each(kept)
+    /** Reads a `labels-<lang>` file in batches, its rows in that language. */
+    private suspend fun readLabels(file: ImportFile, each: suspend (List<LabelStage>) -> Unit): FileRead {
+        val lang = labelsLang(file)
+        return read(file, CatalogRows::label) { rows -> each(rows.map { it.stage(lang) }) }
     }
+
+    private fun labelsLang(file: ImportFile): String =
+        requireNotNull(file.lang) { "${file.name}: a labels file without its language" }
 
     private suspend fun <T : Any> read(
         file: ImportFile,
@@ -239,7 +237,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
             coroutineContext.ensureActive()
             each(rows)
         }
-        FileRead(file.name, reader.rows, reader.badLines, reader.sha256(), reader.bytes)
+        FileRead(file.name, reader.rows, reader.badLines)
     }
 
     companion object {

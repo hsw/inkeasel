@@ -80,7 +80,7 @@ class CatalogDaoTest {
     }
 
     @Test
-    fun hiddenRowsAreLeftOutButStillFoundById() = runTest {
+    fun hiddenRowsAreLeftOutButStillStored() = runTest {
         dao.insertPictures(
             (0 until 3).map { wd(it) } + live("commons", 0, file = "Painting_1.jpg") + live("cma", 0),
         )
@@ -88,7 +88,8 @@ class CatalogDaoTest {
         assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3", "cma:0"), everything().map { it.id })
         assertEquals(4, dao.count())
         assertEquals(true, dao.picture("commons:0")?.hidden)
-        assertEquals("commons:0", dao.row("commons:0", ru)?.id)
+        assertNull(dao.row("commons:0", ru))
+        assertEquals("cma:0", dao.row("cma:0", ru)?.id)
     }
 
     @Test
@@ -216,7 +217,11 @@ class CatalogDaoTest {
         assertEquals(175L, dao.picture("commons:0")?.rank)
         assertEquals(true, dao.picture("commons:1")?.hidden)
         assertEquals(10L, dao.picture("wd:Q2")?.rank)
-        dao.rerank() // nothing to change
+        // nothing to change: no row is written (SQLite counts every row a statement changes)
+        val changes = { db.openHelper.writableDatabase.query("SELECT total_changes()").use { it.moveToFirst(); it.getLong(0) } }
+        val before = changes()
+        dao.rerank()
+        assertEquals(before, changes())
         assertEquals(22, everything().size)
     }
 

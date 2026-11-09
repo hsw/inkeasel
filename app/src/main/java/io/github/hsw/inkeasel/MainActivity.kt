@@ -42,7 +42,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,7 +67,6 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.MaterialTheme
@@ -78,7 +76,7 @@ import androidx.tv.material3.TabRow
 import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil.compose.AsyncImage
-import coil.network.HttpException
+import coil.request.ImageRequest
 import io.github.hsw.inkeasel.catalog.CatalogPicture
 import io.github.hsw.inkeasel.catalog.CatalogRow
 import io.github.hsw.inkeasel.catalog.CatalogSteps
@@ -116,30 +114,25 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The catalog database has no picture once its starter step has run ([CatalogStore.empty]). */
     val catalogEmpty: StateFlow<Boolean> = store.empty
 
-    /** The tabs after the Catalog, each a list loaded whole ([loadCatalog]): My pictures. */
-    val sources = buildSources(app)
+    /** My pictures ([LOCAL_TAB]): a list loaded whole ([loadCatalog]), re-scanned when its folder changes. */
+    private val local = LocalImages(app)
 
-    /** The tab names: the Catalog ([CATALOG_TAB]), then [sources]. */
-    val tabNames: List<Txt> = listOf(Txt(R.string.tab_catalog)) + sources.map { it.name }
+    /** The tab names: the Catalog ([CATALOG_TAB]), then My pictures ([LOCAL_TAB]). */
+    val tabNames: List<Txt> = listOf(Txt(R.string.tab_catalog), local.name)
     var tab by mutableIntStateOf(CATALOG_TAB)
         private set
 
-    /** The state of each tab of [sources], by tab index. */
-    val catalogs = mutableStateMapOf<Int, CatalogState>()
+    /** What My pictures shows; `null` until its first load. */
+    var localState by mutableStateOf<CatalogState?>(null)
+        private set
 
-    /** The source of tab [i]; `null` for the Catalog. */
-    private fun sourceOf(i: Int): Source? = sources.getOrNull(i - 1)
-
-    private val loads = mutableMapOf<Int, Job>()
-
-    /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
-    val localTab = sources.indexOfFirst { it is LocalImages }.let { if (it < 0) -1 else it + 1 }
+    private var localLoad: Job? = null
     private var localReload: Job? = null
-    private val localWatcher: FileObserver? = (sourceOf(localTab) as? LocalImages)?.let { src ->
+    private val localWatcher: FileObserver = run {
         val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO or
             FileObserver.MOVED_FROM or FileObserver.CLOSE_WRITE
         @Suppress("DEPRECATION") // File ctor is API 29+; the path ctor works down to minSdk
-        object : FileObserver(src.dir().absolutePath, mask) {
+        object : FileObserver(local.dir().absolutePath, mask) {
             override fun onEvent(event: Int, path: String?) = refreshLocal()
         }.apply { startWatching() }
     }
@@ -176,7 +169,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
         settingsOpen = false
         details = null
-        viewer = null
+        nav.close()
         blePanel = BlePanelState(stage, picture)
     }
 
@@ -204,52 +197,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     var viewer by mutableStateOf<ViewerState?>(null)
         private set
-    private var viewerSteps: ViewerSteps? = null
-    private var viewerMove: Job? = null
+    private val nav = ViewerNav(viewModelScope) { viewer = it }
 
     /**
      * The viewer on [p]: in the Catalog it steps through the database by rank ([CatalogSteps], each row made
      * a picture by [catalogPicture], as the grid makes it) and shows [p] alone until its place is read; in
-     * another tab through that tab's loaded list ([ListSteps]).
+     * My pictures through its loaded list ([ListSteps]).
      */
     fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture) {
         details = null
-        viewerMove?.cancel()
         if (tab == CATALOG_TAB) {
             val steps = CatalogSteps(store.db.catalog(), store.chain.value, catalogPicture)
-            viewerSteps = steps
-            viewer = ViewerState.alone(p)
-            viewerMove = viewModelScope.launch {
-                val placed = steps.open(p.id) ?: return@launch
-                if (viewer?.picture?.id == p.id) viewer = placed
-                Log.i(TAG, "viewer on ${p.id} (${placed.index + 1} of ${placed.count})")
+            nav.open(ViewerState.alone(p), steps) {
+                steps.open(p.id)?.also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }
             }
         } else {
-            val steps = ListSteps((catalogs[tab] as? CatalogState.Loaded)?.items.orEmpty())
-            viewerSteps = steps
-            viewer = steps.open(p).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }
+            val steps = ListSteps((localState as? CatalogState.Loaded)?.items.orEmpty())
+            nav.open(steps.open(p).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }, steps)
         }
     }
 
-    /**
-     * Left/Right in the viewer: the picture [delta] places on, or nothing past either end of the list. A step
-     * pressed while the previous one is still being read is dropped (a held key repeats faster).
-     */
-    fun stepViewer(delta: Int) {
-        val from = viewer ?: return
-        val steps = viewerSteps ?: return
-        if (viewerMove?.isActive == true) return
-        viewerMove = viewModelScope.launch {
-            val to = steps.step(from, delta) ?: return@launch
-            if (viewer == from) viewer = to
-        }
-    }
+    /** Left/Right in the viewer ([ViewerNav.step]). */
+    fun stepViewer(delta: Int) = nav.step(delta)
 
+    /** Back from the viewer: the details panel of the picture it showed. */
     fun closeViewer() {
-        viewerMove?.cancel()
-        details = viewer?.picture
-        viewer = null
-        viewerSteps = null
+        details = nav.close()
     }
 
     fun closeBlePanel() {
@@ -259,7 +232,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openSettings() {
         blePanel = null
         details = null
-        viewer = null
+        nav.close()
         settingsOpen = true
     }
 
@@ -323,36 +296,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectTab(i: Int) {
         tab = i
-        if (i != CATALOG_TAB && catalogs[i].needsLoad()) load(i)
+        if (i == LOCAL_TAB && localState.needsLoad()) loadLocal()
     }
 
     /** Re-scan the local folder (debounced — a single file push fires several events). */
     fun refreshLocal() {
-        if (localTab < 0) return
         localReload?.cancel()
         localReload = viewModelScope.launch {
             delay(300)
-            val src = sourceOf(localTab) ?: return@launch
-            catalogs[localTab] = loadCatalog(src) { Log.w(TAG, it) }
+            localState = loadCatalog(local) { Log.w(TAG, it) }
         }
     }
 
     override fun onCleared() {
-        localWatcher?.stopWatching()
+        localWatcher.stopWatching()
     }
 
     companion object {
         /** The Catalog: the first tab, the one the app starts on. */
         const val CATALOG_TAB = 0
+
+        /** My pictures. */
+        const val LOCAL_TAB = 1
     }
 
-    /** Load tab [i] (again), unless it is loading already ([loadCatalog]). */
-    fun load(i: Int) {
-        if (loads[i]?.isActive == true) return
-        val src = sourceOf(i) ?: return
-        catalogs[i] = CatalogState.Loading
-        loads[i] = viewModelScope.launch {
-            catalogs[i] = loadCatalog(src) { Log.w(TAG, it) }
+    /** Load My pictures (again), unless it is loading already ([loadCatalog]). */
+    fun loadLocal() {
+        if (localLoad?.isActive == true) return
+        localState = CatalogState.Loading
+        localLoad = viewModelScope.launch {
+            localState = loadCatalog(local) { Log.w(TAG, it) }
         }
     }
 }
@@ -578,7 +551,7 @@ fun App(
                     Spacer(Modifier.height(16.dp))
                     LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
                     val catalog = vm.tab == MainViewModel.CATALOG_TAB
-                    val st = vm.catalogs[vm.tab] ?: CatalogState.Loading
+                    val st = vm.localState ?: CatalogState.Loading
                     // Back from the content goes to the tabs first ([CatalogBack]); the settings dialog has its own
                     val shownGrid = if (catalog) catalogGrid else grid
                     val gridItems = when {
@@ -593,21 +566,19 @@ fun App(
                     }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
                         if (catalog) {
-                            when {
-                                pages.itemCount > 0 -> PagedGrid(
+                            when (CatalogView.of(pages.itemCount, catalogEmpty, pages.loadState.refresh is LoadState.Loading)) {
+                                CatalogView.GRID -> PagedGrid(
                                     pages, catalogPicture, aspect, layout, catalogGrid, onSend = onSend, onDetails = vm::openDetails,
                                 )
-                                // the starter set imports at the first start: a loading text, not an empty grid
-                                catalogEmpty && pages.loadState.refresh !is LoadState.Loading ->
-                                    Text(stringResource(R.string.catalog_none))
-                                else -> Text(stringResource(R.string.catalog_loading))
+                                CatalogView.NONE -> Text(stringResource(R.string.catalog_none))
+                                CatalogView.LOADING -> Text(stringResource(R.string.catalog_loading))
                             }
                         } else when (st) {
                             CatalogState.Loading -> Text(stringResource(R.string.local_loading))
                             is CatalogState.Failed -> Column {
                                 Text(st.reason.text())
                                 Spacer(Modifier.height(12.dp))
-                                Button(onClick = { vm.load(vm.tab) }, modifier = Modifier.onTap { vm.load(vm.tab) }) { Text(stringResource(R.string.retry)) }
+                                Button(onClick = vm::loadLocal, modifier = Modifier.onTap(vm::loadLocal)) { Text(stringResource(R.string.retry)) }
                             }
                             is CatalogState.Loaded -> CatalogGrid(st, aspect, layout, grid, onSend = onSend, onDetails = vm::openDetails)
                         }
@@ -737,7 +708,10 @@ private fun CatalogGrid(
 
 /**
  * The Catalog's grid over its [pages]: a loaded row is a [PictureCard] ([picture] maps it), a row not loaded yet
- * a [PlaceholderCard] of the same size, so the D-pad focus moves through the list as it will look.
+ * the same card empty, so the D-pad focus moves through the list as it will look. Items are keyed by their
+ * place, not by the row's id: paging-compose keys a placeholder by its index and a loaded row by its id, so
+ * keys by id would replace the focused placeholder with a new card when its page arrives (or comes back after
+ * being dropped), and the focus would be lost. The places are stable (the count includes the rows not loaded).
  */
 @Composable
 private fun PagedGrid(
@@ -756,33 +730,25 @@ private fun PagedGrid(
         horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
         verticalArrangement = Arrangement.spacedBy(layout.gap.dp),
     ) {
-        items(pages.itemCount, key = pages.itemKey { it.id }) { i ->
+        items(pages.itemCount) { i ->
             val row = pages[i]
-            if (row == null) {
-                PlaceholderCard(aspect)
-            } else {
-                val p = remember(row, picture) { picture(row) }
-                PictureCard(p, aspect, onClick = { onSend(p) }, onLongClick = { onDetails(p) })
-            }
+            val p = remember(row, picture) { row?.let(picture) }
+            PictureCard(p, aspect, onClick = { p?.let(onSend) }, onLongClick = { p?.let(onDetails) })
         }
     }
 }
 
-/** A card whose row is still loading: the size of a [PictureCard], focusable, and a press does nothing. */
-@Composable
-private fun PlaceholderCard(aspect: Float) {
-    Card(onClick = {}, modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {}
-}
-
 /**
  * A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details
- * ([onLongClick]). A thumbnail refused with 429 or 503 (the host asked for a pause, often after a fast scroll)
- * is asked again once the pause is over ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
+ * ([onLongClick]). With no picture ([p] `null`: its row is still loading) it is the same card, empty and
+ * focusable; it stays the same node when the picture arrives, so a focused card keeps the focus. Its
+ * thumbnail may be held ([Holdable]); one refused with 429 or 503 (the host asked for a pause, often after a
+ * fast scroll) is asked again once the pause is over ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
  */
 @Composable
-fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
-    var retries by remember(p.thumbUrl) { mutableIntStateOf(0) }
-    var retryIn by remember(p.thumbUrl) { mutableStateOf<Long?>(null) }
+fun PictureCard(p: Picture?, aspect: Float, onClick: () -> Unit, onLongClick: () -> Unit) {
+    var retries by remember(p?.thumbUrl) { mutableIntStateOf(0) }
+    var retryIn by remember(p?.thumbUrl) { mutableStateOf<Long?>(null) }
     LaunchedEffect(retryIn) {
         val ms = retryIn ?: return@LaunchedEffect
         delay(ms)
@@ -794,18 +760,19 @@ fun PictureCard(p: Picture, aspect: Float, onClick: () -> Unit, onLongClick: () 
         onLongClick = onLongClick,
         modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick, onLongPress = onLongClick),
     ) {
-        Box(Modifier.fillMaxSize()) {
+        if (p != null) Box(Modifier.fillMaxSize()) {
+            val context = LocalContext.current
             key(retries) {
+                val request = remember(p.thumbUrl) {
+                    ImageRequest.Builder(context).data(p.thumbModel()).tag(Holdable::class.java, Holdable).build()
+                }
                 AsyncImage(
-                    model = p.thumbModel(),
+                    model = request,
                     contentDescription = p.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
                     onError = { e ->
-                        val answer = (e.result.throwable as? HttpException)?.response
-                        retryIn = RetryPolicy.thumbRetryMs(
-                            answer?.code, answer?.header("Retry-After"), retries, System.currentTimeMillis(),
-                        )
+                        retryIn = RetryPolicy.thumbRetryMs(e.result.throwable, retries, System.currentTimeMillis())
                     },
                 )
             }

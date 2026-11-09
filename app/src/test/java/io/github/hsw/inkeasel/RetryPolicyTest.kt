@@ -1,5 +1,6 @@
 package io.github.hsw.inkeasel
 
+import coil.network.HttpException
 import io.github.hsw.inkeasel.RetryPolicy.MAX_HOLD_MS
 import io.github.hsw.inkeasel.RetryPolicy.MAX_RETRIES
 import io.github.hsw.inkeasel.RetryPolicy.MAX_WAIT_MS
@@ -9,9 +10,13 @@ import io.github.hsw.inkeasel.RetryPolicy.retryAfterMs
 import io.github.hsw.inkeasel.RetryPolicy.retryAfterSeconds
 import io.github.hsw.inkeasel.RetryPolicy.thumbRetryMs
 import io.github.hsw.inkeasel.RetryPolicy.waitMs
+import okhttp3.Protocol
+import okhttp3.Request
+import okhttp3.Response
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.IOException
 
 class RetryPolicyTest {
     // Mon, 09 Nov 2026 12:00:00 GMT
@@ -130,5 +135,25 @@ class RetryPolicyTest {
     fun aCardDoesNotAskAgainAfterOtherFailures() {
         assertNull(thumbRetryMs(null, null, 0, now)) // no HTTP answer: a file, a connection failure
         for (code in listOf(400, 403, 404, 500, 502, 504)) assertNull("HTTP $code", thumbRetryMs(code, "1", 0, now))
+    }
+
+    private fun answer(code: Int, retryAfter: String?): Response = Response.Builder()
+        .request(Request.Builder().url("https://upload.wikimedia.org/a.jpg").build())
+        .protocol(Protocol.HTTP_1_1)
+        .code(code)
+        .message("")
+        .apply { if (retryAfter != null) header("Retry-After", retryAfter) }
+        .build()
+
+    @Test
+    fun aCardReadsTheAnswerFromCoilsError() {
+        // a real 429, and the interceptor's own "held" one, which looks the same to Coil
+        assertEquals(11_000L, thumbRetryMs(HttpException(answer(429, "11")), 0, now))
+        assertEquals(1_000L, thumbRetryMs(HttpException(answer(503, null)), 0, now))
+        assertNull(thumbRetryMs(HttpException(answer(429, "11")), THUMB_RETRIES, now))
+        assertNull(thumbRetryMs(HttpException(answer(404, null)), 0, now))
+        // not an HTTP answer: a decoding error, a connection failure
+        assertNull(thumbRetryMs(IOException("reset"), 0, now))
+        assertNull(thumbRetryMs(IllegalStateException("bad image"), 0, now))
     }
 }

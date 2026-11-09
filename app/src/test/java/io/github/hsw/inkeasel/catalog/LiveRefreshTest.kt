@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
+import android.database.sqlite.SQLiteFullException
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.ClevelandMapping
@@ -117,7 +118,9 @@ class LiveRefreshTest {
         assertEquals("cma:99", shown()[9])
         assertEquals("commons:Example valley at dawn - 06.jpg", shown()[19])
 
-        // and they read back as pictures the way the grid, the details panel and the viewer take them
+        // and they read back as pictures the way the grid, the details panel and the viewer take them (the
+        // hidden duplicate shown here to read it as the list would)
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET hidden = 0 WHERE id = 'cma:152006'")
         val gainsborough = CatalogPicture.of(runBlocking { dao.row("cma:152006", ru) }!!, ", ")
         assertEquals("Rocky, Wooded Landscape with a Dell and Weir", gainsborough.title)
         assertEquals("Thomas Gainsborough, c. 1782–1783", gainsborough.credit)
@@ -212,8 +215,8 @@ class LiveRefreshTest {
         val commons = Fake("commons") { Listing(rows("commons", "a.jpg", "b.jpg", "c.jpg")) }
         val refresh = refresh(commons)
         refresh.go()
+        val refreshed = clock
         clock += CatalogSyncPlan.CHECK_EVERY_MS
-        val due = clock
 
         // smaller: the stored list stays
         commons.answer = { Listing(rows("commons", "d.jpg", "e.jpg"), complete = false) }
@@ -224,9 +227,30 @@ class LiveRefreshTest {
         commons.answer = { Listing(rows("commons", "d.jpg", "e.jpg", "f.jpg", "g.jpg"), complete = false) }
         assertEquals(listOf(LiveResult("commons", LiveOutcome.PARTIAL, 4)), refresh.go())
         assertEquals(4, query("SELECT id FROM picture WHERE source = 'commons'").size)
-        assertFalse(query("SELECT checkedAt FROM catalog_file").contains("$due"))
+        // the last whole list is still the one of a week ago, so the source is due
+        assertEquals(listOf("$refreshed"), query("SELECT checkedAt FROM catalog_file WHERE name = 'live-commons'"))
         refresh.go()
         assertEquals(4, commons.asked)
+    }
+
+    @Test
+    fun aSourceWhoseListCannotBeStoredLeavesTheOthersRefreshed() {
+        wikidata(10)
+        val cma = Fake("cma") { Listing(rows("cma", "1")) }
+        val commons = Fake("commons") { Listing(rows("commons", "a.jpg")) }
+        var writes = 0
+        val results = runBlocking {
+            refresh(cma, commons).run { block ->
+                if (writes++ == 0) throw SQLiteFullException("database or disk is full")
+                lock.withLock { block() }
+            }
+        }
+
+        assertEquals(listOf(LiveResult("cma", LiveOutcome.FAILED, 0), LiveResult("commons", LiveOutcome.REPLACED, 1)), results)
+        assertEquals(listOf("commons:a.jpg"), shown().filterNot { it.startsWith("wd:") })
+        assertTrue(logged.any { it.startsWith("cma: storing the list failed") })
+        // nothing recorded for the failed source: it is asked again at the next start
+        assertEquals(listOf("live-commons"), query("SELECT name FROM catalog_file"))
     }
 
     @Test

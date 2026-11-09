@@ -127,4 +127,29 @@ class CatalogStepsTest {
         assertEquals(1, next.index)
         assertEquals(22, next.count)
     }
+
+    @Test
+    fun aStepStartsFromWhereThePictureIsNowAfterARerank() = runTest {
+        fill()
+        val steps = steps()
+        val third = steps.walk(steps.open("wd:Q1")!!, 1, 2)!!
+        assertEquals("wd:Q3", third.picture.id)
+        // a new import puts a row ahead of every other: the ranks the viewer read are all one place off
+        dao.insertPictures(listOf(wd(-1).copy(id = "wd:Q0", wikidataId = "Q0", rank = -50_000)))
+        dao.rerank()
+        assertEquals(dao.picture("wd:Q2")!!.rank, third.rank) // Q3's old rank is Q2's now
+
+        val next = steps.step(third, 1)!!
+        assertEquals("wd:Q4", next.picture.id)
+        assertEquals(4, next.index) // after Q0 … Q3
+        assertEquals("wd:Q2", steps.step(third, -1)!!.picture.id)
+    }
+
+    @Test
+    fun aPictureHiddenSinceTheGridReadItOpensAlone() = runTest {
+        fill()
+        // the Commons row that duplicates wd:Q3 is hidden: the list does not show it, so it has no place there
+        assertEquals(true, dao.picture("commons:0")!!.hidden)
+        assertNull(steps().open("commons:0"))
+    }
 }

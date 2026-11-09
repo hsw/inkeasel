@@ -126,22 +126,6 @@ class CatalogRankTest {
     }
 
     @Test
-    fun clash_onlyWhenANewRankIsHeldByAnotherRow() {
-        // the starter's rows at temporary negative ranks: every new rank is free, so each row moves once
-        val fresh = (0 until 3).map { wd(it).copy(rank = -1L - it) }
-        assertEquals(false, CatalogRank.clash(fresh, CatalogRank.changes(fresh)))
-
-        // a new Wikidata row ahead of the others: their new ranks are held by each other
-        val settled = (1 until 4).map { wd(it).copy(rank = 10L * (it - 1)) }
-        val shifted = settled + wd(0).copy(rank = -1)
-        assertEquals(true, CatalogRank.clash(shifted, CatalogRank.changes(shifted)))
-
-        // a row that only turns hidden keeps its own rank: no clash
-        val own = listOf(Placement("wd:Q1", 0, true))
-        assertEquals(false, CatalogRank.clash(listOf(wd(1).copy(rank = 0)), own))
-    }
-
-    @Test
     fun commonsFileKey() {
         assertEquals("Mona Lisa.jpg", CatalogRank.fileKey(" Mona_Lisa.jpg "))
     }

@@ -151,7 +151,7 @@ class CatalogStoreTest {
     }
 
     @Test
-    fun aLanguageTheStarterLacksIsLookedForOncePerProcess() {
+    fun aLanguageTheStarterLacksImportsNothing() {
         release.server.shutdown()
         store.start(ruChain)
         awaitPasses(1)
@@ -162,10 +162,27 @@ class CatalogStoreTest {
         store.start(fr)
         awaitPasses(3)
 
-        assertEquals(1, logged.count { it.startsWith("starter labels of [fr]") })
-        assertTrue(logged.any { it == "starter labels of [fr]: none" })
+        assertFalse(logged.any { it.startsWith("starter labels of") })
+        assertFalse("fr" in opened)
         // nothing was swapped, so the Russian labels stay until a French import
         assertEquals(listOf("en", "ru"), query("SELECT DISTINCT lang FROM label ORDER BY lang"))
+    }
+
+    @Test
+    fun aLanguageThatLeavesAndComesBackShowsItsStarterLabelsAgainOffline() {
+        release.server.shutdown()
+        store.start(ruChain)
+        awaitPasses(1)
+        store.start(deChain) // the swap drops the Russian labels
+        awaitPasses(2)
+        assertEquals(listOf("de", "en"), query("SELECT DISTINCT lang FROM label ORDER BY lang"))
+
+        store.start(ruChain)
+        awaitPasses(3)
+
+        assertEquals("Старт", title("wd:Q1", ruChain))
+        assertEquals(listOf("en", "ru"), query("SELECT DISTINCT lang FROM label ORDER BY lang"))
+        assertTrue(logged.any { it.startsWith("starter labels of [ru]") })
     }
 
     @Test
@@ -225,6 +242,57 @@ class CatalogStoreTest {
             assertTrue(logged.any { it.startsWith("starter import failed") })
         } finally {
             store.close()
+        }
+    }
+
+    @Test
+    fun aFailedStarterImportIsNotEmptyOnceTheReleaseIsIn() {
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40), core(3))))
+        release.serve("labels-ru.jsonl.gz", gzip(listOf(label(3, "Три"))))
+        val broken = StarterSet({ ByteArrayInputStream("not json\n".toByteArray()) }, starter.languages, starter.labels)
+        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
+        val store = CatalogStore(db, broken, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        try {
+            store.start(ruChain)
+            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            assertTrue(logged.any { it.startsWith("starter import failed") })
+            // the pass's release import filled the database: the list shows it, and "none yet" goes
+            assertFalse(store.empty.value)
+            val rows = runBlocking { store.pages.asSnapshot() }
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3"), rows.map { it.id })
+            assertEquals("Три", rows.last().title)
+        } finally {
+            store.close()
+        }
+    }
+
+    @Test
+    fun aRestartOverAFilledDatabaseImportsNothingAndAsksForNothingWithinTheWeek() {
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40), core(3))))
+        release.serve("labels-ru.jsonl.gz", gzip(listOf(label(1, "Один"))))
+        store.start(ruChain)
+        awaitPasses(1)
+        store.close()
+        val labels = query("SELECT * FROM label ORDER BY entityId, lang")
+        val asked = release.requests.size
+        opened.clear()
+
+        // the next process: a new store over the same database
+        val later = CopyOnWriteArrayList<String>()
+        val log: (String, Throwable?) -> Unit = { msg, e -> later += if (e == null) msg else "$msg: $e" }
+        val next = CatalogStore(db, starter, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        try {
+            next.start(ruChain)
+            runBlocking { withTimeout(20_000) { next.passes.first { it >= 1 } } }
+
+            assertFalse(later.any { it.startsWith("starter") })
+            assertTrue(opened.isEmpty()) // no starter file read
+            assertEquals(asked, release.requests.size)
+            assertEquals(labels, query("SELECT * FROM label ORDER BY entityId, lang"))
+            assertFalse(next.empty.value)
+            assertEquals("Один", runBlocking { next.pages.asSnapshot() }.first().title)
+        } finally {
+            next.close()
         }
     }
 

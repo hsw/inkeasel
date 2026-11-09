@@ -1,5 +1,6 @@
 package io.github.hsw.inkeasel
 
+import coil.network.HttpException
 import okhttp3.Call
 import okhttp3.Interceptor
 import okhttp3.Protocol
@@ -19,8 +20,8 @@ import java.time.format.DateTimeParseException
  * (seconds or an HTTP date) is honoured: an answer that asks for a longer wait than [MAX_WAIT_MS] is final, so
  * a server is never asked earlier than it said. Without the header the waits are [DEFAULT_WAITS_MS]. No other
  * code is retried, and neither is a connection failure (OkHttp retries those itself). A host that answered
- * 429 or 503 is held for the wait it asked for ([holdMs]): nothing more is sent to it until then. A card's
- * thumbnail that failed so is asked again once the wait is over ([thumbRetryMs]). Pure.
+ * 429 or 503 is held for the wait it asked for ([holdMs]): no card thumbnail ([Holdable]) is sent to it until
+ * then. A card's thumbnail that failed so is asked again once the wait is over ([thumbRetryMs]). Pure.
  */
 object RetryPolicy {
     const val MAX_RETRIES = 2
@@ -68,8 +69,17 @@ object RetryPolicy {
      * answer asked for (the first default wait without one), at most [MAX_HOLD_MS].
      */
     fun thumbRetryMs(code: Int?, retryAfter: String?, retries: Int, nowMs: Long): Long? {
-        if (code == null || code !in CODES || retries >= THUMB_RETRIES) return null
-        return (retryAfterMs(retryAfter, nowMs) ?: DEFAULT_WAITS_MS[0]).coerceIn(DEFAULT_WAITS_MS[0], MAX_HOLD_MS)
+        if (code == null || retries >= THUMB_RETRIES) return null
+        return holdMs(code, retryAfter, nowMs)?.coerceAtLeast(DEFAULT_WAITS_MS[0])
+    }
+
+    /**
+     * [thumbRetryMs] for the [error] Coil reports for a card's thumbnail: its HTTP answer, a local "held" one
+     * ([RetryInterceptor]) included; any other failure is not asked again.
+     */
+    fun thumbRetryMs(error: Throwable, retries: Int, nowMs: Long): Long? {
+        val answer = (error as? HttpException)?.response
+        return thumbRetryMs(answer?.code, answer?.header("Retry-After"), retries, nowMs)
     }
 
     /**
@@ -94,16 +104,26 @@ object RetryPolicy {
 }
 
 /**
+ * The tag of a request the host hold applies to ([RetryInterceptor]): a card's thumbnail, which a scroll asks
+ * for by the hundred and the card asks for again after the pause ([RetryPolicy.thumbRetryMs]). Coil passes an
+ * image request's tags on to OkHttp. A request without it (the picture sent to the frame, the viewer's
+ * rendition, a list, a release file: something a user asked for, or asked for once) is never held: it is sent,
+ * and its own 429 or 503 is retried or returned as the server gave it.
+ */
+object Holdable
+
+/**
  * Asks a request again as [RetryPolicy] says. The wait runs on the calling thread (an OkHttp dispatcher
  * thread for an enqueued call) in slices of [sliceMs], checking the call before and while waiting: a cancelled
  * call (a cancelled coroutine, a call timeout) stops at once with an [IOException]. Where [mayWait] is false
  * (the main thread) the answer is returned as it is. The answer that is not used is closed.
  *
- * A host (with its port) that answered 429 or 503 is held ([RetryPolicy.holdMs]): a request to it before the
- * hold ends waits for it where it may wait no longer than [RetryPolicy.MAX_WAIT_MS], and is otherwise
- * answered here, without being sent, with a 429 whose `Retry-After` is what is left of the hold. So a fast
- * scroll past hundreds of cards sends one request to a host that asked for a pause, not hundreds. The hold is
- * kept for the host the request was sent to (a redirect's target is not checked before sending).
+ * A host (with its port) that answered 429 or 503 is held ([RetryPolicy.holdMs]): a [Holdable] request to it
+ * before the hold ends waits for it where it may wait no longer than [RetryPolicy.MAX_WAIT_MS], and is
+ * otherwise answered here, without being sent, with a 429 whose `Retry-After` is what is left of the hold. So a
+ * fast scroll past hundreds of cards sends one request to a host that asked for a pause, not hundreds. Any
+ * answer holds its host, whatever the request; the hold is kept for the host the request was sent to (a
+ * redirect's target is not checked before sending).
  */
 class RetryInterceptor(
     private val mayWait: () -> Boolean = { true },
@@ -117,7 +137,7 @@ class RetryInterceptor(
         val request = chain.request()
         val host = "${request.url.host}:${request.url.port}"
         val left = (holds[host] ?: 0L) - now()
-        if (left > 0) {
+        if (left > 0 && request.tag(Holdable::class.java) != null) {
             if (!mayWait() || left > RetryPolicy.MAX_WAIT_MS) return held(request, left)
             pause(chain.call(), left)
         }
