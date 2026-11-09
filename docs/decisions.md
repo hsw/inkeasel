@@ -3,6 +3,18 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The first signed release is 0.2.0, with a new release key
+
+The release key is a PKCS12 keystore holding one RSA 4096 key (alias `inkeasel`, certificate `CN=InkEasel`,
+valid 30 years), generated for this release and kept only in the maintainer's password manager and the
+repository's four `INKEASEL_*` Actions secrets. PKCS12 keeps one password for the store and the key, so
+`INKEASEL_KEY_PASSWORD` equals `INKEASEL_KEYSTORE_PASSWORD`. Every later release must be signed with it:
+Android installs an update only over the same signer, so a lost key means users reinstall. Builds before
+0.2.0 were debug-signed and cannot be updated in place to a release build.
+
+Rejected: Play App Signing alone (the APK on GitHub releases needs its own key either way); a separate key
+password (PKCS12 ignores it, with a keytool warning).
+
 ## 2026-11-09 — The Catalog's nudity filter is a setting with three values; the device can lock it
 **Settings → Catalog → Nudity** chooses the filter: "Hide explicit works" (the default), "Hide all nudity"
 or "Show all"; a press (OK or a tap) moves to the next value in that order, and the choice is stored in plain
