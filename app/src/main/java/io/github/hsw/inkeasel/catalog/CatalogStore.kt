@@ -154,8 +154,22 @@ class CatalogStore internal constructor(
         })
     }
 
-    /** Runs [block] under the write lock: writes to the catalog never overlap. */
-    override suspend fun <T> write(block: suspend () -> T): T = writeLock.withLock { block() }
+    private val _writes = MutableStateFlow(0)
+
+    /**
+     * Writes to the catalog finished in this process ([write], whether or not they changed a row): after one,
+     * a picture read before it may have another nudity level now (a release import, [CatalogDao.markListed]).
+     */
+    val writes: StateFlow<Int> = _writes.asStateFlow()
+
+    /** Runs [block] under the write lock: writes to the catalog never overlap. Counted in [writes]. */
+    override suspend fun <T> write(block: suspend () -> T): T = writeLock.withLock {
+        try {
+            block()
+        } finally {
+            _writes.update { it + 1 }
+        }
+    }
 
     /** Stops the work (tests; the process-wide store lives as long as the process). */
     internal fun close() {

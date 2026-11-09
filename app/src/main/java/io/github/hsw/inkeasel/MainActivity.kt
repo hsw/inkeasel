@@ -61,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
 import androidx.paging.PagingData
@@ -77,6 +78,7 @@ import androidx.tv.material3.Text
 import androidx.tv.material3.darkColorScheme
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import io.github.hsw.inkeasel.catalog.CatalogDao
 import io.github.hsw.inkeasel.catalog.CatalogPicture
 import io.github.hsw.inkeasel.catalog.CatalogRow
 import io.github.hsw.inkeasel.catalog.CatalogSteps
@@ -86,6 +88,7 @@ import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.FeatureStore
 import io.github.hsw.inkeasel.nowplaying.FrameController
 import io.github.hsw.inkeasel.nowplaying.FrameControllers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -191,6 +194,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return ok
     }
 
+    /**
+     * [p] [passes] at the nudity level stored for it now ([CatalogDao.nudity]): a release import or the built-in
+     * list ([CatalogDao.markListed]) may have raised it since [p] was read. The send path checks this; a picture
+     * gone from the database, or a failed read, keeps the level it was read with.
+     */
+    suspend fun passesStored(p: Picture): Boolean {
+        if (p.local) return passes(p)
+        val level = try {
+            store.db.catalog().nudity(p.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "nudity level of ${p.id} not read", e)
+            null
+        }
+        return passes(if (level == null) p else p.copy(nudity = level))
+    }
+
+    /**
+     * After each write to the catalog ([CatalogStore.writes]), and when the viewer finds no place for its
+     * picture: whatever shows a Catalog picture goes if the level stored for it now is one the filter in force
+     * hides ([passesStored]), as [applyNudity] takes it away for a new filter: the viewer closes, so does the
+     * details panel, and the Bluetooth panel forgets its picture. Each goes only while it still shows the
+     * picture checked.
+     */
+    private suspend fun recheckShown() {
+        viewer?.picture?.takeIf { viewerOnCatalog }?.let { p ->
+            if (!passesStored(p) && viewerOnCatalog && viewer?.picture == p) {
+                Log.i(TAG, "nudity level of ${p.id} raised: Catalog viewer closed")
+                nav.close()
+            }
+        }
+        details?.takeIf { !it.local }?.let { p ->
+            if (!passesStored(p) && details == p) {
+                Log.i(TAG, "nudity level of ${p.id} raised: details closed")
+                details = null
+            }
+        }
+        blePanel?.picture?.takeIf { !it.local }?.let { p ->
+            if (!passesStored(p)) blePanel?.takeIf { it.picture == p }?.let { panel ->
+                Log.i(TAG, "nudity level of ${p.id} raised: the Bluetooth panel sends no Catalog picture")
+                blePanel = panel.copy(picture = null)
+            }
+        }
+    }
+
     /** My pictures ([LOCAL_TAB]): a list loaded whole ([readLocal]), re-scanned when its folder changes. */
     private val local = LocalImages(app)
 
@@ -286,6 +335,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var viewerByPress by mutableStateOf(false)
         private set
 
+    init {
+        // an import or a live refresh may raise the level of a picture shown now
+        viewModelScope.launch { store.writes.drop(1).collect { recheckShown() } }
+    }
+
     /**
      * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
      * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
@@ -300,7 +354,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (viewerOnCatalog) {
             val steps = CatalogSteps(store.db.catalog(), store.chain.value, store.nudityBelow.value, catalogPicture)
             nav.open(ViewerState.alone(p), steps) {
-                steps.open(p.id)?.also(::logViewer)
+                // no place in the list: the card may hold a level an import has raised since it was read
+                steps.open(p.id)?.also(::logViewer) ?: run {
+                    viewModelScope.launch { recheckShown() }
+                    null
+                }
             }
         } else {
             val steps = ListSteps((localState as? LocalState.Loaded)?.items.orEmpty())
@@ -563,12 +621,15 @@ class MainActivity : ComponentActivity() {
 
     // Hand the upload to the background service, so it survives leaving the app and does not
     // interrupt playback in another app. A short toast confirms; the service toasts again when done. Checked
-    // against the nudity filter here too: the Bluetooth panel sends the picture it was opened with later.
+    // against the nudity filter here too, at the level stored now: the Bluetooth panel sends the picture it was
+    // opened with later, and an import may have raised the level of a picture read before it.
     private fun sendToFrame(p: Picture) {
-        if (!vm.passes(p)) return
-        if (p.local) UploadService.startManual(this, Art.File(p.fullUrl))
-        else UploadService.startManual(this, Art.Url(p.fullUrl), p.title)
-        Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            if (!vm.passesStored(p)) return@launch
+            if (p.local) UploadService.startManual(this@MainActivity, Art.File(p.fullUrl))
+            else UploadService.startManual(this@MainActivity, Art.Url(p.fullUrl), p.title)
+            Toast.makeText(this@MainActivity, R.string.upload_sending, Toast.LENGTH_SHORT).show()
+        }
     }
 
     /**
@@ -646,6 +707,7 @@ fun App(
     val catalogGrid = rememberLazyGridState()
     val pages = vm.catalogPages.collectAsLazyPagingItems()
     val catalogEmpty by vm.catalogEmpty.collectAsState()
+    val nudityBelow by vm.catalogNudityBelow.collectAsState()
     val names = stringResource(R.string.list_names_separator)
     val density = LocalDensity.current.density
     val tabFocus = remember { FocusRequester() }
@@ -706,7 +768,8 @@ fun App(
                             )
                             when (view) {
                                 CatalogView.GRID -> PagedGrid(
-                                    pages, catalogPicture, aspect, layout, catalogGrid, onPress = press, onDetails = vm::openDetails,
+                                    pages, catalogPicture, nudityBelow, aspect, layout, catalogGrid,
+                                    onPress = press, onDetails = vm::openDetails,
                                 )
                                 CatalogView.NONE -> Text(stringResource(R.string.catalog_none))
                                 CatalogView.FILTERED -> Text(stringResource(R.string.catalog_filtered))
@@ -864,6 +927,7 @@ private fun LocalGrid(
 private fun PagedGrid(
     pages: LazyPagingItems<CatalogRow>,
     picture: (CatalogRow) -> Picture,
+    nudityBelow: Int,
     aspect: Float,
     layout: CatalogLayout,
     grid: LazyGridState,
@@ -879,7 +943,8 @@ private fun PagedGrid(
     ) {
         items(pages.itemCount) { i ->
             val row = pages[i]
-            val p = remember(row, picture) { row?.let(picture) }
+            // a card of the old list that the filter in force hides is empty until the new list's page arrives
+            val p = remember(row, picture, nudityBelow) { CatalogPicture.card(row, nudityBelow, picture) }
             PictureCard(p, aspect, onClick = { p?.let(onPress) }, onLongClick = { p?.let(onDetails) })
         }
     }

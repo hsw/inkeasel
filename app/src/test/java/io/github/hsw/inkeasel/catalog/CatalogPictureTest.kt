@@ -96,6 +96,17 @@ class CatalogPictureTest {
     }
 
     @Test
+    fun card_emptyForARowNotLoaded_orOneTheFilterInForceHides() {
+        val nude = row().copy(nudity = NudityLevel.NUDE.ordinal)
+        val make = { r: CatalogRow -> CatalogPicture.of(r, sep) }
+        assertEquals(null, CatalogPicture.card(null, NudityFilter.SHOW_ALL.nudityBelow, make))
+        assertEquals(CatalogPicture.of(nude, sep), CatalogPicture.card(nude, NudityFilter.HIDE_EXPLICIT.nudityBelow, make))
+        // a card of the old list kept while a stricter filter's first page loads
+        assertEquals(null, CatalogPicture.card(nude, NudityFilter.HIDE_NUDES.nudityBelow, make))
+        assertEquals(null, CatalogPicture.card(row().copy(nudity = NudityLevel.EXPLICIT.ordinal), NudityFilter.HIDE_EXPLICIT.nudityBelow, make))
+    }
+
+    @Test
     fun cardWidth_byColumnWidth() {
         assertEquals(330, CatalogPicture.cardWidth(200))
         assertEquals(330, CatalogPicture.cardWidth(330))

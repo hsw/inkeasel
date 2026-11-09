@@ -129,6 +129,16 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun eachWriteIsCounted_aFailedOneToo() {
+        assertEquals(0, store.writes.value)
+        runBlocking { store.write { } }
+        assertEquals(1, store.writes.value)
+        runCatching { runBlocking { store.write { error("rolled back") } } }
+        // what shows a picture checks it again after any write: one that failed may have changed rows before
+        assertEquals(2, store.writes.value)
+    }
+
+    @Test
     fun anOfflineFirstStartShowsTheStarterSet() {
         release.server.shutdown()
 

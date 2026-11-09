@@ -325,6 +325,13 @@ abstract class CatalogDao {
     @Query("SELECT * FROM picture WHERE id = :id")
     abstract suspend fun picture(id: String): PictureEntity?
 
+    /**
+     * The nudity level ([NudityLevel] ordinal) stored now for the picture [id]; `null` if it is gone. What shows
+     * or sends a picture read before an import or a live refresh checks this, not the level read with it.
+     */
+    @Query("SELECT nudity FROM picture WHERE id = :id")
+    abstract suspend fun nudity(id: String): Int?
+
     /** New pictures; each needs a rank no other row has (a negative one until [rerank]). */
     @Insert(onConflict = OnConflictStrategy.ABORT)
     abstract suspend fun insertPictures(pictures: List<PictureEntity>)

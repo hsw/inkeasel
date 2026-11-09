@@ -34,6 +34,15 @@ object CatalogPicture {
         return cardWidth(min(columnPx, fitted))
     }
 
+    /**
+     * What the grid's card of [row] shows ([picture] makes it, as [of]) under the nudity filter [nudityBelow]:
+     * nothing (`null`, the empty card of a row still loading) for a row not loaded yet, or one the filter hides.
+     * A new filter re-pages the grid, but its old rows stay until the new list's first page arrives; a stricter
+     * filter empties those it hides at once.
+     */
+    fun card(row: CatalogRow?, nudityBelow: Int, picture: (CatalogRow) -> Picture): Picture? =
+        row?.let(picture)?.takeIf { it.shownUnder(nudityBelow) }
+
     /** The item's page on Wikidata, e.g. `https://www.wikidata.org/wiki/Q12418`. */
     fun wikidataPage(qid: String): String = "https://www.wikidata.org/wiki/$qid"
 

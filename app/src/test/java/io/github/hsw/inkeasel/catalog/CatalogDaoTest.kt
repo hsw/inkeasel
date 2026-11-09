@@ -137,6 +137,10 @@ class CatalogDaoTest {
             everything().filter { it.id in setOf("wd:Q3", "wd:Q4", "wd:Q5") }.map { it.nudity },
         )
         assertEquals(NudityLevel.NUDE.ordinal, dao.placed("wd:Q3", ru, all)?.row?.nudity)
+        // the level stored now, for what was read before an import (a hidden duplicate too); none for a gone row
+        assertEquals(NudityLevel.EXPLICIT.ordinal, dao.nudity("wd:Q5"))
+        assertEquals(NudityLevel.NONE.ordinal, dao.nudity("commons:0"))
+        assertNull(dao.nudity("wd:Q999"))
     }
 
     @Test

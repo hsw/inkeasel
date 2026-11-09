@@ -7,9 +7,13 @@ import android.os.UserManager
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
+import io.github.hsw.inkeasel.catalog.CatalogPicture
+import io.github.hsw.inkeasel.catalog.CatalogRank
 import io.github.hsw.inkeasel.catalog.CatalogStore
 import io.github.hsw.inkeasel.catalog.NudityFilter
 import io.github.hsw.inkeasel.catalog.NudityLevel
+import io.github.hsw.inkeasel.catalog.PictureEntity
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -53,11 +57,45 @@ class MainViewModelNudityTest {
     @After
     fun tearDown() {
         restricted(false)
+        if (stored.isNotEmpty()) {
+            runBlocking { store.write { sql("DELETE FROM picture WHERE id IN (${stored.joinToString { "'$it'" }})") } }
+        }
         owner.clear()
         store.applyFilter(NudityFilter.DEFAULT) // the store is process-wide
     }
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
+
+    /** Runs the main looper until [done] (a read of the catalog database resumes on it from Room's executor). */
+    private fun idleUntil(done: () -> Boolean) {
+        repeat(500) {
+            idle()
+            if (done()) return
+            Thread.sleep(10)
+        }
+    }
+
+    // pictures this test put into the process-wide catalog database
+    private val stored = mutableListOf<String>()
+
+    private fun sql(statement: String) = store.db.openHelper.writableDatabase.execSQL(statement)
+
+    /** A Catalog picture stored at [level], as the grid would have read it. */
+    private fun storedPicture(id: String, level: NudityLevel = NudityLevel.NONE): Picture {
+        stored += id
+        runBlocking {
+            store.write {
+                store.db.catalog().insertPictures(
+                    listOf(PictureEntity(id = id, source = CatalogRank.WIKIDATA, rank = -900_000L - stored.size, nudity = level.ordinal)),
+                )
+            }
+        }
+        return picture.copy(id = id, nudity = level.ordinal)
+    }
+
+    /** An import raising the stored level of [id] (the release, or the built-in list at a start). */
+    private fun raise(id: String, level: NudityLevel) =
+        runBlocking { store.write { sql("UPDATE picture SET nudity = ${level.ordinal} WHERE id = '$id'") } }
 
     private fun restricted(on: Boolean) =
         shadowOf(users).setUserRestriction(Process.myUserHandle(), UserManager.DISALLOW_MODIFY_ACCOUNTS, on)
@@ -182,6 +220,55 @@ class MainViewModelNudityTest {
         vm.openDetails(picture)
         assertEquals(picture, vm.details)
         assertEquals(true, vm.passes(mine.copy(nudity = NudityLevel.EXPLICIT.ordinal)))
+    }
+
+    @Test
+    fun theSendPath_checksTheLevelStoredNow_notTheOneReadWithThePicture() {
+        val read = storedPicture("wd:Q0-raised")
+        assertEquals(true, runBlocking { vm.passesStored(read) })
+        raise(read.id, NudityLevel.EXPLICIT)
+        assertEquals(true, vm.passes(read)) // the level it was read with
+        assertEquals(false, runBlocking { vm.passesStored(read) })
+        // a picture gone from the database keeps the level it was read with; one of mine is never read
+        assertEquals(true, runBlocking { vm.passesStored(picture) })
+        assertEquals(false, runBlocking { vm.passesStored(picture.copy(nudity = NudityLevel.EXPLICIT.ordinal)) })
+        assertEquals(true, runBlocking { vm.passesStored(mine.copy(id = read.id)) })
+    }
+
+    @Test
+    fun aLevelRaisedByAnImport_closesTheCatalogViewerOnThatPicture() {
+        val read = storedPicture("wd:Q0-viewed")
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)
+        idleUntil { vm.viewer?.rank != null } // its place in the list read
+        assertNotNull(vm.viewer?.rank)
+        assertEquals(read.id, vm.viewer?.picture?.id)
+
+        raise(read.id, NudityLevel.EXPLICIT)
+        idleUntil { vm.viewer == null }
+        assertNull(vm.viewer)
+    }
+
+    @Test
+    fun aLevelRaisedByAnImport_closesItsDetails_andEmptiesTheBluetoothPanel_butNotOthers() {
+        val kept = storedPicture("wd:Q0-kept")
+        val raised = storedPicture("wd:Q0-panel")
+        vm.openDetails(kept)
+        vm.showBlePanel(BleAsk.Stage.FIRST, raised) // closes the details
+        vm.openDetails(kept)
+
+        raise(raised.id, NudityLevel.NUDE) // still let through by the default filter
+        raise(kept.id, NudityLevel.NUDE)
+        idle()
+        assertEquals(raised, vm.blePanel?.picture)
+
+        raise(raised.id, NudityLevel.EXPLICIT)
+        idleUntil { vm.blePanel?.picture == null }
+        assertEquals(BlePanelState(BleAsk.Stage.FIRST, null), vm.blePanel)
+        assertEquals(kept, vm.details) // checked before the panel, and let through
+
+        raise(kept.id, NudityLevel.EXPLICIT)
+        idleUntil { vm.details == null }
+        assertNull(vm.details)
     }
 
     @Test
