@@ -257,7 +257,6 @@ class FrameFormatTest {
         val black = 0xFF000000.toInt()
         val idx = f.dither(intArrayOf(white, white, black, black, black, white, white, black))
         assertArrayEquals(byteArrayOf(1, 1, 0, 0, 0, 1, 1, 0), idx)
-        assertEquals(white, f.previewPixels(idx)[0])
     }
 
     @Test
@@ -350,7 +349,7 @@ class FrameFormatTest {
         // the picture's pixels are what the same picture dithered alone gives
         val alone = FrameFormat(2, 4, FrameFormats.E6, Nibbles4()).dither(IntArray(8) { grey })
         for (y in 0 until 4) for (x in 0 until 2) assertEquals(alone[y * 2 + x], idx[y * f.width + 3 + x])
-        assertEquals(0xFFFFFFFF.toInt(), f.previewPixels(idx)[0]) // the bars preview as white
+        assertEquals(FrameFormats.E6.inks[f.paper], Ink(255, 255, 255, 1)) // the bars are the white ink
     }
 
     @Test
@@ -362,15 +361,13 @@ class FrameFormatTest {
     }
 
     @Test
-    fun preview_worksForEveryFormat() {
+    fun dither_worksForEveryFormat() {
         for (b0 in listOf(e6, bwr, e4)) {
             val f = format(b0, 0x01, 0x64)!! // 200×200
             val px = IntArray(f.width * f.height) { i -> (0xFF shl 24) or ((i * 7) and 0xFF shl 16) or ((i * 3) and 0xFF shl 8) or (i and 0xFF) }
             val idx = f.dither(px)
-            val preview = f.previewPixels(idx)
-            assertEquals(px.size, preview.size)
-            val inks = f.palette.inks.map { (0xFF shl 24) or (it.r shl 16) or (it.g shl 8) or it.b }.toSet()
-            assertTrue(preview.all { it in inks })
+            assertEquals(px.size, idx.size)
+            assertTrue(idx.all { it.toInt() in f.palette.inks.indices })
             assertEquals(f.payloadSize, f.pack(idx).size)
         }
     }

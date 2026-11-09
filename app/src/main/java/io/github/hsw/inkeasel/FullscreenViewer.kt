@@ -175,23 +175,24 @@ fun FullscreenViewer(
             val w = constraints.maxWidth
             val h = constraints.maxHeight
             var failure by remember(p.id) { mutableStateOf<Txt?>(null) }
-            key(p.id) { ViewerImage(p, w, h) { failure = it } }
+            key(p.id) { FittedPicture(p, w, h) { failure = it } }
             Overlay(p, state, selected, overlay, failure, send, onSend)
         }
     }
 }
 
 /**
- * [p] fitted to a window of [w] × [h] px: its thumbnail first (already in Coil's cache from the grid), the
- * rendition over it once loaded, decoded to at most the window's size turned landscape (so a rotation decodes
- * nothing again). A failed load leaves the thumbnail and reports why ([onFailure]).
+ * [p] whole, fitted to an area of [w] × [h] px (the viewer's window, the details panel's picture area) at
+ * [alignment]: its thumbnail first (already in Coil's cache from the grid), the rendition for that area
+ * ([ViewerRules.rendition]) over it once loaded, decoded to at most the area's size turned landscape (so a
+ * rotation decodes nothing again). A failed load leaves the thumbnail and reports why ([onFailure]).
  */
 @Composable
-private fun ViewerImage(p: Picture, w: Int, h: Int, onFailure: (Txt) -> Unit) {
+fun FittedPicture(p: Picture, w: Int, h: Int, alignment: Alignment = Alignment.Center, onFailure: (Txt) -> Unit = {}) {
     val ctx = LocalContext.current
     val url = remember(p.id, w, h) { ViewerRules.rendition(p, w, h) }
     val request = remember(url) {
-        Log.i(TAG, "viewing ${p.id}: $url")
+        Log.i(TAG, "loading ${p.id}: $url")
         ImageRequest.Builder(ctx)
             .data(if (p.local) File(url) else url)
             .size(max(w, h), min(w, h))
@@ -200,12 +201,19 @@ private fun ViewerImage(p: Picture, w: Int, h: Int, onFailure: (Txt) -> Unit) {
             .build()
     }
     if (p.thumbUrl != url) {
-        AsyncImage(model = p.thumbModel(), contentDescription = null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
+        AsyncImage(
+            model = p.thumbModel(),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            alignment = alignment,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
     AsyncImage(
         model = request,
         contentDescription = p.title,
         contentScale = ContentScale.Fit,
+        alignment = alignment,
         modifier = Modifier.fillMaxSize(),
         onError = { err ->
             val e = err.result.throwable

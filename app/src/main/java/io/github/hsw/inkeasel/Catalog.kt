@@ -60,10 +60,6 @@ data class Picture(
 
     /** What to hand Coil for the grid card: a [File] for local pictures, the URL string otherwise. */
     fun thumbModel(): Any = if (local) File(thumbUrl) else thumbUrl
-
-    /** The full-resolution bytes for the frame. */
-    suspend fun fullBytes(): ByteArray =
-        if (local) withContext(Dispatchers.IO) { File(fullUrl).readBytes() } else Http.bytes(fullUrl)
 }
 
 /**

@@ -1,9 +1,6 @@
 package io.github.hsw.inkeasel
 
-import android.util.Log
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,18 +19,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,35 +36,21 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-private const val TAG = "DetailsPanel"
-
-/** Where the frame preview of the details panel is. */
-private sealed interface PreviewImage {
-    data object Loading : PreviewImage
-    data class Ready(val bitmap: ImageBitmap) : PreviewImage
-    data class Failed(val reason: Txt) : PreviewImage
-}
 
 /**
  * The details of picture [p], opened by a long press on its card: Google's "content details" layout for TV
  * (the text and the actions on the left, the picture large on the right), with every field the source gave
- * ([PictureDetails.rows]; the web page as text, since a TV launches no browser) and a preview drawn as the
- * [selected] frame will show it ([EpdImage.previewOf]: fitted whole with white bars, in its inks), or why there
- * is none. [onSend] ("Send to frame", focused first) takes the same send path as a plain press on the card;
- * "View full screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). The CENTER press that opened
- * it may still be held: its repeats and release are swallowed ([HeldCenter]), so the panel stays open with its
- * first button focused. A full-screen dialog over the catalog; on a narrow or portrait window everything is one
- * scrolling column, the actions under the title.
+ * ([PictureDetails.rows]; the web page as text, since a TV launches no browser) and the picture whole, fitted
+ * into all of the right side ([FittedPicture]: the card's thumbnail, then a rendition for that area).
+ * [onSend] ("Send to frame", focused first) takes the same send path as a plain press on the card; "View full
+ * screen" ([onView]) opens [FullscreenViewer]; Back closes ([onClose]). The CENTER press that opened it may
+ * still be held: its repeats and release are swallowed ([HeldCenter]), so the panel stays open with its first
+ * button focused. A full-screen dialog over the catalog; on a narrow or portrait window everything is one
+ * scrolling column, the actions under the title and the picture under them.
  */
 @Composable
 fun DetailsPanel(
     p: Picture,
-    selected: SelectedFrame?,
     onSend: () -> Unit,
     onView: () -> Unit,
     onClose: () -> Unit,
@@ -86,8 +65,6 @@ fun DetailsPanel(
             withFrameNanos {}
             runCatching { focus.requestFocus() }
         }
-        val plan = PictureDetails.preview(selected)
-        val image = previewImage(p, plan)
         // a long press opens the panel while CENTER is still down: its release must not press "Send to frame"
         val held = remember { HeldCenter() }
         Surface(Modifier.fillMaxSize().dropHeldCenter(held), shape = RectangleShape) {
@@ -115,26 +92,17 @@ fun DetailsPanel(
                             actions()
                         }
                         Spacer(Modifier.width(32.dp))
-                        Column(Modifier.weight(0.55f).fillMaxHeight()) {
-                            Caption(stringResource(R.string.details_original))
-                            // half the height each with a preview; without one, the note follows the picture
-                            Original(p, Modifier.weight(1f, fill = plan is PictureDetails.Preview.Render).fillMaxWidth())
-                            Spacer(Modifier.height(16.dp))
-                            Preview(plan, image, Modifier.weight(1f).fillMaxWidth())
-                        }
+                        // all of the content area's height: a portrait picture uses it whole
+                        Large(p, Modifier.weight(0.55f).fillMaxHeight())
                     }
                 } else {
-                    val aspect = (plan as? PictureDetails.Preview.Render)?.format?.aspect ?: FrameFormats.DEFAULT.aspect
-                    val own = if (p.width != null && p.height != null) p.width.toFloat() / p.height else aspect
+                    val own = if (p.width != null && p.height != null && p.height > 0) p.width.toFloat() / p.height else null
                     Column(pad.fillMaxSize().verticalScroll(rememberScrollState())) {
                         Title(p)
                         Spacer(Modifier.height(16.dp))
                         actions()
                         Spacer(Modifier.height(20.dp))
-                        Caption(stringResource(R.string.details_original))
-                        Original(p, Modifier.fillMaxWidth().aspectRatio(own))
-                        Spacer(Modifier.height(16.dp))
-                        Preview(plan, image, Modifier.fillMaxWidth().aspectRatio(aspect))
+                        Large(p, Modifier.fillMaxWidth().aspectRatio(own ?: FrameFormats.DEFAULT.aspect))
                         Spacer(Modifier.height(20.dp))
                         Rows(p)
                     }
@@ -144,41 +112,17 @@ fun DetailsPanel(
     }
 }
 
-/** Renders the preview of [p] for [plan] off the main thread; cancelled (with its download) when the panel closes. */
+/** [p] whole in the area of [modifier], fitted (no crop) and placed at its top. */
 @Composable
-private fun previewImage(p: Picture, plan: PictureDetails.Preview): PreviewImage {
-    val format = (plan as? PictureDetails.Preview.Render)?.format
-    val state by produceState<PreviewImage>(PreviewImage.Loading, p.fullUrl, format) {
-        if (format == null) return@produceState
-        value = PreviewImage.Loading
-        value = try {
-            val bytes = p.fullBytes()
-            PreviewImage.Ready(withContext(Dispatchers.Default) { EpdImage.previewOf(bytes, format) }.asImageBitmap())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "preview of ${p.id} failed", e)
-            PreviewImage.Failed(PictureDetails.previewFailure(e))
-        }
+private fun Large(p: Picture, modifier: Modifier) {
+    BoxWithConstraints(modifier) {
+        key(p.id) { FittedPicture(p, constraints.maxWidth, constraints.maxHeight, Alignment.TopCenter) }
     }
-    return state
 }
 
 @Composable
 private fun Title(p: Picture) {
     Text(p.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
-}
-
-@Composable
-private fun Caption(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(bottom = 6.dp),
-    )
 }
 
 /** The lines of [PictureDetails.rows]: the label in a column of its own, the value wrapping beside it. */
@@ -193,43 +137,6 @@ private fun Rows(p: Picture) {
                 modifier = Modifier.width(136.dp).padding(end = 12.dp),
             )
             Text((r.value as? Txt)?.text() ?: r.value.toString(), style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-@Composable
-private fun Original(p: Picture, modifier: Modifier) {
-    AsyncImage(
-        model = p.thumbModel(),
-        contentDescription = p.title,
-        contentScale = ContentScale.Fit,
-        alignment = Alignment.TopStart,
-        modifier = modifier,
-    )
-}
-
-/** The frame preview with its caption, or the text that stands for it (no frame, not supported, failed, loading). */
-@Composable
-private fun Preview(plan: PictureDetails.Preview, image: PreviewImage, modifier: Modifier) {
-    val note = @Composable { t: String -> Text(t, style = MaterialTheme.typography.bodyMedium) }
-    when (plan) {
-        PictureDetails.Preview.NoFrame -> note(stringResource(R.string.details_preview_none))
-        is PictureDetails.Preview.Unsupported -> note(plan.reason.text())
-        is PictureDetails.Preview.Render -> {
-            Caption(stringResource(R.string.details_preview, plan.frameName))
-            Box(modifier) {
-                when (image) {
-                    PreviewImage.Loading -> note(stringResource(R.string.details_preview_loading))
-                    is PreviewImage.Failed -> note(image.reason.text())
-                    is PreviewImage.Ready -> Image(
-                        bitmap = image.bitmap,
-                        contentDescription = stringResource(R.string.details_preview, plan.frameName),
-                        contentScale = ContentScale.Fit,
-                        alignment = Alignment.TopStart,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
         }
     }
 }

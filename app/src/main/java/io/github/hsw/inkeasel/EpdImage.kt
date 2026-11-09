@@ -49,16 +49,6 @@ object EpdImage {
     /** Decode, fit, dither and pack [bytes] for [fmt]; the intermediate bitmaps are freed at once. */
     fun render(bytes: ByteArray, fmt: FrameFormat): ByteArray = pack(indicesOf(bytes, fmt), fmt)
 
-    /** What the panel will roughly look like. */
-    fun preview(indices: ByteArray, fmt: FrameFormat): Bitmap =
-        Bitmap.createBitmap(fmt.previewPixels(indices), fmt.width, fmt.height, Bitmap.Config.ARGB_8888)
-
-    /**
-     * [bytes] as the frame of [fmt] will show them: the same decode, fit and dithering as [render], white bars
-     * included, drawn in the panel's inks ([preview]).
-     */
-    fun previewOf(bytes: ByteArray, fmt: FrameFormat): Bitmap = preview(indicesOf(bytes, fmt), fmt)
-
     /** Decode, fit and dither; each bitmap is recycled as soon as the next step has its pixels (a TV has little memory). */
     private fun indicesOf(bytes: ByteArray, fmt: FrameFormat): ByteArray {
         val src = decode(bytes, fmt)

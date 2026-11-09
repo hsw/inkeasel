@@ -227,11 +227,10 @@ press (CENTER held, or a long touch) opens its details instead, in Google's "con
 title, every field the source gave (artist, date, collection, source, licence and its link, the image credit
 where the licence asks for one, original size, web page; links as text, since a TV opens no browser), **Send
 to frame** (focused; it closes the panel and sends as a press does, without the full-screen view), **View full
-screen** and, on the right, the picture larger above a preview drawn as the chosen frame will show it: the
-same fit and dithering onto the frame's inks as an upload, white bars included. Releasing the held CENTER
-leaves the panel open. Without a frame, or with one the app cannot draw on, the panel says so instead of the
-preview. Back closes it. A narrow or portrait window stacks it into one scrolling column, the buttons under
-the title.
+screen** and, on the right, the picture whole and as large as that side allows (a portrait takes its full
+height; the card's thumbnail first, then an image sized to that area, the same one the full-screen view
+loads). Releasing the held CENTER leaves the panel open. Back closes it. A narrow or portrait window stacks it
+into one scrolling column, the buttons under the title and the picture under them.
 
 The full-screen view (a press on a card, or **View full screen**) shows the picture on black, fitted to the
 screen and never cropped, with the system bars hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
@@ -571,7 +570,7 @@ Code:
   reloads (pure)
 - `CatalogView.kt`: what the Catalog tab shows (the grid, "none yet" or loading) (pure)
 - `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
-  the details preview and the viewer
+  the viewer
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
   rows (`CatalogRows`) and their import (`CatalogImport`), the label languages (`LanguageChain`), and its
   process-wide owner `CatalogStore`, which runs the starter import, the release sync (`CatalogSync`; which
@@ -580,8 +579,7 @@ Code:
   a `Picture` (`CatalogPicture`, its Commons URLs from `CommonsUrls`, both pure) and the viewer's steps
   through the list (`CatalogSteps`)
 - `EpdImage.kt`: decode and scale the whole picture to fit inside the frame (`FrameFormat.fit`), then dither
-  it onto the frame's inks with white bars around it and pack via its `FrameFormat`, or draw the dithered
-  picture in the frame's inks for the details panel's preview
+  it onto the frame's inks with white bars around it and pack via its `FrameFormat`
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
   verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally
   split), `Crumbs2` (2 bpp) and `BitPlanes` (1-bpp planes, padded, optionally split), free of Android types)
@@ -613,9 +611,11 @@ Code:
   app restarts)
 - `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
   sends a waiting shared picture once the permission is granted and a frame chosen
-- `DetailsPanel.kt`: the details panel of a long-pressed card, with its frame preview; `PictureDetails.kt`:
-  its lines, source names, which preview a selected frame gets and why one failed (pure)
-- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel;
+- `DetailsPanel.kt`: the details panel of a long-pressed card, the picture large beside its lines;
+  `PictureDetails.kt`: its lines and source names (pure)
+- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel, and
+  `FittedPicture`, a picture whole in an area (thumbnail, then a rendition for the area), which the details
+  panel shares;
   `HeldCenter.kt`: the rest of a CENTER press already handled (the long press that opened the details panel,
   the viewer's own CENTER) kept from the dialog's buttons (pure); `ViewerRules.kt`: which
   rendition it loads for the window, its credit line, its list position, overlay and swipe rules, and its

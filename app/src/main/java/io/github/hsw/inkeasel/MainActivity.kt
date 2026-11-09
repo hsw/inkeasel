@@ -642,7 +642,7 @@ fun App(
                         // or the Bluetooth panel); "View full screen" replaces it with the viewer, and Back from there
                         // brings it back
                         DetailsPanel(
-                            details, vm.selected,
+                            details,
                             onSend = { vm.closeDetails(); onSend(details) },
                             onView = { vm.openViewer(details, catalogPicture) },
                             onClose = vm::closeDetails,

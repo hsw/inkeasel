@@ -3,6 +3,26 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The details panel shows the picture large, without the frame preview
+The details panel showed the picture above a preview drawn as the chosen frame would show it, each in half of
+the right side, so a portrait painting got half the height twice. The user found the frame preview less
+useful than a large picture, and the fit with white bars is now what an upload does and the full-screen
+viewer shows the picture whole anyway. The preview is gone: its rendering (`EpdImage.previewOf`, `preview`,
+`FrameFormat.previewPixels`), the full-size download behind it (`Picture.fullBytes`), its states and texts
+(`PictureDetails.preview`, `previewFailure`, six strings in both tables, the "Original" caption with them).
+The picture now takes the whole right side, the full height of the content area, fitted whole
+(`ContentScale.Fit`) at its top, so a portrait uses all of the height; on a narrow window it sits under the
+buttons at its own shape. It loads as the viewer does (`FittedPicture`, shared): the card's thumbnail at once,
+then the rendition for that area (`ViewerRules.rendition`; on a TV the 960 px Commons step, the one the
+viewer loads), since the 330 or 500 px thumbnail would be enlarged two to three times. That is one image
+request per panel instead of the preview's 1920 px download and dithering. The TV margins and text sizes
+are unchanged.
+Supersedes the preview of "A long press on a card opens its details; a press still sends" and of "Uploads
+fit the whole picture on white", below.
+Rejected: keeping the preview under a smaller picture (the user's choice), the preview on demand behind a
+button (one more control for what the viewer and the frame already show), the card's thumbnail alone at that
+size (soft on a TV).
+
 ## 2026-11-09 — A press on a card sends and opens the viewer; a long press's release is swallowed
 The user's decision after testing the release build on the TV: a press sent the picture and showed nothing of
 it, so there was no way to see what had been sent. Now a press (CENTER or a tap) takes the same send path as
@@ -61,8 +81,8 @@ bottom of a wider one, none for the same shape. The geometry is pure and tested 
 and gets its pink), filled plain: only the picture is dithered, so none of its error diffuses into the bars
 and they stay clean. Memory: the decoder subsamples to the picture's place on the panel (a portrait original
 needs only the panel's height), the scaled bitmap and its pixel array have the picture's size, not the
-panel's, and only the ink indices cover the whole panel. The details panel's preview runs the same path and
-shows the bars. Every upload takes it, the now-playing poster included (a square cover gets side bars
+panel's, and only the ink indices cover the whole panel. The details panel's preview ran the same path and
+showed the bars (until "The details panel shows the picture large", above, removed the preview). Every upload takes it, the now-playing poster included (a square cover gets side bars
 instead of losing its top and bottom).
 Supersedes the crop in "A long press on a card opens its details; a press still sends" (its preview).
 Rejected: keeping the crop (the user's test), a crop for posters only (two rules on one path, and a cover's
@@ -439,7 +459,8 @@ A plain press (CENTER or a tap) keeps the one-press send (and opens the viewer s
 and opens the viewer", above). A long press (tv-material `Card.onLongClick`, which
 takes CENTER held; a long touch through `onTap(action, onLongPress)`) opens a full-screen details panel laid
 out after Google's TV "content details" template: the title, the fields as label and value lines, **Send to
-frame** first and focused, and the picture large on the right above a preview of it on the chosen frame.
+frame** first and focused, and the picture large on the right above a preview of it on the chosen frame
+(the preview removed since "The details panel shows the picture large", above).
 The preview runs the upload's own decode, crop (a fit with white bars since "Uploads fit the whole picture on
 white", above) and Floyd–Steinberg onto the frame's inks
 (`EpdImage.previewOf`) on the full image an upload would download, off the main thread, and is cancelled

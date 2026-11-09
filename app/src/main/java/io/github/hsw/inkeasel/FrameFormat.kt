@@ -283,10 +283,6 @@ data class FrameFormat(
 
     /** The payload ([payloadSize] bytes) for [indices] from [dither]. */
     fun pack(indices: ByteArray): ByteArray = packing.pack(indices, palette, width, height)
-
-    /** ARGB of each ink index, for a preview of roughly what the panel will show. */
-    fun previewPixels(indices: ByteArray): IntArray =
-        IntArray(indices.size) { val c = palette.inks[indices[it].toInt()]; (0xFF shl 24) or (c.r shl 16) or (c.g shl 8) or c.b }
 }
 
 /** The format for an advertisement, or why there is none. */

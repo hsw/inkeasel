@@ -3,13 +3,8 @@ package io.github.hsw.inkeasel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.io.IOException
-import java.net.UnknownHostException
 
 class PictureDetailsTest {
-    private val e6 = FrameAdvert.parse(byteArrayOf(0x43, 0x13, 0x64, 0x15))
-    private val bw = FrameAdvert.parse(byteArrayOf(0x03, 0x13, 0x64))
-
     @Test
     fun rows_everyField_inOrder() {
         val p = Picture(
@@ -74,32 +69,5 @@ class PictureDetailsTest {
         assertEquals(Txt(R.string.tab_local), PictureDetails.sourceName("local"))
         assertEquals(Txt(R.string.details_source_wikidata), PictureDetails.sourceName("wd"))
         assertNull(PictureDetails.sourceName("other"))
-    }
-
-    @Test
-    fun preview_perSelectedFrame() {
-        assertEquals(PictureDetails.Preview.NoFrame, PictureDetails.preview(null))
-        assertEquals(
-            PictureDetails.Preview.Render(FrameFormats.DEFAULT, "NM000001"),
-            PictureDetails.preview(SelectedFrame("NM000001", "AA:BB:CC:DD:EE:01", e6, 1L)),
-        )
-        val unsupported = PictureDetails.preview(SelectedFrame("NM000001", "AA:BB:CC:DD:EE:01", bw, 1L))
-        assertEquals(
-            PictureDetails.Preview.Unsupported(
-                Txt(R.string.details_preview_unsupported, "NM000001", Txt(R.string.reason_untested_format)),
-            ),
-            unsupported,
-        )
-    }
-
-    @Test
-    fun previewFailure() {
-        assertEquals(
-            Txt(R.string.details_preview_failed, Txt(R.string.upload_err_decode)),
-            PictureDetails.previewFailure(TxtException(Txt(R.string.upload_err_decode))),
-        )
-        assertEquals(Txt(R.string.catalog_err_offline), PictureDetails.previewFailure(UnknownHostException("x")))
-        assertEquals(Txt(R.string.catalog_err_http, 404), PictureDetails.previewFailure(HttpStatusException(404, "u")))
-        assertEquals(Txt(R.string.details_preview_failed, "boom"), PictureDetails.previewFailure(IOException("boom")))
     }
 }
