@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
@@ -55,15 +56,16 @@ class StarterSet(
 /**
  * The process-wide owner of the catalog ([get]): the database, a scope of its own (not tied to a screen) and
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
- * per process: the starter set goes into an empty database, the stored order is computed again (a listed
- * explicit painting stored by an older version goes at once, [CatalogRank]) and the old list cache,
- * [legacy], is deleted; then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
+ * per process: the starter set goes into an empty database, the stored rows are raised to the built-in list's
+ * nudity levels ([CatalogDao.markListed]: a painting listed by a newer version is filtered at once, though
+ * the release it came with is not imported again), the stored order is computed again ([CatalogRank]) and the
+ * old list cache, [legacy], is deleted; then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
  * and a new UI language, which re-creates the activity) runs a pass: the starter's labels of a chain
  * language the database has none of, the release sync, which fetches only the files that are due
  * ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch outside the lock and
  * write under it, so a pass with nothing due makes no request. Passes run one after another; a [start]
  * during a pass asks for one more. A failed step is logged and the next pass tries again.
- * The Catalog tab reads the list through [pages].
+ * The Catalog tab reads the list through [pages], filtered by [nudityBelow].
  */
 class CatalogStore internal constructor(
     val db: CatalogDb,
@@ -86,12 +88,25 @@ class CatalogStore internal constructor(
     /** The label languages of the UI language ([LanguageChain]); the list's queries follow it. */
     val chain: StateFlow<List<String>> = _chain.asStateFlow()
 
+    private val _nudityBelow = MutableStateFlow(NudityFilter.DEFAULT.nudityBelow)
+
+    /**
+     * The nudity filter in force ([NudityFilter.nudityBelow]), [NudityFilter.DEFAULT] until [applyFilter] sets
+     * another; the list's queries follow it, and so does the viewer, which takes it when it opens.
+     */
+    val nudityBelow: StateFlow<Int> = _nudityBelow.asStateFlow()
+
+    /** Sets the nudity filter in force: the effective one ([NudityFilter.effective]). */
+    fun applyFilter(filter: NudityFilter) {
+        _nudityBelow.value = filter.nudityBelow
+    }
+
     private val _empty = MutableStateFlow(false)
 
     /**
-     * The list has no picture although the starter step has run (its import failed, which a sound APK never
-     * does); read again after each pass. Until then an empty list is one still loading: the starter set is on
-     * its way.
+     * The database has no picture to show, whatever the nudity filter, although the starter step has run
+     * (its import failed, which a sound APK never does); read again after each pass. Until then an empty list
+     * is one still loading: the starter set is on its way.
      */
     val empty: StateFlow<Boolean> = _empty.asStateFlow()
 
@@ -99,18 +114,21 @@ class CatalogStore internal constructor(
     private val ready = MutableStateFlow(false)
 
     /**
-     * The list ([CatalogDao.pages]) over the current [chain]: a new chain starts a new pager. It starts once
+     * The list ([CatalogDao.pages]) over the current [chain] and [nudityBelow]: a change of either starts a new
+     * pager. It starts once
      * the starter step has run, so its first query neither waits for the starter's transaction nor holds it
      * up; until then it gives nothing, and the list shows that it is loading. At most [MAX_ROWS] rows stay
      * loaded: pages far from where the list is read are dropped (they show as placeholders and load again
      * when scrolled back to), so scrolling through the whole catalog never holds all of it in memory.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val pages: Flow<PagingData<CatalogRow>> = ready.filter { it }.flatMapLatest { _chain }.flatMapLatest { chain ->
-        Pager(PagingConfig(pageSize = PAGE, prefetchDistance = PAGE, initialLoadSize = 2 * PAGE, maxSize = MAX_ROWS)) {
-            db.catalog().pages(CatalogRow.chainKey(chain))
-        }.flow
-    }
+    val pages: Flow<PagingData<CatalogRow>> = ready.filter { it }
+        .flatMapLatest { combine(_chain, _nudityBelow, ::Pair) }
+        .flatMapLatest { (chain, nudityBelow) ->
+            Pager(PagingConfig(pageSize = PAGE, prefetchDistance = PAGE, initialLoadSize = 2 * PAGE, maxSize = MAX_ROWS)) {
+                db.catalog().pages(CatalogRow.chainKey(chain), nudityBelow)
+            }.flow
+        }
 
     private val _passes = MutableStateFlow(0)
 
@@ -147,8 +165,12 @@ class CatalogStore internal constructor(
 
     private suspend fun work() {
         step("starter import") { starter(chain.value) }
-        // the order and what is hidden as this version computes them ([CatalogRank]) over a database an older
-        // version filled, before the list reads it; writes nothing when nothing moves
+        // this version's built-in nudity levels and its order ([CatalogRank]) over a database an older version
+        // filled, before the list reads it; each writes nothing when nothing changes
+        step("listed levels") {
+            val raised = db.catalog().markListed()
+            if (raised > 0) log("nudity raised by the built-in list: $raised rows", null)
+        }
         step("rerank") { db.catalog().rerank() }
         checkEmpty()
         ready.value = true
@@ -165,7 +187,7 @@ class CatalogStore internal constructor(
 
     private suspend fun checkEmpty() {
         try {
-            _empty.value = db.catalog().count() == 0
+            _empty.value = db.catalog().count(NudityFilter.SHOW_ALL.nudityBelow) == 0
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

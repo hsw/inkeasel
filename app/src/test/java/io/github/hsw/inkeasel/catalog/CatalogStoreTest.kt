@@ -44,6 +44,7 @@ class CatalogStoreTest {
 
     private val ruChain = LanguageChain.of("ru-RU")
     private val deChain = LanguageChain.of("de-DE")
+    private val all = NudityFilter.SHOW_ALL.nudityBelow
     private val logged = CopyOnWriteArrayList<String>()
 
     /** Q1, Q2 with Russian, English and German labels (the German one is imported only once German is wanted). */
@@ -376,14 +377,16 @@ class CatalogStoreTest {
         }
     }
 
+    /** Q1, L'Origine du monde (listed explicit), Q2 and The Birth of Venus (listed nude), offline. */
+    private val withOrigin = StarterSet(
+        core = { ByteArrayInputStream(gzip(listOf(core(1, fame = 50), core(334138, fame = 45), core(2, fame = 40), core(151047, fame = 30)))) },
+        languages = { emptySet() },
+        labels = { error("no labels") },
+    )
+
     @Test
-    fun aStartOverADatabaseThatShowsAnExplicitPaintingHidesItAtOnce() {
-        release.server.shutdown() // offline: no import reranks for it
-        val withOrigin = StarterSet(
-            core = { ByteArrayInputStream(gzip(listOf(core(1, fame = 50), core(334138, fame = 45), core(2, fame = 40)))) },
-            languages = { emptySet() },
-            labels = { error("no labels") },
-        )
+    fun aStartRaisesALevelAnOlderListStoredAndTheDefaultFilterHidesIt() {
+        release.server.shutdown() // offline: no import computes the levels again
         val first = newStore(withOrigin)
         try {
             first.start(ruChain)
@@ -391,11 +394,10 @@ class CatalogStoreTest {
         } finally {
             first.close()
         }
-        assertEquals(listOf("wd:Q334138|1"), query("SELECT id, hidden FROM picture WHERE hidden = 1"))
-        // as an older version stored it: L'Origine du monde shown in its place by fame
-        db.openHelper.writableDatabase.execSQL("UPDATE picture SET rank = 20 WHERE id = 'wd:Q2'")
-        db.openHelper.writableDatabase.execSQL("UPDATE picture SET rank = 10, hidden = 0 WHERE id = 'wd:Q334138'")
-        assertEquals(3, runBlocking { db.catalog().count() })
+        assertEquals(listOf("wd:Q1|0", "wd:Q334138|2", "wd:Q2|0", "wd:Q151047|1"), query("SELECT id, nudity FROM picture ORDER BY rank"))
+        // as an older version stored them, before the list had them
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET nudity = 0")
+        assertEquals(4, runBlocking { db.catalog().count(NudityFilter.DEFAULT.nudityBelow) })
         logged.clear()
 
         // the next process: the database has Wikidata rows, so no starter import, and the sync fails
@@ -405,16 +407,60 @@ class CatalogStoreTest {
             awaitPasses(1, next)
 
             assertFalse(logged.any { it.startsWith("starter set imported") })
-            assertEquals(listOf("wd:Q1", "wd:Q2"), query("SELECT id FROM picture WHERE hidden = 0 ORDER BY rank"))
-            assertEquals(listOf("wd:Q1", "wd:Q2"), runBlocking { next.pages.asSnapshot() }.map { it.id })
+            assertTrue(logged.contains("nudity raised by the built-in list: 2 rows"))
+            assertEquals(listOf("wd:Q1|0", "wd:Q334138|2", "wd:Q2|0", "wd:Q151047|1"), query("SELECT id, nudity FROM picture ORDER BY rank"))
+            assertEquals(NudityFilter.DEFAULT.nudityBelow, next.nudityBelow.value)
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), runBlocking { next.pages.asSnapshot() }.map { it.id })
             val chain = CatalogRow.chainKey(ruChain)
-            assertEquals(2, runBlocking { db.catalog().count() })
-            assertNull(runBlocking { db.catalog().placed("wd:Q334138", chain) })
-            val q2 = runBlocking { db.catalog().placed("wd:Q2", chain) }!!
-            assertEquals(1 to 2, q2.position to q2.count)
-            assertEquals("wd:Q2", runBlocking { db.catalog().next("wd:Q1", 0, chain) }?.row?.id) // the viewer steps over it
+            val below = next.nudityBelow.value
+            assertEquals(3, runBlocking { db.catalog().count(below) })
+            assertNull(runBlocking { db.catalog().placed("wd:Q334138", chain, below) })
+            val q2 = runBlocking { db.catalog().placed("wd:Q2", chain, below) }!!
+            assertEquals(1 to 3, q2.position to q2.count)
+            assertEquals("wd:Q2", runBlocking { db.catalog().next("wd:Q1", 0, chain, below) }?.row?.id) // the viewer steps over it
         } finally {
             next.close()
+        }
+    }
+
+    @Test
+    fun anotherFilterPagesTheListAgain() {
+        release.server.shutdown()
+        val s = newStore(withOrigin)
+        try {
+            s.start(ruChain)
+            awaitPasses(1, s)
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            s.applyFilter(NudityFilter.SHOW_ALL)
+            assertEquals(all, s.nudityBelow.value)
+            assertEquals(listOf("wd:Q1", "wd:Q334138", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            s.applyFilter(NudityFilter.HIDE_NUDES)
+            assertEquals(listOf("wd:Q1", "wd:Q2"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+            s.applyFilter(NudityFilter.HIDE_EXPLICIT)
+            assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q151047"), runBlocking { s.pages.asSnapshot() }.map { it.id })
+        } finally {
+            s.close()
+        }
+    }
+
+    @Test
+    fun aDatabaseWhoseEveryRowIsFilteredOutIsNotEmpty() {
+        release.server.shutdown()
+        val onlyOrigin = StarterSet(
+            core = { ByteArrayInputStream(gzip(listOf(core(334138)))) },
+            languages = { emptySet() },
+            labels = { error("no labels") },
+        )
+        val s = newStore(onlyOrigin)
+        try {
+            s.applyFilter(NudityFilter.HIDE_NUDES)
+            s.start(ruChain)
+            awaitPasses(1, s)
+            // the list shows nothing under the filter, but the catalog has a picture: not "no pictures yet"
+            assertEquals(0, runBlocking { db.catalog().count(s.nudityBelow.value) })
+            assertFalse(s.empty.value)
+        } finally {
+            s.close()
         }
     }
 

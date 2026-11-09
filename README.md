@@ -275,11 +275,15 @@ than showing an empty grid, and the list starts only after it, so its first quer
 import. Should the starter set fail to import and the database stay empty, the tab says the catalog has no
 pictures yet and that it downloads when the device is online.
 
-Paintings listed as explicit in `tools/catalog-nsfw.txt` (genitals in focus or a sexual act shown, such as
-Courbet's "L'Origine du monde") never show: the starter set leaves them out, and the app, which holds the
-same ids built in, hides them when it stores the release, and once at each process start over a database an
-older version filled. A hidden one takes no place in the list, so the viewer's "n / N" does not count it,
-and a Cleveland or Commons copy of it is hidden too.
+Every catalog painting has a nudity level, stored with its row: explicit (genitals in focus or a sexual act
+shown, such as Courbet's "L'Origine du monde"), nude, or none. It is the strictest of the release's `nsfw`
+field, the list `tools/catalog-nsfw.txt` (built into the app too, so it applies to a release already
+published; each process start raises stored rows to it) and Wikidata's nude genre; Cleveland and Commons
+rows carry none. The Catalog shows the rows below a filter's bound, for now always "hide explicit": the
+paging query, the count and the viewer's "n / N" and Left/Right all leave the explicit ones out, and a
+Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the filter. When the
+filter changes, the grid goes back to its top and an open Catalog viewer closes. The starter set never
+carries an explicit painting.
 
 The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
 Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the

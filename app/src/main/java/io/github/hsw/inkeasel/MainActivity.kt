@@ -89,6 +89,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.math.roundToInt
@@ -113,6 +114,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The catalog database has no picture once its starter step has run ([CatalogStore.empty]). */
     val catalogEmpty: StateFlow<Boolean> = store.empty
+
+    /** The nudity filter in force ([CatalogStore.nudityBelow]): a change takes the Catalog grid to its top. */
+    val catalogNudityBelow: StateFlow<Int> = store.nudityBelow
 
     /** My pictures ([LOCAL_TAB]): a list loaded whole ([readLocal]), re-scanned when its folder changes. */
     private val local = LocalImages(app)
@@ -200,6 +204,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
     private val nav = ViewerNav(viewModelScope) { viewer = it }
 
+    /** The open viewer steps through the Catalog ([CatalogSteps]), not My pictures. */
+    private var viewerOnCatalog = false
+
+    init {
+        // a Catalog viewer steps under the filter it opened with: a new one (such as the device's lock found on
+        // at a return to the foreground) closes it, so its "n / N" never counts another list than the grid's
+        viewModelScope.launch {
+            store.nudityBelow.drop(1).collect {
+                if (viewerOnCatalog && viewer != null) {
+                    Log.i(TAG, "nudity filter changed: viewer closed")
+                    nav.close()
+                }
+            }
+        }
+    }
+
     /** The open viewer was opened by a press on a card, not from the details panel. */
     var viewerByPress by mutableStateOf(false)
         private set
@@ -212,8 +232,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture, byPress: Boolean = false) {
         details = null
         viewerByPress = byPress
-        if (tab == CATALOG_TAB) {
-            val steps = CatalogSteps(store.db.catalog(), store.chain.value, catalogPicture)
+        viewerOnCatalog = tab == CATALOG_TAB
+        if (viewerOnCatalog) {
+            val steps = CatalogSteps(store.db.catalog(), store.chain.value, store.nudityBelow.value, catalogPicture)
             nav.open(ViewerState.alone(p), steps) {
                 steps.open(p.id)?.also(::logViewer)
             }
@@ -548,6 +569,15 @@ fun App(
     val grid = rememberLazyGridState()
     // the Catalog's own grid state: its place in the long list survives a visit to another tab
     val catalogGrid = rememberLazyGridState()
+    // a new nudity filter is another list: the Catalog grid goes back to its top (not at a first composition)
+    val nudityBelow by vm.catalogNudityBelow.collectAsState()
+    var gridFilter by remember { mutableIntStateOf(nudityBelow) }
+    LaunchedEffect(nudityBelow) {
+        if (nudityBelow != gridFilter) {
+            gridFilter = nudityBelow
+            catalogGrid.scrollToItem(0)
+        }
+    }
     val pages = vm.catalogPages.collectAsLazyPagingItems()
     val catalogEmpty by vm.catalogEmpty.collectAsState()
     val names = stringResource(R.string.list_names_separator)

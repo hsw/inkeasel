@@ -3,6 +3,36 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Each picture stores its nudity level; the Catalog's queries filter on it
+Every catalog row has a `nudity` column (`picture` and `picture_stage`, INTEGER NOT NULL DEFAULT 0): the
+`NudityLevel` ordinal, 0 none, 1 nude, 2 explicit. It is computed in Kotlin as a row is read
+(`Nudity.levelOf`: the release's `nsfw` field, the built-in list, the nude genre; the strictest wins), for the
+starter set and for the staged release rows alike, and `movePictures` copies it, so a newer release sets it
+again both ways. Live rows (Cleveland, Commons) are 0: their sources give no such data; one that is a
+Wikidata row stays hidden as its duplicate, so a filtered painting never shows through a live copy.
+The list's queries take a bound, `nudity < :nudityBelow` (`NudityFilter`: 3 shows all, 2 hides explicit, 1
+hides all nudes): the paging query, the count, and the viewer's place, count and neighbour ranks, so its
+"n / N" counts the same list as the grid. The stored order holds every row whatever its level (the hard hide
+of listed explicit rows in `CatalogRank.place` is gone), so another filter needs no write: the store starts a
+new pager, the grid goes back to its top, and an open Catalog viewer closes (it steps under the bound it
+opened with). The every-10th live card may move up by the rows a filter leaves out before it. Until the
+setting exists the bound is `NudityFilter.DEFAULT`, hide explicit, so explicit works stay hidden as before.
+Whether the catalog has any picture at all ("no pictures yet") is counted without the filter.
+The import reads a release only when it changed, so a newer app version's longer list would not reach a
+release already imported: each process start raises the stored Wikidata rows to the built-in list's level
+(`CatalogDao.markListed`, before the order is computed; it writes nothing when nothing is raised and never
+lowers a level).
+The schema goes to version 2 and the database is dropped and created again on the upgrade: the starter set
+imports again and the release downloads again (see "The catalog database holds only data that can be
+downloaded again"). The upgrade test found that `fallbackToDestructiveMigrationOnDowngrade()`, called after
+`fallbackToDestructiveMigration()`, made Room 2.6 ask for a migration on an upgrade again; the first call
+alone covers both directions.
+Rejected: keeping the hard hide in the order (the "Show all" choice could not show them), filtering the loaded
+pages in Kotlin (the paging positions and "n / N" would count hidden rows), an order per filter (a rerank
+and a write of every row at each change), computing the level in the query from a table of listed ids (a
+join on every page for a value that changes only with an import or a new app version), a Room migration that
+adds the column (the stored rows would still need their levels, which only reading the release again gives).
+
 ## 2026-11-09 — The release marks each painting's nudity in an `nsfw` field
 The export writes `"nsfw": "nude"` or `"explicit"` into a `core` row (left out when none), so the app's filter
 does not depend only on the ids it has built in. The level is the strictest of three sources, the same
@@ -36,7 +66,8 @@ the same ids built in (`Nudity.EXPLICIT`; a unit test checks it against the file
 still hides a Cleveland or Commons copy of itself. The release, already published, still carries them, so
 `CatalogStore` computes the order again once per process after the starter step (a database an older version
 filled loses them before the list reads it; it writes nothing when nothing moves). The `nude` level, a
-setting and an `nsfw` field in the release follow.
+setting and an `nsfw` field in the release follow. (Superseded in the app by "Each picture stores its nudity
+level", above: the level hides them under the default filter, and the order no longer leaves them out.)
 Amends "The starter set is cut from the published release", below: the starter's rows are the release
 `core`'s lines minus the listed explicit ids, cut at 1,000, no longer exactly its first lines.
 Rejected: waiting for a regenerated release (a published one would keep showing them until then), the nude
@@ -427,7 +458,8 @@ empty (Room's destructive fallback both ways), and the starter set imports and t
 The order is stored, not computed when the list reads it: every row has a unique `rank` and a `hidden` flag,
 set in the write transaction after each import or live refresh (`CatalogRank`, pure; only the rows that
 change are written), so the paging query is `WHERE hidden = 0 ORDER BY rank` on one index and the viewer
-steps by the neighbour ranks. Wikidata rows go in `core` order; a live row that duplicates one (the same
+steps by the neighbour ranks. (Since schema version 2 the query also keeps `nudity < :nudityBelow`, a row
+filter over the same index: "Each picture stores its nudity level", above.) Wikidata rows go in `core` order; a live row that duplicates one (the same
 Commons file, or the same accession number) is hidden; the other live rows take turns by source as every
 10th card. Titles, artists and collections are resolved by the query for the rows of a page only, over the
 language chain, then any stored language; artists come back as a list and are joined only at the edge. The

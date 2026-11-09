@@ -45,6 +45,7 @@ class CatalogRowsTest {
                 movements = listOf("Q1404472"),
                 genres = listOf("Q134307"),
                 cma = null,
+                nsfw = null,
             ),
             core()[0],
         )
@@ -91,12 +92,23 @@ class CatalogRowsTest {
     }
 
     @Test
+    fun core_nsfwIsReadAsWritten() {
+        fun nsfw(value: String) = CatalogRows.core("""{"id":"Q1","fame":3,"img":"A.jpg","w":10,"h":20,"nsfw":$value}""").nsfw
+        assertEquals("explicit", nsfw("\"explicit\""))
+        assertEquals("nude", nsfw("\"nude\""))
+        assertEquals("later", nsfw("\"later\"")) // an unknown value is kept; Nudity.levelOf ignores it
+        assertNull(nsfw("\"\""))
+        assertNull(nsfw("null"))
+        assertNull(core()[0].nsfw) // the published release has no such field yet
+    }
+
+    @Test
     fun core_unknownKeysAndWrongOptionalTypesAreIgnored() {
         val row = CatalogRows.core(
-            """{"new":{"x":[1]},"id":"Q1","fame":3,"img":"A.jpg","w":10,"h":20,"lic":null,"attr":"yes","credit":7,"creators":"Q2","inception":"1500","collections":["Q3",5,"","x"],"cma":1915}""",
+            """{"new":{"x":[1]},"id":"Q1","fame":3,"img":"A.jpg","w":10,"h":20,"lic":null,"attr":"yes","credit":7,"creators":"Q2","inception":"1500","collections":["Q3",5,"","x"],"cma":1915,"nsfw":2}""",
         )
         assertEquals(
-            CoreRow("Q1", 3, "A.jpg", 10, 20, null, null, false, null, emptyList(), null, listOf("Q3"), emptyList(), emptyList(), null),
+            CoreRow("Q1", 3, "A.jpg", 10, 20, null, null, false, null, emptyList(), null, listOf("Q3"), emptyList(), emptyList(), null, null),
             row,
         )
     }

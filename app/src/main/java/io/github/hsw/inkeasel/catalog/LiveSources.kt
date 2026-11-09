@@ -97,7 +97,8 @@ object LiveSourceRows {
      * The [rows] of [source] as stored rows, in the list's order ([PictureEntity.sourceRank]), the first of a
      * repeated id winning; a row whose id lacks the source's prefix is left out. Each gets a rank below
      * [free] (`free`, `free - 1`, …), unique until [CatalogDao.rerank] places it. Artists are kept as a list
-     * ([CatalogConverters] stores it), as the list query reads them.
+     * ([CatalogConverters] stores it), as the list query reads them. No source gives a nudity level, so every
+     * row is [NudityLevel.NONE]; one that is a Wikidata row is hidden as its duplicate ([CatalogRank]).
      */
     fun entities(source: String, rows: List<LiveRow>, free: Long): List<PictureEntity> {
         val seen = HashSet<String>()
@@ -106,6 +107,7 @@ object LiveSourceRows {
                 id = r.id,
                 source = source,
                 rank = free - i,
+                nudity = NudityLevel.NONE.ordinal,
                 commonsFile = r.commonsFile,
                 museumRef = r.museumRef,
                 sourceRank = i,

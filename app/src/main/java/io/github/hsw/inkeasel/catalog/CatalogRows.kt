@@ -41,6 +41,8 @@ data class CoreRow(
     val genres: List<String>,
     /** `cma`: the Cleveland Museum of Art ID (Wikidata P11110), an accession number. */
     val cma: String?,
+    /** `nsfw`: the release's nudity level (`nude`, `explicit`), as written; [Nudity.levelOf] reads it. */
+    val nsfw: String?,
 )
 
 /**
@@ -82,6 +84,7 @@ object CatalogRows {
             movements = o.items("movements"),
             genres = o.items("genres"),
             cma = o.text("cma"),
+            nsfw = o.text("nsfw"),
         )
     }
 

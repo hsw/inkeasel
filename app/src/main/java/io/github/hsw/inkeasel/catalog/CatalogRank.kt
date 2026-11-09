@@ -22,12 +22,11 @@ data class Placement(val id: String, val rank: Long, val hidden: Boolean)
 /**
  * The catalog's order and its dedupe, pure, computed in the write transaction after each import or live
  * refresh (never in the paging query):
- * - Wikidata rows in `core` order, at `10 · i` for the i-th of them;
- * - a Wikidata row listed as explicit ([Nudity.EXPLICIT], matched on its bare `Q…` id) is [Placement.hidden]
- *   and takes no place in that count;
- * - a live row that duplicates a Wikidata row (an explicit one included) is [Placement.hidden]: a Commons
- *   file of the same name, or a museum accession number equal to the Wikidata row's (Cleveland: Wikidata
- *   P11110);
+ * - Wikidata rows in `core` order, at `10 · i` for the i-th of them, whatever their nudity level (the list's
+ *   queries filter on it, [CatalogDao.pages]);
+ * - a live row that duplicates a Wikidata row is [Placement.hidden]: a Commons file of the same name, or a
+ *   museum accession number equal to the Wikidata row's (Cleveland: Wikidata P11110), so a filtered Wikidata
+ *   row never shows through a live copy, which carries no nudity data;
  * - the other live rows take turns by source (sources by name, each in its own order) and every
  *   [LIVE_EVERY]-th card is one of them: the j-th goes at `10 · k + 5` right after Wikidata row
  *   `k = 9 · j + 8`; those past the last Wikidata row follow it, one after another;
@@ -55,15 +54,12 @@ object CatalogRank {
     fun freeBelow(lowest: Long?): Long = minOf(0L, lowest ?: 0L) - 1
 
     fun place(rows: List<RankKey>): List<Placement> {
-        val release = rows.filter { it.source == WIKIDATA }.sortedWith(ORDER)
-        // an explicit row still hides its live copies
-        val files = release.mapNotNullTo(HashSet()) { it.commonsFile?.let(::fileKey) }
-        val refs = release.mapNotNullTo(HashSet()) { it.museumRef?.let(::refKey) }
-        val (explicit, wikidata) = release.partition { Nudity.isExplicit(it.id.removePrefix("$WIKIDATA:")) }
-        val (duplicates, shown) = rows.filter { it.source != WIKIDATA }.partition { live ->
+        val wikidata = rows.filter { it.source == WIKIDATA }.sortedWith(ORDER)
+        val files = wikidata.mapNotNullTo(HashSet()) { it.commonsFile?.let(::fileKey) }
+        val refs = wikidata.mapNotNullTo(HashSet()) { it.museumRef?.let(::refKey) }
+        val (hidden, shown) = rows.filter { it.source != WIKIDATA }.partition { live ->
             live.commonsFile?.let(::fileKey) in files || live.museumRef?.let(::refKey) in refs
         }
-        val hidden = explicit + duplicates
         val placed = ArrayList<Placement>(rows.size)
         wikidata.forEachIndexed { i, row -> placed += Placement(row.id, wikidataRank(i), false) }
         val n = wikidata.size.toLong()

@@ -37,9 +37,10 @@ enum class NudityFilter(val nudityBelow: Int) {
 
 /**
  * Nudity of catalog paintings, pure. [EXPLICIT] and [NUDE] are the two levels of `tools/catalog-nsfw.txt`,
- * built in so they apply to the release already published: an explicit painting never shows in the Catalog
- * ([CatalogRank.place] hides it) and the starter set never carries it. A unit test checks both sets against the
- * file.
+ * built in so they apply to the release already published: an import stores each row's [levelOf], each process
+ * start raises stored rows to their listed level ([CatalogDao.markListed]), and the Catalog's filter
+ * ([NudityFilter]) hides them by it; the starter set never carries an explicit one. A unit test checks both
+ * sets against the file.
  */
 object Nudity {
     /** Wikidata's "nude" genre (P136). */

@@ -39,6 +39,7 @@ class CatalogImportTest {
 
     private val ruChain = LanguageChain.of("ru-RU")
     private val ru = CatalogRow.chainKey(ruChain)
+    private val all = NudityFilter.SHOW_ALL.nudityBelow
 
     /** How many times the tables the paging query reads were reported changed. */
     private val invalidations = AtomicInteger()
@@ -80,13 +81,16 @@ class CatalogImportTest {
         creators: List<Int> = emptyList(),
         collections: List<Int> = emptyList(),
         cma: String? = null,
+        genres: List<Int> = emptyList(),
+        nsfw: String? = null,
     ): String = JSONObject()
         .put("id", "Q$q").put("fame", fame).put("img", file).put("w", width).put("h", 600)
         .put("lic", "Public domain").put("attr", false)
         .put("creators", JSONArray(creators.map { "Q$it" }))
         .put("collections", JSONArray(collections.map { "Q$it" }))
-        .put("movements", JSONArray()).put("genres", JSONArray())
+        .put("movements", JSONArray()).put("genres", JSONArray(genres.map { "Q$it" }))
         .apply { if (cma != null) put("cma", cma) }
+        .apply { if (nsfw != null) put("nsfw", nsfw) }
         .toString()
 
     private fun label(q: Int, text: String): String = JSONObject()
@@ -134,10 +138,10 @@ class CatalogImportTest {
     /** The shown pictures in list order, walked by the neighbour query. */
     private suspend fun ids(): List<String> {
         val out = ArrayList<String>()
-        var row = dao.next("", Long.MIN_VALUE, ru)?.row
+        var row = dao.next("", Long.MIN_VALUE, ru, all)?.row
         while (row != null) {
             out += row.id
-            row = dao.next(row.id, row.rank, ru)?.row
+            row = dao.next(row.id, row.rank, ru, all)?.row
         }
         return out
     }
@@ -237,6 +241,45 @@ class CatalogImportTest {
         assertEquals((0 until 9).map { "wd:Q${it + 1}|${it * 10}|0" }, placed.take(9))
         assertEquals("cma:7|85|0", placed[9]) // the 10th card
         assertEquals("commons:Painting_2.jpg|125|1", placed.last()) // a duplicate of wd:Q2, hidden
+    }
+
+    /** Rows of each level from every source: none, the nude genre, `nsfw`, the built-in list, and a mix. */
+    private val levelled = listOf(
+        core(1),
+        core(2, genres = listOf(40446)), // the nude genre
+        core(3, nsfw = "nude"),
+        core(4, nsfw = "explicit"),
+        core(334138), // L'Origine du monde, listed explicit
+        core(151047), // The Birth of Venus, listed nude
+        core(6, nsfw = "something else", genres = listOf(134307)), // an unknown value, the portrait genre
+        core(29530, nsfw = "explicit"), // listed nude, the release stricter
+    )
+    private val levels = listOf(
+        "wd:Q1|0", "wd:Q2|1", "wd:Q3|1", "wd:Q4|2", "wd:Q334138|2", "wd:Q151047|1", "wd:Q6|0", "wd:Q29530|2",
+    )
+
+    private fun levels(): List<String> = query("SELECT id, nudity FROM picture ORDER BY rank")
+
+    @Test
+    fun theStarterStoresEachRowsNudityLevel() = runTest {
+        CatalogImport(db).starter(coreFile(levelled), emptyList(), ruChain)!!
+        assertEquals(levels, levels())
+    }
+
+    @Test
+    fun aReleaseStoresEachRowsNudityLevelThroughTheStagingTables() = runTest {
+        starter()
+        CatalogImport(db).release(coreFile(levelled), emptyList(), ruChain)
+        assertEquals(levels, levels())
+        // a newer release changes a level both ways: the release's field and the genre are read again
+        CatalogImport(db).release(
+            coreFile(listOf(core(1, nsfw = "explicit"), core(2), core(3), core(334138))),
+            emptyList(),
+            ruChain,
+        )
+        assertEquals(listOf("wd:Q1|2", "wd:Q2|0", "wd:Q3|0", "wd:Q334138|2"), levels())
+        // the default filter leaves the explicit ones out of the list
+        assertEquals(2, dao.count(NudityFilter.DEFAULT.nudityBelow))
     }
 
     @Test
@@ -366,7 +409,7 @@ class CatalogImportTest {
             ),
         )
         dao.rerank()
-        assertEquals(3, dao.count())
+        assertEquals(3, dao.count(all))
         CatalogImport(db).release(
             coreFile((1..10).map { core(it, cma = if (it == 5) "1915.534" else null) }),
             emptyList(),
@@ -376,14 +419,14 @@ class CatalogImportTest {
         assertTrue(dao.picture("cma:7")!!.hidden)
         assertFalse(dao.picture("cma:8")!!.hidden)
         assertEquals(85L, dao.picture("cma:8")!!.rank)
-        assertEquals(11, dao.count())
+        assertEquals(11, dao.count(all))
     }
 
     @Test
     fun aSwapInvalidatesThePagingSourceOnce() = runTest {
         starter()
         settled()
-        val source = dao.pages(ru)
+        val source = dao.pages(ru, all)
         source.load(PagingSource.LoadParams.Refresh(null, 10, false))
         settled()
         invalidations.set(0)
@@ -543,7 +586,7 @@ class CatalogImportTest {
     fun stagingLeftByAKilledImportIsClearedOnTheNextRun() = runTest {
         // rows a killed process left in the staging tables
         db.imports().stageCore(
-            listOf(PictureStage("wd:Q99", "Q99", "Left.jpg", null, 1, 0, 10, 10, null, null, false, null, null)),
+            listOf(PictureStage("wd:Q99", "Q99", "Left.jpg", null, 1, 0, 10, 10, null, null, false, null, null, 0)),
             listOf(PictureEntityStage("wd:Q99", EntityKind.CREATOR, 0, "Q98")),
         )
         db.imports().stageLabels(listOf(LabelStage("Q99", "ru", "Осталась")))

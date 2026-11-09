@@ -49,7 +49,9 @@ data class ImportResult(
  *   the paging source, which reads only live tables, is invalidated once, by the swap.
  *
  * Imports must not overlap: the caller holds the store's write lock. In a `core` the first row of an id wins
- * (a repeat is skipped); a row's place in the list is its position among the file's valid rows.
+ * (a repeat is skipped); a row's place in the list is its position among the file's valid rows. Each row's
+ * nudity level ([Nudity.levelOf]: its `nsfw` field, the built-in list, the nude genre) is computed as it is
+ * read and stored with it.
  */
 class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
     private val dao = db.imports()
@@ -262,6 +264,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
             attr = attributionRequired,
             attribution = credit,
             inception = inception,
+            nudity = Nudity.levelOf(nsfw, genres, id).ordinal,
         )
 
         private fun CoreRow.links(pictureId: String): List<PictureEntityStage> =
@@ -278,6 +281,7 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
             id = id, source = CatalogRank.WIKIDATA, rank = rank, wikidataId = wikidataId, commonsFile = commonsFile,
             museumRef = museumRef, fame = fame, sourceRank = sourceRank, width = width, height = height,
             licence = licence, licenceUrl = licenceUrl, attr = attr, attribution = attribution, inception = inception,
+            nudity = nudity,
         )
 
         private fun PictureEntityStage.live() = PictureEntityLink(pictureId, kind, pos, entityId)
@@ -366,15 +370,16 @@ abstract class ImportDao {
 
     /**
      * Writes every staged picture into the live table: a picture already there keeps its rank, a new one gets
-     * `free - position`, below every rank in use (unique, [CatalogDao.rerank] places it). No UPSERT: SQLite
-     * 3.18 lacks it, and REPLACE removes the old row by id, the same row that holds its rank.
+     * `free - position`, below every rank in use (unique, [CatalogDao.rerank] places it); its nudity level is
+     * the one computed at staging. No UPSERT: SQLite 3.18 lacks it, and REPLACE removes the old row by id, the
+     * same row that holds its rank.
      */
     @Query(
-        "INSERT OR REPLACE INTO picture (id, source, rank, hidden, wikidataId, commonsFile, museumRef, fame, " +
-            "sourceRank, width, height, licence, licenceUrl, attr, attribution, inception) " +
+        "INSERT OR REPLACE INTO picture (id, source, rank, hidden, nudity, wikidataId, commonsFile, museumRef, " +
+            "fame, sourceRank, width, height, licence, licenceUrl, attr, attribution, inception) " +
             "SELECT s.id, $WD, COALESCE((SELECT p.rank FROM picture p WHERE p.id = s.id), :free - s.sourceRank), " +
-            "0, s.wikidataId, s.commonsFile, s.museumRef, s.fame, s.sourceRank, s.width, s.height, s.licence, " +
-            "s.licenceUrl, s.attr, s.attribution, s.inception FROM picture_stage s",
+            "0, s.nudity, s.wikidataId, s.commonsFile, s.museumRef, s.fame, s.sourceRank, s.width, s.height, " +
+            "s.licence, s.licenceUrl, s.attr, s.attribution, s.inception FROM picture_stage s",
     )
     abstract suspend fun movePictures(free: Long)
 

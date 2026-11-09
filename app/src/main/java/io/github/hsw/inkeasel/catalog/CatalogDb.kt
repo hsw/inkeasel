@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import androidx.paging.PagingSource
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Embedded
@@ -21,14 +22,17 @@ import androidx.room.TypeConverters
  * The catalog database: every picture of the catalog (the Wikidata release's rows and the live sources'), the
  * labels of the Wikidata entities in the stored languages, and the state of the release files. It holds only
  * data that can be downloaded again, so a schema change drops and re-creates it (docs/decisions.md).
- * The live tables are read by the paging query; the `_stage` tables only by an import's swap.
+ * The live tables are read by the paging query; the `_stage` tables only by an import's swap. The list's
+ * queries take the nudity filter as `:nudityBelow` ([NudityFilter.nudityBelow]): a row shows when its
+ * [PictureEntity.nudity] is below it.
  */
 
 /**
  * One picture. [id] keeps its source prefix (`wd:Q12418`, `cma:<api id>`, `commons:<file name>`), [source] is
  * that prefix. [rank] is the list order (unique; [CatalogRank]), [hidden] marks a live row that duplicates a
  * Wikidata row. Wikidata rows get their title, artists and collection from [LabelEntity] through
- * [PictureEntityLink]; live rows carry them as the source writes them ([title] … [fullUrl]).
+ * [PictureEntityLink]; live rows carry them as the source writes them ([title] … [fullUrl]). [nudity] is the
+ * row's [NudityLevel] ordinal, which the list filters on.
  */
 @Entity(
     tableName = "picture",
@@ -42,6 +46,12 @@ data class PictureEntity(
     val source: String,
     val rank: Long,
     val hidden: Boolean = false,
+    /**
+     * The [NudityLevel] ordinal: a Wikidata row's [Nudity.levelOf] at its import, raised by the built-in list
+     * at each process start ([CatalogDao.markListed]); 0 for a live row, whose source gives no such data.
+     */
+    @ColumnInfo(defaultValue = "0")
+    val nudity: Int = 0,
     /** The Wikidata item (`Q12418`), without the `wd:` prefix. */
     val wikidataId: String? = null,
     /** The Commons file name, spaces as in a page title. */
@@ -133,6 +143,9 @@ data class PictureStage(
     val attr: Boolean,
     val attribution: String?,
     val inception: Int?,
+    /** The row's [NudityLevel] ordinal ([Nudity.levelOf]). */
+    @ColumnInfo(defaultValue = "0")
+    val nudity: Int,
 )
 
 /** A label of an import, staged before the swap. */
@@ -248,12 +261,19 @@ private const val ROW = "SELECT $COLUMNS FROM picture p"
  * meanwhile cannot give a place or a size of another list than the row's.
  */
 private const val PLACED_ROW =
-    "SELECT $COLUMNS, (SELECT COUNT(*) FROM picture q WHERE q.hidden = 0 AND q.rank < p.rank) AS position, " +
-        "(SELECT COUNT(*) FROM picture q WHERE q.hidden = 0) AS count FROM picture p"
+    "SELECT $COLUMNS, " +
+        "(SELECT COUNT(*) FROM picture q WHERE q.hidden = 0 AND q.nudity < :nudityBelow AND q.rank < p.rank) AS position, " +
+        "(SELECT COUNT(*) FROM picture q WHERE q.hidden = 0 AND q.nudity < :nudityBelow) AS count FROM picture p"
 
-/** The rank of the shown picture `:id` as stored now; `:rank` (the one read with it) if gone or hidden. */
+/** A row the list shows: not hidden as a duplicate, and let through by the nudity filter. */
+private const val SHOWN = "p.hidden = 0 AND p.nudity < :nudityBelow"
+
+/**
+ * The rank of the shown picture `:id` as stored now; `:rank` (the one read with it) if gone, hidden or
+ * filtered out.
+ */
 private const val FROM_RANK =
-    "COALESCE((SELECT f.rank FROM picture f WHERE f.id = :id AND f.hidden = 0), :rank)"
+    "COALESCE((SELECT f.rank FROM picture f WHERE f.id = :id AND f.hidden = 0 AND f.nudity < :nudityBelow), :rank)"
 
 /** A shown [row] with its 0-based [position] in the list and the list's size ([count]), read at once. */
 data class PlacedRow(
@@ -264,30 +284,37 @@ data class PlacedRow(
 
 @Dao
 abstract class CatalogDao {
-    /** The list: shown pictures in rank order, texts over the chain ([CatalogRow.chainKey]). */
-    @Query("$ROW WHERE p.hidden = 0 ORDER BY p.rank")
-    abstract fun pages(chain: String): PagingSource<Int, CatalogRow>
+    /**
+     * The list: shown pictures in rank order, texts over the chain ([CatalogRow.chainKey]), those of a nudity
+     * level below [nudityBelow] ([NudityFilter.nudityBelow]).
+     */
+    @Query("$ROW WHERE $SHOWN ORDER BY p.rank")
+    abstract fun pages(chain: String, nudityBelow: Int): PagingSource<Int, CatalogRow>
 
-    /** How many pictures the list shows. */
-    @Query("SELECT COUNT(*) FROM picture WHERE hidden = 0")
-    abstract suspend fun count(): Int
+    /** How many pictures the list shows under the filter [nudityBelow]. */
+    @Query("SELECT COUNT(*) FROM picture p WHERE $SHOWN")
+    abstract suspend fun count(nudityBelow: Int): Int
 
     /**
      * The shown picture after the picture [id] in the list, with its place and the list's size, in one
-     * statement: from the rank [id] has now, or from [rank] (the one read with it) if it is gone or hidden.
+     * statement: from the rank [id] has now, or from [rank] (the one read with it) if it is gone, hidden or
+     * filtered out. Under the filter [nudityBelow], as the list.
      */
-    @Query("$PLACED_ROW WHERE p.hidden = 0 AND p.rank > $FROM_RANK ORDER BY p.rank LIMIT 1")
-    abstract suspend fun next(id: String, rank: Long, chain: String): PlacedRow?
+    @Query("$PLACED_ROW WHERE $SHOWN AND p.rank > $FROM_RANK ORDER BY p.rank LIMIT 1")
+    abstract suspend fun next(id: String, rank: Long, chain: String, nudityBelow: Int): PlacedRow?
 
     /** The shown picture before the picture [id] in the list, as [next] reads the one after it. */
-    @Query("$PLACED_ROW WHERE p.hidden = 0 AND p.rank < $FROM_RANK ORDER BY p.rank DESC LIMIT 1")
-    abstract suspend fun previous(id: String, rank: Long, chain: String): PlacedRow?
+    @Query("$PLACED_ROW WHERE $SHOWN AND p.rank < $FROM_RANK ORDER BY p.rank DESC LIMIT 1")
+    abstract suspend fun previous(id: String, rank: Long, chain: String, nudityBelow: Int): PlacedRow?
 
-    /** A picture by id if the list shows it (a hidden one is not found), with its place and the list size. */
-    @Query("$PLACED_ROW WHERE p.id = :id AND p.hidden = 0")
-    abstract suspend fun placed(id: String, chain: String): PlacedRow?
+    /**
+     * A picture by id if the list shows it under the filter [nudityBelow] (a hidden or filtered one is not
+     * found), with its place and the list size.
+     */
+    @Query("$PLACED_ROW WHERE p.id = :id AND $SHOWN")
+    abstract suspend fun placed(id: String, chain: String, nudityBelow: Int): PlacedRow?
 
-    /** A picture by id if the list shows it (a hidden one is not found). */
+    /** A picture by id unless hidden as a duplicate, whatever its nudity level (tests). */
     @Query("$ROW WHERE p.id = :id AND p.hidden = 0")
     abstract suspend fun row(id: String, chain: String): CatalogRow?
 
@@ -314,6 +341,25 @@ abstract class CatalogDao {
     @Query("UPDATE picture SET rank = :rank, hidden = :hidden WHERE id = :id")
     protected abstract suspend fun place(id: String, rank: Long, hidden: Boolean)
 
+    /** Raises the nudity of the pictures [ids] to [level], leaving a stricter one as it is. */
+    @Query("UPDATE picture SET nudity = :level WHERE id IN (:ids) AND nudity < :level")
+    protected abstract suspend fun raiseNudity(ids: List<String>, level: Int): Int
+
+    /**
+     * Raises each stored Wikidata row to at least the level the built-in list gives it ([Nudity.listed]), in
+     * one transaction: the import computes the level ([Nudity.levelOf]), but a release already imported is not
+     * read again when a newer app version brings a longer list (an unchanged file is a 304). Never lowers a
+     * level (the release or the genre may set a stricter one); writes no row whose level is already there.
+     */
+    @Transaction
+    open suspend fun markListed(): Int {
+        var raised = 0
+        for ((level, ids) in listOf(NudityLevel.EXPLICIT to Nudity.EXPLICIT, NudityLevel.NUDE to Nudity.NUDE)) {
+            ids.map { "${CatalogRank.WIKIDATA}:$it" }.chunked(LISTED_CHUNK).forEach { raised += raiseNudity(it, level.ordinal) }
+        }
+        return raised
+    }
+
     /**
      * Recomputes every rank and the dedupe ([CatalogRank]) in one transaction, writing only the rows that
      * change (none for the starter set going into an empty database, which is written at its places). The
@@ -328,6 +374,11 @@ abstract class CatalogDao {
         changes.forEachIndexed { i, p -> place(p.id, free - i, p.hidden) }
         changes.forEach { p -> place(p.id, p.rank, p.hidden) }
     }
+
+    private companion object {
+        /** Ids per statement of [markListed]: below the 999 bound parameters of SQLite before 3.32. */
+        const val LISTED_CHUNK = 900
+    }
 }
 
 @Database(
@@ -335,7 +386,7 @@ abstract class CatalogDao {
         PictureEntity::class, LabelEntity::class, PictureEntityLink::class, CatalogFileEntity::class,
         PictureStage::class, LabelStage::class, PictureEntityStage::class,
     ],
-    version = 1,
+    version = 2,
 )
 @TypeConverters(CatalogConverters::class)
 abstract class CatalogDb : RoomDatabase() {
@@ -354,9 +405,12 @@ abstract class CatalogDb : RoomDatabase() {
         fun open(context: Context, name: String = NAME): CatalogDb =
             configure(Room.databaseBuilder(context, CatalogDb::class.java, name)).build()
 
-        /** The builder settings every catalog database gets, tests included. */
+        /**
+         * The builder settings every catalog database gets, tests included. `fallbackToDestructiveMigration`
+         * alone covers an upgrade and a downgrade; adding `fallbackToDestructiveMigrationOnDowngrade` after it
+         * would make an upgrade ask for a migration again (Room 2.6 sets `requireMigration` back to true there).
+         */
         fun configure(builder: Builder<CatalogDb>): Builder<CatalogDb> = builder
             .fallbackToDestructiveMigration()
-            .fallbackToDestructiveMigrationOnDowngrade()
     }
 }

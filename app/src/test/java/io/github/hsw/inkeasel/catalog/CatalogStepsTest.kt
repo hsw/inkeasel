@@ -50,7 +50,8 @@ class CatalogStepsTest {
         dao.insertLabels(listOf(LabelEntity("Q1", "ru", "Первая"), LabelEntity("Q1", "en", "First")))
     }
 
-    private fun steps(chain: List<String> = ru) = CatalogSteps(dao, chain) { CatalogPicture.of(it, ", ", 330) }
+    private fun steps(chain: List<String> = ru, filter: NudityFilter = NudityFilter.DEFAULT) =
+        CatalogSteps(dao, chain, filter.nudityBelow) { CatalogPicture.of(it, ", ", 330) }
 
     /** Steps [n] times by [delta] from [from], `null` once past an end. */
     private suspend fun CatalogSteps.walk(from: ViewerState, delta: Int, n: Int): ViewerState? {
@@ -142,6 +143,35 @@ class CatalogStepsTest {
         assertEquals("wd:Q4", next.picture.id)
         assertEquals(4, next.index) // after Q0 … Q3
         assertEquals("wd:Q2", steps.step(third, -1)!!.picture.id)
+    }
+
+    @Test
+    fun stepsAndTheCountFollowTheFilterTheViewerOpenedWith() = runTest {
+        fill()
+        // Q2 nude, Q4 explicit
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET nudity = 1 WHERE id = 'wd:Q2'")
+        db.openHelper.writableDatabase.execSQL("UPDATE picture SET nudity = 2 WHERE id = 'wd:Q4'")
+        // the first five cards and the list's size under each filter
+        val expected = mapOf(
+            NudityFilter.SHOW_ALL to (listOf("wd:Q1", "wd:Q2", "wd:Q3", "wd:Q4", "wd:Q5") to 21),
+            NudityFilter.HIDE_EXPLICIT to (listOf("wd:Q1", "wd:Q2", "wd:Q3", "wd:Q5", "wd:Q6") to 20),
+            NudityFilter.HIDE_NUDES to (listOf("wd:Q1", "wd:Q3", "wd:Q5", "wd:Q6", "wd:Q7") to 19),
+        )
+        for ((filter, want) in expected) {
+            val steps = steps(filter = filter)
+            val seen = ArrayList<ViewerState>()
+            var s = steps.open("wd:Q1")
+            while (s != null && seen.size < 5) {
+                seen += s
+                s = steps.step(s, 1)
+            }
+            assertEquals(filter.name, want.first, seen.map { it.picture.id })
+            assertEquals(filter.name, (0 until 5).toList(), seen.map { it.index })
+            assertEquals(filter.name, setOf(want.second), seen.map { it.count }.toSet())
+        }
+        // a picture the filter leaves out opens alone
+        assertNull(steps(filter = NudityFilter.HIDE_NUDES).open("wd:Q2"))
+        assertNull(steps().open("wd:Q4"))
     }
 
     @Test
