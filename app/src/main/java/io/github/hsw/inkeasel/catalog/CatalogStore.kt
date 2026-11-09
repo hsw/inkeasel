@@ -206,12 +206,16 @@ class CatalogStore internal constructor(
     /**
      * The starter's labels of each language the [chain] stores but the database has none of (it joined the
      * chain after the first start, or left it and came back), so the list shows it while its release file
-     * downloads, also offline. Looked for at every pass: a language the starter set lacks costs one query.
+     * downloads, also offline. A language whose release file was imported keeps what that file holds, even
+     * no label at all ([CatalogSyncPlan.importedLabels]): its state answers later checks with a 304 or an
+     * unchanged hash, which would never replace starter labels put back over it. Looked for at every pass: a
+     * language the starter set lacks costs one query.
      */
     private suspend fun starterLabels(chain: List<String>) {
         val dao = db.imports()
         val have = starter.languages()
-        val missing = CatalogImport.languages(chain).filter { it in have && !dao.hasLabels(it) }
+        val released = CatalogSyncPlan.importedLabels(dao.files())
+        val missing = CatalogImport.languages(chain).filter { it in have && it !in released && !dao.hasLabels(it) }
         if (missing.isEmpty()) return
         val result = import.addLabels(starter.labelsFiles(missing), missing, chain) { sync.forgetOutside(chain) }
         log("starter labels of $missing: ${result ?: "none"}", null)

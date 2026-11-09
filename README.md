@@ -308,7 +308,8 @@ only the import and the files' state are written under it. A labels file whose e
 (an empty one empties its language). In short: starter set at the first start → staged release import in
 the background → a check of each file a week later.
 A language that joins the chain (or comes back to it) gets the starter set's labels at once, also offline; a
-language that leaves it loses its labels at the next import. To watch it:
+language that leaves it loses its labels at the next import. A language whose release file was imported (an
+empty one included) keeps what that file holds: the starter's labels do not come back over it. To watch it:
 
     adb logcat -s CatalogStore CatalogSync LiveRefresh
 

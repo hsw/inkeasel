@@ -129,6 +129,14 @@ object CatalogSyncPlan {
         CatalogFileEntity(file.check.name, file.etag, file.sha256, file.size, checkedAt = now, importedAt = now)
 
     /**
+     * The languages whose release labels file was imported (its hash is recorded), an empty one included:
+     * what the release holds for them is in the database, so the starter's labels must not come back over it.
+     * A language that leaves the chain loses its state with its labels ([outside]) and is not among them.
+     */
+    fun importedLabels(stored: Collection<CatalogFileEntity>): Set<String> =
+        stored.filter { it.sha256 != null }.mapNotNullTo(HashSet()) { langOf(it.name) }
+
+    /**
      * The stored labels files of languages the [chain] does not store. A swap drops those labels, so their
      * state goes with them: when the language comes back, its file is downloaded and imported again rather
      * than answered 304 with nothing left to show.

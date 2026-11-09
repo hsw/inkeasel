@@ -236,6 +236,41 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun anImportedEmptyLabelsFileIsNotCoveredByTheStarterLabelsAgain() {
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40))))
+        release.serve("labels-ru.jsonl.gz", gzip(ByteArray(0))) // the release has no Russian label
+        store.start(ruChain)
+        awaitPasses(1)
+        assertEquals(listOf("en"), query("SELECT DISTINCT lang FROM label ORDER BY lang")) // "Старт" replaced
+        assertEquals(1, query("SELECT name FROM catalog_file WHERE name = 'labels-ru.jsonl.gz' AND sha256 IS NOT NULL").size)
+
+        // the next pass leaves the release's nothing in place: a later 304 or unchanged hash would never undo it
+        store.start(ruChain)
+        awaitPasses(2)
+        assertFalse(logged.any { it.startsWith("starter labels of") })
+        assertEquals(listOf("en"), query("SELECT DISTINCT lang FROM label ORDER BY lang"))
+        assertEquals(listOf("ru", "en"), opened) // only the first start's starter files
+    }
+
+    @Test
+    fun aLanguageWhoseReleaseLabelsLeftWithItGetsItsStarterLabelsBackOffline() {
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40))))
+        release.serve("labels-ru.jsonl.gz", gzip(ByteArray(0)))
+        store.start(ruChain)
+        awaitPasses(1)
+        release.server.shutdown()
+        store.start(deChain) // the swap drops the release's Russian state with the Russian labels
+        awaitPasses(2)
+        assertTrue(query("SELECT name FROM catalog_file WHERE name = 'labels-ru.jsonl.gz'").isEmpty())
+
+        store.start(ruChain)
+        awaitPasses(3)
+
+        assertEquals("Старт", title("wd:Q1", ruChain))
+        assertTrue(logged.any { it.startsWith("starter labels of [ru]") })
+    }
+
+    @Test
     fun aUiLanguageWithNoLabelsFileFallsBackToEnglishThenTheFileName() {
         // Kazakh: neither the starter set nor the release has its labels (the release answers 404)
         val kk = LanguageChain.of("kk-KZ")

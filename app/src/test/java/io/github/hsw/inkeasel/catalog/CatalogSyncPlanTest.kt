@@ -136,6 +136,21 @@ class CatalogSyncPlanTest {
     }
 
     @Test
+    fun aLabelsFileCountsAsImportedOnlyWithItsHashRecorded() {
+        val stored = listOf(
+            imported(CORE),
+            imported("labels-ru.jsonl.gz"), // an empty file is imported all the same
+            imported("labels-pt-br.jsonl.gz").copy(checkedAt = now + 1, importFailed = true), // a later download failed
+            CatalogFileEntity("labels-en.jsonl.gz", checkedAt = now, missing = true), // a 404, nothing imported
+            CatalogFileEntity("labels-mul.jsonl.gz", checkedAt = now, importFailed = true), // never imported
+            imported("labels-all.jsonl.gz"),
+            CatalogFileEntity("live-commons", checkedAt = now, importedAt = now),
+        )
+        assertEquals(setOf("ru", "pt-br"), CatalogSyncPlan.importedLabels(stored))
+        assertTrue(CatalogSyncPlan.importedLabels(emptyList()).isEmpty())
+    }
+
+    @Test
     fun theStateOfLabelsOutsideTheChainIsForgotten() {
         val names = listOf(
             CORE, "labels-ru.jsonl.gz", "labels-de.jsonl.gz", "labels-en.jsonl.gz", "labels-mul.jsonl.gz",

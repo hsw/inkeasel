@@ -55,7 +55,10 @@ asked again at the next start. A labels file whose every line is bad is refused 
 (an empty one still empties its language), so a broken upload no longer wipes a language for a week. The
 starter's labels of a chain language the database has none of are looked for at every pass (one query for a
 language the starter set lacks), so a language that leaves the chain and comes back gets them again, also
-offline. The release's labels come only as `labels-<lang>` files, so the import no longer reads a file of
+offline; not for a language whose release file was imported (its hash recorded,
+`CatalogSyncPlan.importedLabels`), even an empty one: its 304s and unchanged hashes would never replace starter
+labels put back over it. Its state goes with its labels when it leaves the chain, so the way back still gets
+them. The release's labels come only as `labels-<lang>` files, so the import no longer reads a file of
 several languages (the tool's `labels-all`), and the reader no longer hashes what the sync already hashed
 while downloading.
 Rejected: the failed file weekly like a 404 (a re-upload would wait a week), a failure count with growing
