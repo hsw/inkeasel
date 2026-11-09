@@ -66,6 +66,7 @@ object CatalogPicture {
             height = row.height,
             commonsFile = file,
             attribution = row.attribution?.takeIf { row.attr && it.isNotBlank() },
+            nudity = row.nudity,
         )
     }
 }

@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.catalog.CatalogStore
 import io.github.hsw.inkeasel.catalog.NudityFilter
+import io.github.hsw.inkeasel.catalog.NudityLevel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -35,7 +36,7 @@ class MainViewModelNudityTest {
     private val owner = ViewModelStore()
     private lateinit var vm: MainViewModel
 
-    // never in the catalog database: the viewer shows it alone
+    // never in the catalog database (nor the ids of its copies below): the viewer shows it alone
     private val picture = Picture("wd:Q0", "Title", "Credit", "", "")
 
     // a picture of My pictures (a file on the device)
@@ -159,6 +160,46 @@ class MainViewModelNudityTest {
         vm.readNudityLock()
         idle()
         assertEquals(mine, vm.blePanel?.picture)
+    }
+
+    @Test
+    fun aCardOfTheOldListThatTheFilterInForceHides_opensNothing() {
+        // a nude card still on the grid while the stricter filter's first page loads
+        val nude = picture.copy(id = "wd:Q0-nude", nudity = NudityLevel.NUDE.ordinal)
+        assertEquals(true, vm.passes(nude))
+        restricted(true)
+        vm.readNudityLock()
+        idle()
+
+        assertEquals(false, vm.passes(nude))
+        vm.openViewer(nude, catalogPicture = { error("no step expected") }, byPress = true)
+        idle()
+        assertNull(vm.viewer)
+        vm.openDetails(nude)
+        assertNull(vm.details)
+        // a picture the filter lets through, and one of mine at any level, still open
+        assertEquals(true, vm.passes(picture))
+        vm.openDetails(picture)
+        assertEquals(picture, vm.details)
+        assertEquals(true, vm.passes(mine.copy(nudity = NudityLevel.EXPLICIT.ordinal)))
+    }
+
+    @Test
+    fun anExplicitCard_passesOnlyWhenTheChoiceShowsAll() {
+        val explicit = picture.copy(id = "wd:Q0-explicit", nudity = NudityLevel.EXPLICIT.ordinal)
+        assertEquals(false, vm.passes(explicit)) // the default hides explicit works
+        vm.pressNudity() // hide all nudes
+        assertEquals(false, vm.passes(explicit))
+        vm.pressNudity() // show all
+        assertEquals(true, vm.passes(explicit))
+        vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
+        idle()
+        assertEquals(explicit.id, vm.viewer?.picture?.id)
+        vm.pressNudity() // back to the default: the viewer closes, and the card no longer opens it
+        assertNull(vm.viewer)
+        vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
+        idle()
+        assertNull(vm.viewer)
     }
 
     @Test

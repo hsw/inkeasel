@@ -49,7 +49,16 @@ new pager, the grid goes back to its top (the D-pad focus moves to the tab first
 focused card goes), and whatever shows a Catalog picture picked under the old bound goes, as it may be one the
 new bound hides: an open Catalog viewer closes (it steps under the bound it opened with), so does a details
 panel on a Catalog picture, and the Bluetooth panel keeps asking for the permission but no longer sends its
-Catalog picture. My pictures is not touched. The every-10th live card may move up by the rows a filter
+Catalog picture. My pictures is not touched. The grid's old cards stay, and can be pressed, until the new
+list's first page arrives, so the row and the `Picture` made from it carry the stored level and a press, the
+details panel, the viewer and the send path (the Bluetooth panel's later send too) check it against the bound
+in force at that moment (`MainViewModel.passes`); a hidden picture opens and sends nothing, and only the log
+says so, as its card is about to go. Rejected: a database read at each press (the press opens the viewer and
+sends at once, and the level read with the row is the one the grid showed it under), relying on the grid
+having refreshed (a press in that window opened the viewer on the picture alone and sent it). When the
+filter leaves no row of a catalog that has some, the tab says so and where to change the filter
+(`CatalogView.FILTERED`: the list read to its end with no row), instead of "Loading" for good. The every-10th
+live card may move up by the rows a filter
 leaves out before it. The bound is the setting's (see "The Catalog's nudity filter is a setting with three
 values"), hide explicit by default, so explicit works stay hidden as before.
 Whether the catalog has any picture at all ("no pictures yet") is counted without the filter.

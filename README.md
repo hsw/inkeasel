@@ -293,8 +293,11 @@ Nudity**, below): the paging query, the count and the viewer's "n / N" and Left/
 ones out, and a Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the
 filter. When the filter changes, the grid goes back to its top (the D-pad focus moves to the tab first), and
 an open Catalog viewer or the details panel of a Catalog picture closes, as the picture may be one the filter
-now hides (the Bluetooth panel stays but no longer sends its Catalog picture). The starter set never carries
-an explicit painting.
+now hides (the Bluetooth panel stays but no longer sends its Catalog picture). The old cards stay until the
+new list's first page arrives, so a picture carries its level and a press, the details panel, the viewer and
+"Send to frame" check it against the filter in force at that moment: a hidden one opens and sends nothing.
+When the filter leaves no picture of a catalog that has some, the tab says so and where to change it. The
+starter set never carries an explicit painting.
 
 The live sources' lists are rows of the same database: every 10th card of the unfiltered order is one of them
 (a filter that leaves rows out before it moves it up), Cleveland and Commons in turn, and they follow the

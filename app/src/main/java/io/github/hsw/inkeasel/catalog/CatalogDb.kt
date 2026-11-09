@@ -172,7 +172,9 @@ data class PictureEntityStage(
  * A picture as the list shows it, its texts resolved over the language chain: [title] (a Wikidata row's
  * label, a live row's title), [artists] (in the release's order; a live row's in its source's) and
  * [collection] (the first one's label). A text with no label in any stored language is `null` (an artist
- * without one is left out). Lists are joined only at the edge (`list_names_separator`).
+ * without one is left out). Lists are joined only at the edge (`list_names_separator`). [nudity] is the
+ * stored [NudityLevel] ordinal ([PictureEntity.nudity]), so a row read under one filter can be checked against
+ * another ([io.github.hsw.inkeasel.Picture.shownUnder]).
  */
 data class CatalogRow(
     val id: String,
@@ -196,6 +198,7 @@ data class CatalogRow(
     val pageUrl: String?,
     val thumbUrl: String?,
     val fullUrl: String?,
+    val nudity: Int = 0,
 ) {
     /** [title], or with no label the Commons file name without its extension, or the id. */
     val shownTitle: String
@@ -253,7 +256,7 @@ private const val COLUMNS =
     "p.id, p.source, p.rank, p.wikidataId, p.commonsFile, p.museumRef, p.fame, p.width, p.height, " +
         "p.licence, p.licenceUrl, p.attr, p.attribution, p.inception, " +
         "COALESCE($TITLE, p.title) AS title, COALESCE($ARTISTS, p.artists) AS artists, " +
-        "COALESCE($COLLECTION, p.collection) AS collection, p.date, p.pageUrl, p.thumbUrl, p.fullUrl"
+        "COALESCE($COLLECTION, p.collection) AS collection, p.date, p.pageUrl, p.thumbUrl, p.fullUrl, p.nudity"
 private const val ROW = "SELECT $COLUMNS FROM picture p"
 
 /*

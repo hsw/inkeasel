@@ -9,6 +9,7 @@
     <string name="header_no_frame">Рамка не выбрана</string>
     <string name="catalog_loading">Загрузка каталога…</string>
     <string name="catalog_none">В каталоге пока нет картинок. Он загрузится, когда устройство будет в сети.</string>
+    <string name="catalog_filtered">Фильтр наготы скрыл все картинки каталога. Его можно изменить в настройках: Каталог → Нагота.</string>
     <string name="catalog_err_offline">Нет связи с источником. Проверьте сеть и повторите.</string>
     <string name="catalog_err_timeout">Источник не отвечает. Попробуйте позже.</string>
     <string name="catalog_err_http_server">Источник недоступен (HTTP %1$d). Попробуйте позже.</string>

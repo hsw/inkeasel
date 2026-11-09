@@ -130,6 +130,13 @@ class CatalogDaoTest {
         assertEquals(0, dao.picture("cma:0")?.nudity)
         // row() (tests) reads it whatever its level
         assertEquals("wd:Q5", dao.row("wd:Q5", ru)?.id)
+        // a row carries its level, so a card read under one filter can be checked against another
+        assertEquals(NudityLevel.EXPLICIT.ordinal, dao.row("wd:Q5", ru)?.nudity)
+        assertEquals(
+            listOf(NudityLevel.NUDE.ordinal, NudityLevel.NONE.ordinal, NudityLevel.EXPLICIT.ordinal),
+            everything().filter { it.id in setOf("wd:Q3", "wd:Q4", "wd:Q5") }.map { it.nudity },
+        )
+        assertEquals(NudityLevel.NUDE.ordinal, dao.placed("wd:Q3", ru, all)?.row?.nudity)
     }
 
     @Test

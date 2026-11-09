@@ -35,7 +35,8 @@ import java.util.concurrent.TimeUnit
  * [licence] (short name, e.g. "CC0", "CC BY-SA 4.0") and [licenceUrl], and the original's [width] × [height]
  * in pixels. [commonsFile] is the Commons file name its renditions are built from
  * ([io.github.hsw.inkeasel.catalog.CommonsUrls]), [attribution] the credit its licence asks to show wherever
- * it is shown (`null` when it asks for none). Never translated text.
+ * it is shown (`null` when it asks for none). [nudity] is a Catalog picture's stored
+ * [io.github.hsw.inkeasel.catalog.NudityLevel] ordinal (0 for My pictures). Never translated text.
  */
 data class Picture(
     val id: String,
@@ -54,7 +55,15 @@ data class Picture(
     val height: Int? = null,
     val commonsFile: String? = null,
     val attribution: String? = null,
+    val nudity: Int = 0,
 ) {
+    /**
+     * The picture may be shown or sent under the nudity filter [nudityBelow]
+     * ([io.github.hsw.inkeasel.catalog.NudityFilter.nudityBelow]): one of My pictures always, a Catalog
+     * picture when its level is below the bound.
+     */
+    fun shownUnder(nudityBelow: Int): Boolean = local || nudity < nudityBelow
+
     /** The source the picture came from: the prefix of its [id] ("wd", "cma", "commons", "local"). */
     val source: String get() = id.substringBefore(':')
 

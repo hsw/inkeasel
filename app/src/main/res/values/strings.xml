@@ -14,6 +14,8 @@
     <string name="catalog_loading">Loading the catalog…</string>
     <!-- the catalog database has no picture (the built-in set failed to load); the sync may still fill it -->
     <string name="catalog_none">No pictures in the catalog yet. It downloads when the device is online.</string>
+    <!-- the catalog has pictures, but the nudity filter (settings_nudity) leaves none of them -->
+    <string name="catalog_filtered">The nudity filter leaves no picture of the catalog. Change it in the settings, under Catalog → Nudity.</string>
     <string name="catalog_err_offline">No connection to the source. Check the network and try again.</string>
     <string name="catalog_err_timeout">The source is not responding. Try again later.</string>
     <string name="catalog_err_http_server">The source is unavailable (HTTP %1$d). Try again later.</string>

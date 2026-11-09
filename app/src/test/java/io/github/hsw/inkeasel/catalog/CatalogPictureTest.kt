@@ -81,6 +81,21 @@ class CatalogPictureTest {
     }
 
     @Test
+    fun nudity_theRowsLevel_checkedAgainstAFilter() {
+        val nude = CatalogPicture.of(row().copy(nudity = NudityLevel.NUDE.ordinal), sep)
+        assertEquals(NudityLevel.NUDE.ordinal, nude.nudity)
+        assertEquals(true, nude.shownUnder(NudityFilter.SHOW_ALL.nudityBelow))
+        assertEquals(true, nude.shownUnder(NudityFilter.HIDE_EXPLICIT.nudityBelow))
+        assertEquals(false, nude.shownUnder(NudityFilter.HIDE_NUDES.nudityBelow))
+        val explicit = CatalogPicture.of(row().copy(nudity = NudityLevel.EXPLICIT.ordinal), sep)
+        assertEquals(false, explicit.shownUnder(NudityFilter.HIDE_EXPLICIT.nudityBelow))
+        assertEquals(true, explicit.shownUnder(NudityFilter.SHOW_ALL.nudityBelow))
+        // one of My pictures passes every filter
+        val mine = Picture("local:a.png", "a.png", "", "/a.png", "/a.png", local = true, nudity = NudityLevel.EXPLICIT.ordinal)
+        assertEquals(true, mine.shownUnder(NudityFilter.HIDE_NUDES.nudityBelow))
+    }
+
+    @Test
     fun cardWidth_byColumnWidth() {
         assertEquals(330, CatalogPicture.cardWidth(200))
         assertEquals(330, CatalogPicture.cardWidth(330))

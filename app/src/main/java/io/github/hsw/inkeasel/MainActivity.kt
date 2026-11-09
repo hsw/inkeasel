@@ -179,6 +179,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store.applyFilter(filter)
     }
 
+    /**
+     * [p] may be shown or sent under the nudity filter in force now ([Picture.shownUnder]). A new filter re-pages
+     * the grid, but its old cards stay, and can be pressed, until the new list's first page arrives; so the
+     * press, the details panel, the viewer and the send path check the picture itself rather than rely on the
+     * grid having refreshed. A refusal is only logged: the card goes with the old list.
+     */
+    fun passes(p: Picture): Boolean {
+        val ok = p.shownUnder(store.nudityBelow.value)
+        if (!ok) Log.i(TAG, "${p.id} refused: the nudity filter in force hides it")
+        return ok
+    }
+
     /** My pictures ([LOCAL_TAB]): a list loaded whole ([readLocal]), re-scanned when its folder changes. */
     private val local = LocalImages(app)
 
@@ -245,7 +257,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var details by mutableStateOf<Picture?>(null)
         private set
 
+    /** The details panel of [p], unless the filter in force hides it ([passes]). */
     fun openDetails(p: Picture) {
+        if (!passes(p)) return
         Log.i(TAG, "details of ${p.id}")
         details = p
     }
@@ -275,9 +289,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
      * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
-     * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]).
+     * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]). Nothing
+     * opens for a picture the filter in force hides ([passes]).
      */
     fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture, byPress: Boolean = false) {
+        if (!passes(p)) return
         details = null
         viewerByPress = byPress
         viewerOnCatalog = tab == CATALOG_TAB
@@ -525,9 +541,11 @@ class MainActivity : ComponentActivity() {
     /**
      * The send path of a picture ([BleAsk.onSend]): sent, the Bluetooth panel (which replaces any open
      * viewer), or a toast why not. A press on a card ([byPress]) has the viewer open on the picture, whose
-     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast.
+     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast. A picture
+     * the nudity filter in force hides is not sent ([MainViewModel.passes]).
      */
     private fun send(p: Picture, byPress: Boolean) {
+        if (!vm.passes(p)) return
         readBle()
         when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
             BleAsk.Send.SEND -> sendToFrame(p)
@@ -544,8 +562,10 @@ class MainActivity : ComponentActivity() {
     }
 
     // Hand the upload to the background service, so it survives leaving the app and does not
-    // interrupt playback in another app. A short toast confirms; the service toasts again when done.
+    // interrupt playback in another app. A short toast confirms; the service toasts again when done. Checked
+    // against the nudity filter here too: the Bluetooth panel sends the picture it was opened with later.
     private fun sendToFrame(p: Picture) {
+        if (!vm.passes(p)) return
         if (p.local) UploadService.startManual(this, Art.File(p.fullUrl))
         else UploadService.startManual(this, Art.Url(p.fullUrl), p.title)
         Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
@@ -652,9 +672,11 @@ fun App(
                 val catalogPicture = remember(names, columnPx, aspect) {
                     { row: CatalogRow -> CatalogPicture.of(row, names, CatalogPicture.thumbWidth(columnPx, aspect, row.width, row.height)) }
                 }
-                // a press on a card: the viewer on it, then the send path (whose Bluetooth panel replaces the viewer)
-                val press = { p: Picture ->
+                // a press on a card: the viewer on it, then the send path (whose Bluetooth panel replaces the viewer);
+                // nothing for a card of the old list that the filter in force hides
+                val press = press@{ p: Picture ->
                     Log.i(TAG, "press on ${p.id}")
+                    if (!vm.passes(p)) return@press
                     vm.openViewer(p, catalogPicture, byPress = true)
                     onPress(p)
                 }
@@ -678,11 +700,16 @@ fun App(
                     }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
                         if (catalog) {
-                            when (CatalogView.of(pages.itemCount, catalogEmpty, pages.loadState.refresh is LoadState.Loading)) {
+                            val view = CatalogView.of(
+                                pages.itemCount, catalogEmpty, pages.loadState.refresh is LoadState.Loading,
+                                endReached = pages.loadState.append.endOfPaginationReached,
+                            )
+                            when (view) {
                                 CatalogView.GRID -> PagedGrid(
                                     pages, catalogPicture, aspect, layout, catalogGrid, onPress = press, onDetails = vm::openDetails,
                                 )
                                 CatalogView.NONE -> Text(stringResource(R.string.catalog_none))
+                                CatalogView.FILTERED -> Text(stringResource(R.string.catalog_filtered))
                                 CatalogView.LOADING -> Text(stringResource(R.string.catalog_loading))
                             }
                         } else when (st) {
