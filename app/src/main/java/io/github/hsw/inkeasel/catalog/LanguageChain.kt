@@ -2,7 +2,8 @@ package io.github.hsw.inkeasel.catalog
 
 /**
  * The label languages to show the catalog in, most wanted first, as Wikidata language codes (the catalog's
- * `labels-<code>` files): the UI language with its regional or script variant first, then [ENGLISH], then
+ * `labels-<code>` files): the UI language with its regional or script variant first (for English the variant
+ * comes after plain `en`), then [ENGLISH], then
  * [MULTILINGUAL] (Wikidata's language-independent labels). A label missing in every one of them falls back to
  * any other stored language, which is the query's part, not the chain's. Pure: it takes a BCP 47 language tag
  * (`Locale.toLanguageTag()`, `_` accepted too), so the caller decides which locale is the UI's.
@@ -42,7 +43,12 @@ object LanguageChain {
             "nb", "no" -> listOf("nb", "no")
             "nn" -> listOf("nn", "nb", "no")
             "es" -> listOfNotNull("es-419".takeIf { region in LATIN_AMERICA }, "es")
-            else -> listOfNotNull(region?.let { "$language-$it" }?.takeIf { it in REGIONAL }, language)
+            else -> {
+                val variant = region?.let { "$language-$it" }?.takeIf { it in REGIONAL }
+                // English's regional labels are few and often worse than `en` (a first name alone, a
+                // description as the label), so they only stand in where `en` has none
+                if (language == ENGLISH) listOfNotNull(language, variant) else listOfNotNull(variant, language)
+            }
         }
         return (own + ENGLISH + MULTILINGUAL).distinct()
     }

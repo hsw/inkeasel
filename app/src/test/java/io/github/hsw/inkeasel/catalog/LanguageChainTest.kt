@@ -17,8 +17,9 @@ class LanguageChainTest {
     @Test
     fun englishAppearsOnce() {
         assertEquals(listOf("en", "mul"), chain("en"))
-        assertEquals(listOf("en-gb", "en", "mul"), chain("en-GB"))
-        assertEquals(listOf("en-us", "en", "mul"), chain("en-US"))
+        // plain en comes before English's regional variants, which only stand in where en has no label
+        assertEquals(listOf("en", "en-gb", "mul"), chain("en-GB"))
+        assertEquals(listOf("en", "en-us", "mul"), chain("en-US"))
         assertEquals(listOf("en", "mul"), chain("en-IN"))
     }
 
@@ -28,7 +29,7 @@ class LanguageChainTest {
         assertEquals(listOf("pt", "en", "mul"), chain("pt-PT"))
         assertEquals(listOf("de-ch", "de", "en", "mul"), chain("de-CH"))
         assertEquals(listOf("de-at", "de", "en", "mul"), chain("de-AT"))
-        assertEquals(listOf("en-ca", "en", "mul"), chain("en-CA"))
+        assertEquals(listOf("en", "en-ca", "mul"), chain("en-CA"))
         // a region without a Wikidata variant names no file
         assertEquals(listOf("fr", "en", "mul"), chain("fr-CA"))
     }

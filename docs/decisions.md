@@ -3,6 +3,16 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — English labels: plain `en` before `en-us`, `en-gb` and `en-ca`
+For an English UI the language chain now reads `en`, then the regional variant, then `mul` (an `en-US` TV:
+`en`, `en-us`, `mul`). Wikidata's English regional labels are few and often worse than `en`: on the release,
+Watteau's `en-us` label is "Jean-Antoine" and Raja Ravi Varma's is a description. The variant still stands in
+where `en` has no label, and its file is still fetched. Other languages keep their variant first (`pt-br`
+before `pt`, `de-at` before `de`), where the variant is the user's own spelling.
+Supersedes the order in "Catalog labels follow a language chain" for English only.
+Rejected: dropping the English variants from the chain (a picture with only an `en-us` label would fall to
+another language).
+
 ## 2026-11-09 — The catalog checks again each time the app comes back to the foreground
 Found in the review: the store was woken only from `MainActivity.onCreate`, and on a TV the activity and
 the process can stay alive for days, so a file or a live list that fell due, or a request that failed,
