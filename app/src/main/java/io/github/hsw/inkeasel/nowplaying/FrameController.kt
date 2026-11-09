@@ -25,7 +25,7 @@ fun interface Uploader {
  * ends. Free of Android types: the scope, the uploader, the default source, the persisted frame key and
  * the logger are injected; a key reaches the log only through [MediaLog].
  *
- * Rules (also in README.md, "Now playing"):
+ * Rules (also in docs/now-playing.md):
  * - PLAYING K (any pkg, which becomes [current]): cancel the revert; nothing if K is already on the frame,
  *   if a start for K is pending (repeated events do not reset the timer), or if K was the last attempt and
  *   this is not a transition into PLAYING (no tight retry loop after a failed upload, and a manual upload

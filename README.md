@@ -2,719 +2,119 @@
 
 [![CI](https://github.com/hsw/inkeasel/actions/workflows/ci.yml/badge.svg)](https://github.com/hsw/inkeasel/actions/workflows/ci.yml)
 
-Android TV app that uploads pictures to an e-paper frame over BLE: free paintings and photos from a
-built-in catalog, your own pictures, and the poster of whatever is playing. When a film plays, its poster
-goes to the frame; when playback ends, the frame returns to the last manually uploaded picture.
-Made for a TV and its remote (D-pad); it also runs on tablets and phones, by touch and in any orientation,
-where a picture can be shared to the frame from a gallery. Developed and tested on an NVIDIA Shield TV Pro
-2019 (Android 11), the Android TV 14 emulator and Android 15 and 16 tablet emulators.
+InkEasel puts pictures on an e-paper frame over Bluetooth: famous paintings and photos from a built-in
+catalog, your own pictures, and the poster of whatever is playing on your TV. When a film starts, its poster
+goes to the frame; when it ends, the frame returns to the last picture you chose.
 
-License: [Apache-2.0](LICENSE).
+Made for Android TV and its remote; it also runs on tablets and phones, where you can share a picture to the
+frame straight from the gallery. License: [Apache-2.0](LICENSE).
 
 | Android TV | Tablet |
 |---|---|
 | ![The catalog on Android TV: a tab of picture cards in four columns](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
 
-![Settings: the frame search and "Permissions and features" (before the "Catalog" group)](docs/screenshots/settings.png)
+![Settings: the frame search and "Permissions and features"](docs/screenshots/settings.png)
 
 ## Supported frames
 
-NowMean e-paper frames (BLE service `0xFFBB`). The app reads the frame's colour type, panel and resolution
-from its advertisement and renders each picture for that panel: the whole picture, scaled to fit and centred,
-never cropped, on white (bars at the sides of a picture narrower than the panel, at the top and bottom of a
-wider one), dithered onto the panel's inks.
+NowMean e-paper frames.
 
-- **E6 (Spectra 6)**: verified on a real frame (1024×600); most other E6 sizes use the same layout at
-  another size and count as verified.
-- **E6** 1360×480, 1440×600 and 1200×1600, **E4** and **BWR**: implemented from the vendor app's formats,
-  not yet seen on a real frame; the settings say "not verified on hardware", and they can still be chosen.
-- **BW, BP, E7, BWY**, a rotated panel or panel type A: listed with the reason and not selectable.
+- **E6 (Spectra 6)**: tested on a real 1024×600 frame; most other E6 sizes work the same way.
+- **E6** 1360×480, 1440×600 and 1200×1600, **E4** and **BWR**: supported but not yet tried on a real frame;
+  the settings mark them "not verified on hardware".
+- **BW, BP, E7, BWY** and a few other panel types: listed in the settings with the reason, but cannot be
+  chosen yet.
 
-Details per resolution: "Choosing the frame" below. Other e-paper protocols are not supported yet. The BLE
-protocol and the image formats are described in [docs/protocol.md](docs/protocol.md).
+Details per model: [docs/frames.md](docs/frames.md).
 
 ## Install
 
-Requirements: Android 8.0 or newer with Bluetooth LE; Android TV, a tablet or a phone.
+You need Android 8.0 or newer with Bluetooth: an Android TV, a tablet or a phone.
 
-- **APK**: tagged versions are published on the
-  [Releases](https://github.com/hsw/inkeasel/releases) page as `inkeasel-<tag>.apk`, signed with the
-  release key. On a phone or tablet open the file and allow installs from that app when asked. On Android TV
-  install it from a computer with adb (enable Developer options → USB/network debugging on the TV first):
+**Download the APK** (the newest release, always at the same address):
 
-      adb connect <tv-ip>:5555
-      adb install -r inkeasel-<tag>.apk
+- **Android TV**: install [Downloader](https://play.google.com/store/apps/details?id=com.esaba.downloader)
+  from Google Play, open it and enter the code **`1236481`**. When the download finishes, choose **Install**;
+  the first time, Android asks you to allow Downloader to install apps.
+- **Phone or tablet**: open
+  [github.com/hsw/inkeasel/releases/latest/download/inkeasel.apk](https://github.com/hsw/inkeasel/releases/latest/download/inkeasel.apk)
+  and open the downloaded file; allow your browser to install apps when asked.
 
-- **From source** (JDK 21, Android SDK path in `local.properties`):
+All versions are on the [Releases](https://github.com/hsw/inkeasel/releases) page. A new version installs
+over the old one the same way.
 
-      JAVA_HOME=<JDK 21> ./gradlew assembleDebug
-      adb install -r app/build/outputs/apk/debug/app-debug.apk
+**With adb** (if the TV cannot run Downloader): turn on Developer options → network debugging on the TV,
+then from a computer:
 
-  Unit tests (JVM: JUnit 4 and `kotlinx-coroutines-test`; the Room database under Robolectric, whose first
-  run downloads about 200 MB of Android jars from Maven Central; HTTP against MockWebServer; same
-  `JAVA_HOME`):
+    adb connect <tv-address>:5555
+    adb install -r inkeasel.apk
 
-      ./gradlew testDebugUnitTest
+**Updating from a build before 0.2.0**: those builds were signed with a development key, so 0.2.0 does not
+install over them. Uninstall InkEasel first (its settings and chosen frame are lost), then install.
 
-On the first start a panel says why the app needs Bluetooth: **Find my frame** asks for the permission and
-then opens the settings, where the frame appears in the list; select it. **Not now** leaves the catalog.
+To build it yourself, see [docs/building.md](docs/building.md).
+
+## Getting started
+
+1. On the first start the app explains why it needs Bluetooth. Press **Find my frame** and allow it.
+2. The frame settings open and list every frame nearby. Select yours.
+3. Press any picture: it goes to the frame and opens full screen.
+
+You can change the frame later with the button at the top of the screen ("Frame: …").
+
+## Using InkEasel
+
+**Catalog.** About 9,600 famous paintings, plus landscapes from the Cleveland Museum of Art and Wikimedia
+Commons. A press on a picture sends it to the frame and shows it full screen; Left and Right go to the
+previous and next picture. A long press shows its details (artist, date, museum, licence) with **Send to
+frame** and **View full screen**. The catalog comes with the app and updates itself at most once a week when
+the device is online. Titles and artists follow the device language.
+
+**Nudity filter.** By default the catalog hides explicit works. **Settings → Catalog → Nudity** switches
+between "Hide explicit works", "Hide all nudity" and "Show all". With the TV's parental controls on, or in a
+restricted profile, it is locked at "Hide all nudity". Works are marked from Wikidata and a hand-checked
+list, so some may not be marked.
+
+**My pictures.** Your own pictures on the device. On a phone or tablet, share a picture to InkEasel from the
+gallery or a file manager: it is saved here and sent to the frame. On a TV, copy pictures into the folder the
+empty tab shows.
+
+**Now-playing poster.** When something plays in any app that publishes what it plays (a film, a series, music
+with artwork), its poster goes to the frame; when playback ends, the frame returns to your last picture. It
+needs notification access, which you grant once:
+
+- Open **Settings → Permissions and features** and press the poster switch. The app explains what the access
+  covers; **Continue** opens the right system screen, where you allow InkEasel.
+- On Android TV 9–11 (such as the NVIDIA Shield) the app opens the system settings; go to **Apps → Special
+  app access → Notification access → InkEasel**.
+- Only if your TV has no such screen (Android TV 8), grant it from a computer:
+
+      adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
+
+Low-memory devices with Android 10 or older cannot grant this access at all, so they have no poster. The
+switch turns the poster off without taking the access away.
+
+**Language.** English and Russian, following the device language (or the app's language in the system
+settings on Android 13+).
 
 ## Permissions
 
-- **Bluetooth** ("Nearby devices" on Android 12+, location on Android 11 and older, where the system also
-  wants location turned on for a BLE scan): needed to find the frame and send pictures. The app asks only in
-  context (below); if the system no longer shows its dialog, the settings name the path in App info.
-
-How the app asks for Bluetooth (`BleAsk`, pure):
-- A start without the permission shows a panel over the catalog, not the system dialog: "InkEasel sends
-  pictures to your e-paper frame over Bluetooth. To find the frame, allow Nearby devices." (on Android 11 and
-  older it names Location, adds that Android uses location for Bluetooth searches and that it must be on).
-  **Find my frame** has the focus and opens the system dialog; once allowed, the frame settings open (with a
-  frame already chosen, the button says **Allow** and a pressed picture is sent). **Not now**, Back or a tap
-  outside closes it. It appears by itself only until it has been answered once (**Not now** or an answer in
-  the system dialog, prefs `permissions`, key `bleIntroDone`); with the permission and no frame chosen, a start
-  opens the frame settings instead, and the two never open together.
-- After that the app asks only when the user wants the feature: pressing a picture, or sharing one, without
-  the permission opens the same panel; **Settings** offers "Allow" next to the Bluetooth state and in the frame
-  section. After one denial the panel says what stops working (the frame search and sending; the catalog
-  still works) before the dialog again.
-- Once the system no longer shows its dialog, the panel is not shown: the app keeps working without the
-  frame, a pressed picture toasts that Bluetooth is denied and where the settings say how to allow it, and
-  only the settings (and a share, which opens them) offer App info.
-- **Notification access** (optional, only for the now-playing poster): it lets the app read the
-  media sessions of other apps (title and artwork of what plays). The app does not read notifications. There
-  is no permission dialog for it: pressing the poster switch (or **Grant access**) in **Settings →
-  Permissions and features** first shows what the access covers and what the app really reads; **Continue**
-  opens the system settings, and the poster turns on once you come back with the access granted:
-  - phones and tablets open the system screen for InkEasel; on Android 13+ an APK installed outside a store
-    may first need App info → ⋮ → "Allow restricted settings", and the section says so;
-  - Android TV 12 and newer open the list of apps with notification access: select InkEasel there. The
-    disclosure also names the menu path below, in case the remote cannot reach the list (seen on Google TV
-    14);
-  - Android TV 9–11 (e.g. the Shield) have the switch only in the menu: the app opens Settings → Apps; the
-    disclosure names the path **Settings → Apps → Special app access → Notification access → InkEasel** (one
-    press on InkEasel there grants it);
-  - Android TV 8 has no screen for it at all, so the disclosure shows the adb command (pictures work without
-    it):
-
-        adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
-
-  - low-RAM devices with Android 10 or older (e.g. 1–1.5 GB TV boxes) cannot have the poster: Android grants
-    no notification access there at all, not even with adb, so the section says the poster is not available
-    on this device and offers no way to grant it.
-
-  The poster can be switched off in the same section without revoking the access; what plays is still
-  followed while the access is granted (see Privacy).
-- **Internet**: the catalog and the posters (see Privacy).
-- **Foreground service** (connected device; no dialog): keeps a manual upload or a share running for the
-  seconds it takes when you leave the app. Now-playing posters run without it, except while the notification
-  listener is not bound, or unbinds with a poster upload under way (see "Now playing → poster").
+- **Bluetooth** ("Nearby devices"; location on Android 11 and older): to find the frame and send pictures.
+- **Notification access** (optional): only for the now-playing poster. The app reads the title and artwork of
+  what plays; it does not read your notifications.
+- **Internet**: the catalog and the posters.
 
 ## Privacy
 
-InkEasel has no account, no analytics, no ads and no server of its own. The full policy, with each
-permission and why: [PRIVACY.md](PRIVACY.md); the settings show its address (a tap opens it on a phone or
-tablet).
+No account, no analytics, no ads, no server of its own. What plays is read on the device only to pick the
+poster and is not sent anywhere. The full policy: [PRIVACY.md](PRIVACY.md).
 
-- What plays is read from the media sessions **on the device** whenever notification access is granted (also
-  with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
-  is not sent anywhere. A release build writes no title and no artwork address to the system log (logcat);
-  a debug build does, for development (`MediaLog`).
-- Network traffic is limited to the picture sources: the catalog's lists (when the app starts or comes
-  back to the foreground, or its language changes, each at most once a week) and images from the
-  [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
-  [Wikimedia Commons](https://commons.wikimedia.org/), the painting catalog's files from the project's
-  GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at the same moments,
-  each file at most once a week, and the names of the labels files asked for show the app's language and,
-  for some languages, its region or script, such as `en-us` or `pt-br`), a picture URL
-  given to the upload service from adb (debug builds only), and the poster artwork, downloaded over https
-  from the address the playing app publishes.
-- Pictures are sent to the frame over BLE only. The chosen frame, the catalog database (the painting
-  catalog, the live sources' lists and when each release file and list was last checked), the cached
-  images (at most 150 MB), your pictures, the artwork of recent now-playing sessions (in the app's cache, pruned to the 20 most recent each
-  time a new one is stored, sparing any a tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
-  artwork address or a hash of its artwork) stay in the app's storage on the device. "My pictures" is the
-  app's folder on the shared storage (`getExternalFilesDir`), which other apps with the storage permission can
-  read on Android 9 and older (and on Android 10 if they opt out of scoped storage); the rest is private.
-  Backup and device-to-device transfer are off (`allowBackup="false"`, and data extraction rules that exclude
-  every domain on Android 12+, `res/xml/data_extraction_rules.xml`: an exclusion of `root` does not reach the
-  `file`, `database` and `sharedpref` trees, which the backup walks on their own).
-- At each start of the app's screen and when the settings open, the app asks Android whether the TV's
-  parental controls are on and whether the user may change accounts, only to lock the Catalog's nudity
-  filter; the answer is not stored or sent (the system log gets the filter in force and the lock's kind when
-  it changes). The filter as chosen is kept in prefs `catalog`.
-- A BLE scan runs while the settings search for frames, and during an upload when the chosen frame has to be
-  found again by its name (filtered to the frame's service, see "Uploading to the chosen frame").
+## For developers
 
-## Builds and releases
-
-- **Target**: compile and target SDK 36 (Android 16), minimum SDK 26 (Android 8.0); Android Gradle plugin
-  8.9.1, Gradle 8.11.1, Kotlin 2.0.21. The release APK is 16 KB page-size aligned, as Play requires: the only
-  native library is Compose's `libandroidx.graphics.path.so`. After a dependency change that may bring native
-  code, check it with `zipalign -c -P 16 -v 4 app-release.apk` (SDK build-tools) and that every `.so` has 16
-  KB-aligned LOAD segments.
-- **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
-- **Catalog export**: `uv run --script tools/catalog-export.py <outdir>` exports famous paintings from
-  Wikidata and Commons as gzipped JSON Lines for the GitHub release `catalog`, which the app downloads (see
-  "Catalog"). The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with their labels in the
-  UI languages, one file per language as in the release) is cut from that release with `--starter-from <dir
-  of the downloaded release files>`; it leaves out the paintings `tools/catalog-nsfw.txt` lists as explicit
-  (and the rows the release marks `"nsfw": "explicit"`) and takes the next ones by fame instead. Each `core`
-  row carries a nudity level, `"nsfw": "nude"` or `"explicit"` (left out when none): the strictest of the
-  list's level, Wikidata's "depicts" (P180: genitals or sex → explicit; nudity or pubic hair → nude) and the
-  nude genre (P136) → nude. The release published before this field was added does not carry it yet. To
-  change the list, edit a line `<Q-id> <explicit|nude>  # <title>` and the same id in `Nudity.EXPLICIT` or
-  `Nudity.NUDE` (`catalog/Nudity.kt`; `NudityTest` fails until both agree); for an added explicit id, cut
-  the starter set again with `--starter-from`; installs that hold the release already get the new level at
-  their next process start (`CatalogDao.markListed`).
-- **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
-  `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
-  with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
-  debug APK is kept as the run's artifact. A `v*` tag runs the release workflow instead.
-- **Release build**: R8 shrinks the code and the resources (`proguard-android-optimize.txt` plus
-  `app/proguard-rules.pro`) but does not obfuscate (`-dontobfuscate`): the code is public, and kept names
-  make crash traces readable without a mapping file. No keep rule was needed; one is added only when an R8
-  warning or a release smoke test proves it necessary. The release APK is about 2.8 MB, 1.2 MB of it the
-  catalog's starter set.
-- **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
-  environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
-  `INKEASEL_KEY_ALIAS` and `INKEASEL_KEY_PASSWORD`. With none of them set, it is signed with the debug key
-  and the build prints a warning; with only some set, a release build fails. Only the tasks that package or
-  sign a release (`assembleRelease`, `bundleRelease`, …) check this, so `testReleaseUnitTest` and lint run
-  without the variables. Check which key signed an APK
-  with `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk` (from the SDK
-  build-tools).
-- **Releases** (`.github/workflows/release.yml`): pushing a tag `v*` runs the unit tests, builds the release
-  APK signed with the release key and publishes it as a GitHub release `inkeasel-<tag>.apk` with generated
-  notes. The build runs with a read-only token and no stored git credentials; a second job, which runs no
-  build code, gets write access only to create the release from the built APK. It needs four repository secrets: `INKEASEL_KEYSTORE_BASE64` (the keystore file, base64-encoded),
-  `INKEASEL_KEYSTORE_PASSWORD`, `INKEASEL_KEY_ALIAS`, `INKEASEL_KEY_PASSWORD`; without them the workflow
-  stops before building and names the missing ones. Releases are never signed with the debug key.
-
-## Language
-
-The UI is in English, and in Russian when the device language (or the app's language in the system
-settings, Android 13+: Settings → Apps → InkEasel → Language, listed from the locale config the build
-generates from `res/`) is Russian. The catalog's titles, artists and museums follow that language whether or
-not the UI has a translation for it (on a German device the UI is English and the titles German): the
-language, its regional or script variant where Wikidata has one, then English, `mul`, then any stored label
-(`LanguageChain`). All texts are string resources: English in `res/values/strings.xml`,
-Russian in `res/values-ru/strings.xml`. Code that runs as JVM unit tests has no `Context`, so it returns a
-`Txt` (a string resource id and its format arguments, which may be `Txt` themselves) that the UI puts into
-words where it is shown; an upload failure meant for the user is a `TxtException` carrying one. Other
-exceptions (e.g. from the network library) are shown with their raw message. To check a language on a
-device:
-
-    adb shell cmd locale set-app-locales io.github.hsw.inkeasel --locales ru-RU   # or en-US
-
-## Screens
-
-Made for a TV and the D-pad; phones and tablets work by touch in any orientation. Rotating or resizing
-does not restart the screen (the open tab, the settings and their frame list stay, and no permission is
-asked twice); the layout follows the window width:
-
-| Width         | Columns | Side padding | Top and bottom | Header                                     |
-|---------------|---------|--------------|----------------|--------------------------------------------|
-| under 600 dp  | 2       | 16 dp        | 24 dp          | name and frame button, tabs on a row below |
-| 600–719 dp    | 3       | 32 dp        | 24 dp          | as above                                   |
-| 720–839 dp    | 3       | 32 dp        | 24 dp          | one row                                    |
-| 840 dp and up | 4       | 48 dp        | 27 dp          | one row (a TV is 960 dp wide)              |
-
-The widest bucket keeps the Android TV overscan margins (48 × 27 dp); a landscape tablet falls into it too.
-
-The tabs scroll sideways when they do not fit. Back from the content (a card, a **Retry** button) first
-moves the focus to the selected tab and scrolls the grid back to its first row; the next Back leaves the app.
-A grid scrolled down by touch goes back to its first row the same way. The settings and the disclosure panel
-close with Back as before (`CatalogBack`).
-
-Text to read from the sofa is at least 14 sp (`bodyMedium`): the settings' descriptions, the poster's access
-state, the disclosure panel with its adb line, why a frame cannot be chosen, the privacy address. Only
-secondary metadata is 12 sp: a card's artist and date, a frame's address and properties. Checked on the TV
-emulator at font scale 1.0 and 1.3: one header row, 4 columns and the overscan margins stay.
-
-A press on a card (CENTER, or a tap) sends the picture and opens it full screen (below), so you see what
-was sent. Without the Bluetooth permission the Bluetooth panel opens instead of the full-screen view; with no
-frame chosen nothing is sent and the full-screen view opens with its note that no frame is chosen. A long
-press (CENTER held, or a long touch) opens its details instead, in Google's "content details" layout: the
-title, every field the source gave (artist, date, collection, source, licence and its link, the image credit
-where the licence asks for one, original size, web page; links as text, since a TV opens no browser), **Send
-to frame** (focused; it closes the panel and sends as a press does, without the full-screen view), **View full
-screen** and, on the right, the picture whole and as large as that side allows (a portrait takes its full
-height; the card's thumbnail first, then an image sized to that area, the same one the full-screen view
-loads). Releasing the held CENTER leaves the panel open. Back closes it. A narrow or portrait window stacks it
-into one scrolling column, the buttons under the title and the picture under them.
-
-The full-screen view (a press on a card, or **View full screen**) shows the picture on black, fitted to the
-screen and never cropped, with the system bars hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
-and stop at its ends (in the Catalog the next one is read from the database, so it does not matter how far
-the grid has loaded; "n / N" is the place in the whole list as the nudity filter leaves it, see "Catalog
-filter"); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a tap hides it
-again. The credit line (title; artist, source and licence, and the image credit where the licence
-asks for one) shows for 5 s on open, on each new
-picture and with the button. Back returns to the grid when a press opened the view, to the details panel of
-the picture on screen when the panel did. The image is loaded
-in a size that fits the screen: for a Commons file (the release paintings and the Commons landscapes) a
-standard width (960, 1280, 1920 or 3840 px), or the original when a JPEG, PNG or WebP is narrower (TIFF and
-SVG always as a thumbnail), for Cleveland the `web` image up to a Full HD screen and the
-`print` image on larger ones, your own pictures as they are;
-it is decoded to at most the screen's size, and the card's thumbnail shows while it loads. The screen is not
-kept on, so the screen saver starts as usual.
-
-The app draws behind the status and navigation bars
-(Android 15 requires it, and Android 16 has no opt-out) and keeps its content clear of them, with gesture
-or button navigation; the settings dialog does the same. A TV has no bars, so nothing changes there.
-
-## Catalog
-
-Tabs: "Catalog" (the start tab: famous paintings from the catalog database, below, with the Cleveland
-Museum of Art's CC0 landscapes and Wikimedia Commons' featured landscapes among them) and "My pictures" (the
-app's own folder on the device).
-
-The Catalog tab pages through the database (Paging 3): it holds about 9,600 paintings, so only the rows
-near the screen are read, and at most 360 rows stay loaded (pages far from the screen are dropped and read
-again when scrolled back to). A card not read yet is an empty card of the same size, which the D-pad focus
-moves through like any other (a press on it does nothing), so a long scroll never jumps; a card keeps its
-place in the grid when its row arrives, so a focused card keeps the focus. A card shows its picture whole,
-fitted on black inside the card (the cards keep the frame's shape, so the grid stays regular), with the title
-and credit over a dark band at the bottom. It takes a 330 or 500 px Commons thumbnail, whichever covers the
-width the picture takes in the card: the whole column for a wide picture, less for a portrait one. Titles, artists and museums are the labels of the
-app language's chain (see "Language"); artists are joined with a translatable separator. While the starter
-set imports at the first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather
-than showing an empty grid, and the list starts only after it, so its first query does not wait for the
-import. Should the starter set fail to import and the database stay empty, the tab says the catalog has no
-pictures yet and that it downloads when the device is online.
-
-Every catalog painting has a nudity level, stored with its row: explicit (genitals in focus or a sexual act
-shown, such as Courbet's "L'Origine du monde"), nude, or none. It is the strictest of the release's `nsfw`
-field, the list `tools/catalog-nsfw.txt` (built into the app too, so it applies to a release already
-published; each process start raises stored rows to it) and Wikidata's nude genre; Cleveland and Commons
-rows carry none. The Catalog shows the rows below the bound of the filter in force (**Settings → Catalog →
-Nudity**, below): the paging query, the count and the viewer's "n / N" and Left/Right all leave the hidden
-ones out, and a Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the
-filter. When the filter changes, the grid goes back to its top (the D-pad focus moves to the tab first), and
-an open Catalog viewer or the details panel of a Catalog picture closes, as the picture may be one the filter
-now hides (the Bluetooth panel stays but no longer sends its Catalog picture). The old cards stay until the
-new list's first page arrives (and after an import until the grid re-pages), so a picture carries its level:
-an old card the new filter hides shows empty. A press, a long press (details), "View full screen", each
-Left/Right of the viewer and "Send to frame" go through one gate (`MainViewModel.allowed`), which reads the
-level stored at that moment and checks it against the filter in force: a hidden picture opens and sends
-nothing. What waits for that read is dropped by a newer press or send, another tab, the details panel
-dismissed, the settings, the Bluetooth panel, a new filter and Back. An import that raises a shown picture's level (a new release, the built-in list) takes it away the
-same way.
-When the filter leaves no picture of a catalog that has some, the tab says so and where to change it. The
-starter set never carries an explicit painting.
-
-The live sources' lists are rows of the same database: every 10th card of the unfiltered order is one of them
-(a filter that leaves rows out before it moves it up), Cleveland and Commons in turn, and they follow the
-last Wikidata row once those run out; one that is a Wikidata row (the same Commons file, or the Cleveland
-accession number the release has as P11110) is hidden. A source is asked
-in the background at app start (and on each return to the foreground), after the release sync, a week
-after its last whole list: its request runs outside the store's write lock (a list request gives up after
-60 s; Commons reads at most 3 pages within 120 s) and its answer replaces the source's rows in one transaction. A failure, an empty answer or a list cut
-short that is smaller than the stored one keeps the rows, and the next pass asks again; there is no note
-and no **Retry** in the Catalog, which always has the starter set. The list cache of older versions
-(`files/catalog/`) is deleted at start.
-
-"My pictures" reads its folder whole. It speaks of your pictures, not of a catalog, while it reads the folder
-("Looking for your pictures…") and if that fails (with **Retry**). Empty, it leads with sharing a picture to
-InkEasel from a gallery or a file manager on the device (see "Share → InkEasel"); the folder path and an
-`adb push` line follow as secondary text for advanced users.
-
-Each picture carries what its source tells about it (`Picture`; a field the source does not give stays
-empty): a release row its labels (title, artists, museum), the inception year, its Wikidata page, the
-licence with its link and the image credit where the licence asks for one; Cleveland the artists, the date,
-the museum, the artwork's page, the licence (CC0) and the master's pixel size; Commons the author, the date
-taken, the file's page (its short `curid` link), the licence with its link and the original's size; a
-picture in "My pictures" only its name and pixel size.
-
-The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
-`CatalogStore` that the app's screen wakes each time it starts (`MainActivity`'s `onStart`: the app's start,
-each return to the foreground, and a change of the app's language, which re-creates it), so a process that a
-TV keeps for weeks still checks what fell due. On the first start the APK's starter set (the top 1,000, less
-the paintings listed as explicit) goes into the empty database with the labels of the app language's chain,
-English and `mul`, read from those languages' own files only. Then, at every such start (a pass), the store
-checks the files of the GitHub release `catalog` that are due:
-`core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
-week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
-later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
-copy imported last (`If-None-Match`; github.com redirects to a signed address, which answers 304 when the
-file is unchanged); a downloaded file whose SHA-256 is the one imported last is not imported again. Changed
-files are first streamed into staging tables (one batch in memory at a time), then swapped in by one
-transaction that replaces the release rows (a row already there keeps its place), removes those the new
-`core` no longer has, computes the stored order and the hidden duplicates again and stores the files' ETag
-and hash, so a failed import (or no network) leaves the list as it was. A failed request is asked again at the
-next pass; a download that could not be imported (a broken upload, a full disk) a day later, so it is not
-downloaded again at every pass. The downloads run outside the store's write lock, each within 10 minutes;
-only the import and the files' state are written under it. A labels file whose every line is bad is refused
-(an empty one empties its language). In short: starter set at the first start → staged release import in
-the background → a check of each file a week later.
-A language that joins the chain (or comes back to it) gets the starter set's labels at once, also offline; a
-language that leaves it loses its labels at the next import. A language whose release file was imported (an
-empty one included) keeps what that file holds: the starter's labels do not come back over it. To watch it:
-
-    adb logcat -s CatalogStore CatalogSync LiveRefresh
-
-All requests go through one OkHttp client (`Http.client`, with the app's User-Agent): at most 4 at a time
-to one host, and an HTTP 429 or 503 answer to a GET is asked again at most twice, after its `Retry-After` (or
-1 s, then 2 s), unless it asks for more than 10 s; a cancelled request stops waiting at once, and the main
-thread never waits (`RetryPolicy.kt`). A host that answered 429 or 503 gets no card thumbnail request until
-the pause it asked for is over (at most a minute): a thumbnail asked for in the meantime is answered 429 by
-the app itself, so a fast scroll past hundreds of cards does not send hundreds of thumbnail requests to
-`upload.wikimedia.org` when it asks for a pause (it answers `Retry-After: 11`), and a card whose thumbnail
-was refused so asks again once the pause is over, up to three times while it is on screen. A thumbnail
-that waits out a pause or a retry reads the hold again before it is sent, so a longer pause asked for
-meanwhile counts too. Only the cards' thumbnails are held (Coil passes their `Holdable` tag to OkHttp): what a user asked for (the picture sent to
-the frame, the viewer's image) and the lists and release files are always sent, and get the server's own
-answer. Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
-
-Known risk: the Cleveland API sometimes answers slowly (27 s seen) or with HTTP 504. If it takes longer
-than 60 s every time, its rows never come (or stay as they were); asking for fewer results than `limit=200`
-would be the next step then.
-
-## Share → InkEasel
-
-On a phone or a tablet, "Share" on a picture in a gallery or a file manager lists InkEasel. The picture is
-copied into "My pictures" (the sender's file name, made safe, with the extension of its type; `-2`, `-3`, …
-when the name is taken; `shared-<date>-<time>` when the sender gives none; at most 50 MB, written to a
-`.part` file, created first so two shares at once never pick the same name, and renamed when complete;
-an existing file is never overwritten) and sent to the frame as a manual upload, so it becomes the default
-picture. The gallery stays on screen; a toast says the picture is saved and on its way to the frame. On
-Android 13 and newer the app does not ask for the notification permission, so the result toast of an upload
-started from a share (the gallery is in front) may not appear; open InkEasel or look at the frame to see
-how it went. With no frame chosen the picture is only saved, and the share itself says so ("No frame selected:
-choose one in the settings, then send it from there").
-
-Only a `content://` picture of another app is taken (no `file://` paths, nothing of the app's own, also
-with a `<user>@` prefix on the authority). Types:
-JPEG, PNG, WebP, GIF, BMP and HEIC/HEIF (decoded by the system, Android 9+).
-
-Without the Bluetooth permission the picture is still copied and waits: the app opens with the Bluetooth
-panel (or, once the system no longer asks, with its settings, which name the path in App info); once it is granted and a frame is chosen, the picture is sent. One share waits at a
-time (the newest), for at most an hour (prefs `share`); after that, or if the file is gone, it is dropped,
-and the picture stays in "My pictures" either way.
-
-## Choosing the frame
-
-Uploads go only to the frame chosen in **Settings → Frame**. Open it with the header button ("Frame: <name>"
-or "No frame selected"); a fresh start with no frame chosen opens it by itself. The settings scroll as one
-column (a phone in landscape is short); **Close** sits next to the title and has the first focus. Once
-frames show up, the focus moves once to the chosen frame (or, if it has not shown up within 1.5 s, the first
-one that can be chosen), unless the user has already moved onto the list.
-
-- While it is open, the app scans for BLE service `0xFFBB` and lists every frame heard, one entry per name
-  (the name is the frame's identity; its MAC may change), updated live: name, MAC, colour and panel type,
-  resolution and rotation, battery, firmware, signal (RSSI) and safe mode if set. The chosen frame is marked.
-  The scan stops when the screen closes or the app goes to the background.
-- Selecting a frame saves it and closes the screen. **Close** or Back closes it with the frame unchanged.
-- Frames the app cannot draw on are listed but greyed out with the reason ("not supported: …") and
-  cannot be chosen. A supported frame whose format was never seen working on a real panel says
-  "not verified on hardware" under its properties (and in a toast when chosen); it can be chosen.
-- Supported (rotation 0° and a panel type other than A; formats from the vendor app, every
-  type dithered with its own inks, sent raw with content marker MK 0):
-
-  | Colour type | Resolutions | Payload | Verified on hardware |
-  |---|---|---|---|
-  | E6 (Spectra 6) | every size in the advertised table except 1360×480, 1440×600, 1200×1600 | 4 bpp, W·H/2 | yes (1024×600 seen; the rest is the same layout at another size) |
-  | E6 | 1360×480, 1440×600 | 4 bpp, W·H/2 | no |
-  | E6 | 1200×1600 | 4 bpp split: all left half rows, then all right half rows; 960,000 B | no |
-  | BWR | every size except 1360×480, 1440×600 | black plane, then red plane, 1 bpp each, each padded to a multiple of 512 | no |
-  | BWR | 1360×480, 1440×600 | split: left black, left red, right black, right red, each part padded to 512 (163,840 / 217,088 B) | no |
-  | E4 | every size | 2 bpp, W·H/4 | no |
-
-- Not supported, with the reason shown: BW and BP, E7 ("format not verified (the vendor app does not draw it
-  correctly)"), BWY ("the vendor app cannot send to such frames"). Their
-  palettes and packings are already described in `FrameFormats` and plug in by dropping the reason.
-- The check and the render format (size, inks, packing, marker, verified flag) come from one place,
-  `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (taken from the
-  advertisement here); a new panel type is one more entry there.
-- Without Bluetooth permission the screen asks for it ("Allow"; on Android 11 and older its text names the
-  location permission, which the system dialog asks for, and why a Bluetooth search needs it); with Bluetooth
-  off it says so and offers the system Bluetooth settings. Before Android 12 the scan also needs location on,
-  and only there does the hint under the search say so. Once the system no longer shows its dialog ("Don't allow" twice, or "don't ask again"), "Allow" would silently do nothing,
-  so the button becomes "App info" and the text names the path: Settings → Apps → InkEasel → Permissions →
-  Nearby devices (Location on Android 11 and older). The grant is picked up when the app comes back.
-  A dialog closed without an answer (Back, a tap outside) is not a denial: "Allow" asks again. Only after a
-  real denial has been seen once (remembered in prefs `permissions`) does a silent "no" count as blocked.
-
-## Catalog filter
-
-Below the frame list, **Settings → Catalog** has one row, **Nudity**, with the filter in force: "Hide
-explicit works" (the default), "Hide all nudity" or "Show all". A press (OK or a tap) moves to the next value
-in that order and applies it at once (prefs `catalog`, key `nudity`); under the value the row says that works
-are marked from Wikidata and a hand-checked list and that some may not be marked (Cleveland and Commons rows
-never are). The device can lock it at "Hide all nudity" (`NudityLockReader`, read at each start of the
-activity, so also on a return to the foreground, and when the settings open; never stored): Android TV's
-parental controls on (`TvInputManager.isParentalControlsEnabled()`; phones and tablets without
-`android.software.live_tv` have no such service), or a user that may not change accounts
-(`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for a restricted profile, and on some managed devices). The row
-then shows that value with the reason ("Locked by the TV's parental controls" or "Locked for this profile"),
-is disabled (the D-pad still reaches it) and a press does nothing; the stored choice comes back once the lock
-is off. Family Link and Google TV kids profiles have no public API and are not seen.
-
-## Permissions and features
-
-Below the Catalog section, **Settings → Permissions and features** collects what the app needs:
-
-- **Bluetooth**: whether the permission is granted, with "Allow" (or "App info", as above) when it is not.
-  One permission set everywhere (`BlePermissions`): Nearby devices (`BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`)
-  on Android 12+, fine location before.
-- **Now-playing poster**: an on/off switch and the state of the notification access it needs. The switch
-  shows the poster as it works: on only while the poster is wanted (on by default, prefs `features`, key
-  `poster`) **and** the access is granted (`PosterSwitch`). Pressing it while it is on switches the poster
-  off; while it is off with the access, on. Without the access the switch stays off, and the press (like
-  "Grant access") opens a disclosure panel under it first: the system grant covers all notifications; the app
-  ignores them and reads only the playing app's media-session title and artwork (artwork given as a web link
-  is downloaded from there); it reads them whenever the access is granted, also with the poster off, and keeps
-  recent artwork in its cache; only the poster leaves the device, to the frame
-  over Bluetooth (with the poster off, nothing of what plays does). "Cancel" and Back close it and change
-  nothing (the focus goes back to the switch or the button); "Continue" remembers the wish (key
-  `posterPending`) and starts the grant flow, and when the app comes back with the access granted the poster
-  is switched on. Where no screen leads to the access, the panel shows the adb command instead of "Continue".
-  Every way to the grant (the system screen, the TV menu path, the adb command) appears only in the panel, or
-  after its "Continue": the menu path is repeated under the switch while the wish is pending. If the access is
-  revoked from outside, the switch shows off but the stored wish stays, so granting the access again brings
-  the poster back. With the access missing (`ListenerAccessUi`):
-  - phones and tablets: "Continue" opens the system screen: the app's own page
-    (Android 11+), else the list of apps. On Android 13+ an app installed from an APK file (not from a store)
-    may find the switch there greyed out ("Restricted setting"): the section says so and offers App info,
-    where ⋮ → "Allow restricted settings" unlocks it (not shown when a store installed the app);
-  - Android TV 12+: the list of apps (InkEasel is in it, one D-pad press grants it), plus the menu path as a
-    fallback, in the panel and then under the switch: "If the remote cannot reach the switch there, go back
-    and use Settings → Apps → Special app access → Notification access → InkEasel" (on Google TV 14 the D-pad
-    cannot reach the rows of that list);
-  - Android TV 9–11 (the Shield): no such screen; "Continue" opens Settings → Apps (the Settings home
-    where that is missing), and the panel (then the section) names the same menu path;
-  - Android TV 8, a low-RAM TV with Android 11+ without the list screen (they hide the menu item), or any
-    device where no settings screen resolves: the adb command (see "Now playing → poster"), in small print in
-    the disclosure panel only;
-  - a low-RAM device with Android 10 or older (`ActivityManager.isLowRamDevice()`), where the system neither
-    grants nor binds a notification listener: "The now-playing poster is not available on this device", the
-    switch disabled and shown off, no "Grant access", no menu path, no adb command and so no disclosure. The
-    stored wish is left as it is; with no listener bound nothing reports what plays, so no poster is
-    scheduled.
-- The states are read again whenever the app comes back to the front, e.g. from a system screen.
-- **Privacy policy**: the address of [PRIVACY.md](PRIVACY.md) as text (`settings_privacy_url`). A tap opens
-  it in the browser on a phone or tablet; on TV the row only shows it (a TV app must not launch a browser),
-  and stays focusable so the D-pad scrolls it into view.
-
-Switching the poster off stops new posters at once and puts the default picture back if a poster is on
-the frame; see "Now playing → poster".
-
-Stored in prefs `frame` (next to the upload spacing `endedAt` and the `onFrame` key):
-`selected.kind` (the frame's protocol, `nowmean`), `selected.name`, `selected.address`, `selected.advert` (the raw manufacturer data as hex, the source of
-truth), its parsed properties (`selected.colour`, `.panel`, `.width`, `.height`, `.rotation`, `.battery`,
-`.firmware`, `.safeMode`, for reading the file only) and `selected.seenAt` (wall-clock ms when it was last
-seen). The `address`/`name` keys of older builds (the first frame a scan found) are ignored and removed on
-the first selection, so an existing install shows the picker once.
-
-Uploading to the chosen frame: connect to the saved address; if that fails, scan **for that name only**
-(15 s), save its new address and advertisement, and try again. It never switches to another frame. The
-picture is rendered in the frame's format (size and inks from its advertisement); if a rescan shows the
-frame now advertises other properties, the upload fails and the next one uses the new format.
-
-**No frame chosen**: the catalog browses normally, but nothing is uploaded:
-- a catalog tap toasts "No frame selected: choose one in the settings" and starts nothing (without the
-  Bluetooth permission it opens the Bluetooth panel instead, since a frame can only be found with it);
-- `UploadService` refuses a manual request (adb, debug build) before touching Bluetooth and toasts the same;
-  the upload engine fails an automatic one before any download or Bluetooth and reports it to
-  `FrameController` (so its key does not stay pending);
-- `FrameController` schedules no poster and no revert, and logs `no frame selected: …`.
-
-## Now playing → poster
-
-Needs notification access, granted once, so the system binds the MediaSession reader: from **Settings →
-Permissions and features** (see there), which leads to the system screen or, on Android TV 9–11 (the
-Shield), to the menu Settings → Apps → Special app access → Notification access; on Android TV 8 only with
-adb, as below. Low-RAM devices with Android 10 or older cannot grant it at all (not even with adb), so they
-have no poster. The system rebinds a granted listener after a
-force-stop (verified on the Shield) and is expected to do the same after a reboot (platform behaviour, not
-yet tested here); the binding keeps the process alive, also through HDMI-CEC standby, so no
-`BOOT_COMPLETED` receiver is needed:
-
-    adb shell cmd notification allow_listener io.github.hsw.inkeasel/io.github.hsw.inkeasel.nowplaying.NowPlayingListener
-    adb shell dumpsys notification | grep -A3 'Live notification listeners'   # check: NowPlayingListener listed
-
-How it works:
-- The standard `MediaSession` metadata (title + artwork) of **any** app, read by `NowPlayingListener`, is
-  turned into one `Playing(pkg, key, title, art, state, session)` event.
-- **Key = the picture, not the title**: the art URL, or the SHA-1 of the artwork bitmap's pixels. Episodes
-  of a series share one poster, so autoplay to the next episode does not redraw the frame.
-- **Timing** (`FrameController`):
-  - a poster goes up after **60 s** of continuous playback (skips trailers, short clips, channel surfing);
-  - **60 s** after pause, stop or the session going away, the default picture goes back, but only if an
-    automatic poster is on the frame; a session that keeps playing but moves on to an item without art
-    counts as stopped; ends are matched by session, not by picture: only the playing session's pause,
-    stop or departure ends playback (also if its item changed meanwhile), not that of another session (an
-    earlier player, a helper session, another app), nor the playing session's own end while another
-    session of the same app plays (or seeks or buffers while playing);
-  - seeking and buffering are ignored (a session first seen buffering, e.g. after a restart, counts as
-    playing), a session that clears its playback state counts as stopped; a failed poster upload is retried on the next transition into
-    PLAYING, a failed revert every 60 s (at most 5 attempts in a row);
-  - an upload takes tens of seconds over BLE, so its result is checked against what plays by then: a poster
-    that lands after playback ended is reverted 60 s later, and a default that lands after the film resumed
-    is followed by that film's poster 60 s later; a picture whose earlier request has no result yet is not
-    requested again (e.g. pause/resume while the poster still waits for the frame to finish drawing), but
-    if that earlier request then fails while the film still plays, the poster is requested again at once;
-  - a manual upload during a film stays until the next transition into PLAYING (pause/resume, another film);
-  - a revert or a poster decided while a manual upload was still queued or uploading is dropped once the
-    manual upload succeeds (it would cover the user's pick); if the manual upload fails, it runs as usual;
-  - after a process restart or a reboot, a poster left on the frame is reverted once the listener finds
-    nothing playing; likewise when the listener reconnects and the app that was playing no longer plays.
-- **Switched off** in the settings: what plays is still followed, but no poster is scheduled or uploaded
-  (`poster off: not scheduled` in the log). Switching off cancels a pending start and reverts a poster on
-  the frame at once; a poster whose upload was already under way is reverted at once when it lands, and
-  one still queued in the upload engine is dropped. Reverts work as usual; if the process restarts before the
-  switch's revert ran, the poster is reverted once the listener has reported the sessions again, even while
-  the film plays. Switching on acts on what plays now: a film already playing gets its poster 60 s after
-  the switch; a revert still queued in the upload engine while its poster is on the frame is dropped (as when
-  the film resumes before a queued revert), and one already uploading is followed by the poster 60 s later.
-- **Default picture = the last manual upload** (catalog tap, share or `UploadService` from adb in a debug
-  build). There is no separate setting. Until the first manual upload there is no default, so a poster stays
-  on the frame after playback ends: do one manual upload (a catalog tap, or the adb command below in a debug
-  build) after installing.
-- Automatic uploads run in the app process, in the same upload engine as manual ones, without a foreground
-  service: the bound listener keeps the process alive. Only while it is not bound (access granted but not
-  bound yet, the binding lost) a request also starts `UploadService` with an internal hold action that keeps
-  the process in the foreground until the upload is done; if Android refuses that start (the app in the
-  background), the upload still runs and is reported once. When the listener unbinds while an automatic
-  upload is still queued or under way, that upload becomes held work and the hold starts for it the same way.
-  No toast over the film, only a log line.
-  Manual uploads (a catalog tap, a share) go through the same engine inside `UploadService`, a short
-  `connectedDevice` foreground service, so they finish after the user leaves the app.
-- Uploads are at least 35 s apart, also across app restarts: the frame draws for ~27 s after an upload and
-  a picture sent meanwhile is not drawn properly. A later request waits (a manual one toasts how long);
-  while it waits, a newer request of the same kind replaces it and a manual one goes first.
-- Sessions without art are ignored. Spotify publishes an https cover and works; SmartTube publishes its
-  artwork once yuliskov/SmartTube#6423 is merged. A plain `http://` art URI is not used (the
-  app refuses cleartext traffic on every Android version, `usesCleartextTraffic="false"`); the artwork bitmap
-  is used instead, if the session has one.
-
-Manual upload from adb, **debug builds only** (release builds do not export `UploadService`, so no other
-app can start an upload through the service directly; a share to `ShareActivity`, which stays exported as the
-share target, still uploads the shared picture without asking again, see `docs/decisions.md`. Only the debug
-manifest overlay `app/src/debug/AndroidManifest.xml` exports the service, and `ManifestTest` guards both
-manifests; extras, first usable wins: `path` = an existing file, `photo` = file name in the pictures folder,
-`url`; plus an optional `title` for any of them):
-
-    adb shell am start-foreground-service -n io.github.hsw.inkeasel/.UploadService -e photo <name>
-
-Logs (`NowPlayingListener` is also used by the system launcher, so filter by the app's pid; titles and poster
-keys appear only in a debug build, a release build logs `<title>` and `<key>` instead):
-
-    adb logcat --pid=$(adb shell pidof io.github.hsw.inkeasel) \
-      -s NowPlayingListener FrameController UploadService UploadEngine FrameClient
-
-Code:
-- `Catalog.kt`: `Picture`, "My pictures" (`LocalImages`) and the live sources (Cleveland Museum of Art CC0
-  paintings, Wikimedia Commons featured landscapes); list requests give up after 60 s, Commons reads at most
-  3 pages within 120 s (`collectPages`, pure; a list cut short is marked incomplete); `Http`, the one
-  OkHttp client
-- `RetryPolicy.kt`: when a 429 or 503 answer is asked again, how long its host is held and when a card asks
-  for its thumbnail again (pure), and the interceptor that retries and holds (only requests tagged
-  `Holdable`: the cards' thumbnails)
-- `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
-- `SourceMapping.kt`: the live sources' JSON (Cleveland, Commons) mapped to catalog rows (`LiveRow`) with
-  their metadata (pure, tested against fixture answers in `app/src/test/resources/catalog/`)
-- `LocalLoad.kt`: what "My pictures" shows (`LocalState`), one load of it (`readLocal`) and when it
-  reloads (pure)
-- `CatalogView.kt`: what the Catalog tab shows (the grid, "none yet" or loading) (pure)
-- `CatalogError.kt`: a failed download in words (no connection, timeout, HTTP code, unreadable answer), for
-  the viewer
-- `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
-  rows (`CatalogRows`) and their import (`CatalogImport`), the nudity levels and filter (`Nudity`,
-  `NudityLevel`, `NudityFilter`, with the built-in list; pure), the label languages (`LanguageChain`), and its
-  process-wide owner `CatalogStore`, which runs the starter import, the release sync (`CatalogSync`; which
-  files are due and what is recorded: `CatalogSyncPlan`, pure) and the live sources' refresh (`LiveRefresh`;
-  its rules in `LiveSourceRows`, pure) and gives the Catalog tab its pages; a row as
-  a `Picture` (`CatalogPicture`, its Commons URLs from `CommonsUrls`, both pure) and the viewer's steps
-  through the list (`CatalogSteps`)
-- `EpdImage.kt`: decode and scale the whole picture to fit inside the frame (`FrameFormat.fit`), then dither
-  it onto the frame's inks with white bars around it and pack via its `FrameFormat`
-- `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
-  verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4` (4 bpp, optionally
-  split), `Crumbs2` (2 bpp) and `BitPlanes` (1-bpp planes, padded, optionally split), free of Android types)
-  and `FrameFormats`, the one place that maps an advertisement to a format or to the reason it is not
-  supported
-- `FrameCaps.kt`: protocol-neutral `FrameCaps` (size, colour scheme, rotation), the input of `FrameFormats`,
-  and `FrameKind` (the frame's protocol, saved with the chosen frame)
-- `FrameAdvert.kt`: parser of the frame's manufacturer data (colour/panel type, resolution, rotation, safe
-  mode, battery, firmware; keeps the raw bytes)
-- `FrameStore.kt`: the chosen frame (`SelectedFrame`) in prefs `frame`, and `SeenFrame` (one scan result)
-- `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
-- `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments) and `TxtException`, free of
-  Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
-- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
-  "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access,
-  the privacy policy row)
-- `CatalogFilterStore.kt`: the Catalog's nudity filter as chosen (prefs `catalog`); `NudityLockReader.kt`: the
-  device's lock on it (TV parental controls, a restricted profile); `NuditySetting.kt`: the lock decision,
-  the press's next value and the row's texts (pure)
-- `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
-  was seen: a dismissed dialog does not count), whether the first-run panel was answered, and App info
-- `BleAsk.kt`: when and how the app asks for Bluetooth: the first-run panel, a pressed or shared picture, its
-  text per state and Android version, and what happens after the system dialog (pure); `BlePanel.kt`: the
-  panel
-- `ListenerAccess.kt`: notification access for the poster (granted?, the system screens, the adb command);
-  `ListenerAccessUi.kt` decides what the section shows and which screen opens (pure); `PosterSwitch.kt`: what
-  the poster switch shows and does, and the wish kept until the access is granted (pure)
-- `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name (protocol:
-  [docs/protocol.md](docs/protocol.md))
-- `DrawGate.kt`: spacing between uploads: the frame acks an upload at once but draws it for ~27 s after the
-  link drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the
-  next upload waits until 35 s after the previous one was handed over (kept in prefs, so also across
-  app restarts)
-- `MainActivity.kt`: Compose for TV catalog, the frame button in the header, opens the frame settings;
-  sends a waiting shared picture once the permission is granted and a frame chosen
-- `DetailsPanel.kt`: the details panel of a long-pressed card, the picture large beside its lines;
-  `PictureDetails.kt`: its lines and source names (pure)
-- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel, and
-  `FittedPicture`, a picture whole in an area (thumbnail, then a rendition for the area), which the details
-  panel shares;
-  `HeldCenter.kt`: the rest of a CENTER press already handled (the long press that opened the details panel,
-  the viewer's own CENTER) kept from the dialog's buttons (pure); `ViewerRules.kt`: which
-  rendition it loads for the window, its credit line, its list position, overlay and swipe rules, and its
-  moves through the list (`ViewerNav`: a step pressed during a read is dropped, a late result is ignored)
-  (pure)
-- `CatalogLayout.kt`: columns, side and top/bottom padding and header shape for the window width (pure)
-- `CatalogBack.kt`: what Back does on the catalog screen before it leaves the app (pure)
-- `ShareActivity.kt`: "Share → InkEasel" (copy into "My pictures", then `UploadService`, or wait for the
-  permission as `PendingShare`); `ShareRules.kt`: which shares are taken, the file name, saving the copy
-  (`save`), the size cap and the pending-share rule (pure)
-- `UploadEngine.kt`: the process-wide upload engine (`nowplaying/UploadEngineCore.kt`, pure), one upload at
-  a time (a newer request replaces a queued one of the same kind, a manual one goes first); manual uploads toast and become the default picture, automatic uploads
-  report the result to `FrameController` and are dropped if a manual upload succeeded after they were
-  decided (`stamp` = `FrameController.manualUploads`), if a poster's turn comes while the poster is switched
-  off, or if a revert's turn comes while the playing film's poster is on the frame; it waits for the frame
-  to finish drawing before the next upload (`DrawGate.kt`)
-- `UploadService.kt`: transient foreground service for manual uploads (and the hold of automatic ones while
-  the listener is not bound); it stops with `stopSelfResult` once the engine has reported its held work, so
-  a start arriving as it finishes is not lost; started without the Bluetooth permissions (only the debug adb
-  trigger can) it toasts and stops
-- `nowplaying/`:
-  - `Playing.kt`: the `Playing`/`Art`/`State` model and pure mappers from metadata
-    (art priority `ART_URI` → `ALBUM_ART_URI` → `DISPLAY_ICON_URI` → bitmap; only https URIs are used)
-  - `NowPlayingListener.kt`: `NotificationListenerService` that tracks active media sessions, emits a
-    snapshot on connect, and reports sessions that go away
-  - `SessionView.kt`: one session's effective event (effective state + current art), reported to the
-    controller only when it changes, from every path (snapshot, metadata, playback state, reconnect)
-  - `ArtCache.kt`: artwork bitmaps keyed by the SHA-1 of their pixels, stored as `cacheDir/nowplaying/<sha1>.png`
-    (storing a new one prunes to the 20 most recent, a target rather than a bound: pruning never deletes the
-    artwork of a tracked session or a key the controller may still upload: what plays, a pending start, an
-    upload without a result yet)
-  - `FrameController.kt`: the state machine (debounce, dedup by key, revert, poster switch);
-    `FrameControllers.kt` wires the process-wide instance
-  - `FeatureStore.kt`: the poster switch and its pending wish (prefs `features`)
-  - `DefaultStore.kt`: the default picture (prefs `default`) and the key on the frame (prefs `frame`)
-  - `UploadEngineCore.kt`: the engine's queue and worker, pure: every request reported exactly once, a
-    replaced one from inside the `submit` that replaced it; held work and `onIdle`; `holdAll` makes unheld
-    work held; `UploadQueue.kt`: the queue rules
-  - `UploadRequest.kt`: one request (manual, or automatic with the controller's key and stamp);
-    `UploadReports.kt`: what the engine does with each report (toasts, `FrameController` callbacks), pure, so
-    the controller tests run the production rules
-  - `AutoUploader.kt`: the controller's uploader: straight to the engine, held only while the listener is not
-    bound (and made held when it unbinds during an upload); without the Bluetooth permissions an automatic
-    upload is reported as failed at once
-  - `UploadOutcome.kt`: what the upload engine does after an upload (toast, report to the controller,
-    remember as the default)
-  - `MediaLog.kt`: what plays as the log names it: titles, poster keys and a poster upload's error as they
-    are in a debug build, `<title>` / `<key>` in a release build
+- [docs/building.md](docs/building.md): build, tests, emulators, CI and releases.
+- [docs/architecture.md](docs/architecture.md): how the app is put together.
+- [docs/catalog.md](docs/catalog.md): the painting catalog, its database and its export tool.
+- [docs/now-playing.md](docs/now-playing.md): the poster.
+- [docs/frames.md](docs/frames.md): supported frames, choosing one and uploading.
+- [docs/protocol.md](docs/protocol.md): the frame's Bluetooth protocol and image formats.
+- [docs/decisions.md](docs/decisions.md): design decisions, with their reasons.

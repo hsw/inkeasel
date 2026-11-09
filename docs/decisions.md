@@ -3,6 +3,24 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The README is a user guide; the technical text lives in docs/ by subsystem
+
+The README had grown to 720 lines that served three readers at once: a user (install, permissions), someone
+changing the code (class names, prefs keys, the order of checks) and someone building or releasing it. It is
+now a short user guide with no class names, prefs keys or code paths, and the rest is split by subsystem:
+`docs/architecture.md`, `docs/catalog.md`, `docs/now-playing.md`, `docs/frames.md` and `docs/building.md`, next
+to `docs/protocol.md` and this file. A behaviour change updates its subsystem's document in the same commit,
+and the README when a user would notice it. `CLAUDE.md` keeps only the rules for agents and points at these
+documents instead of repeating them.
+
+Install leads with the download: each release also carries `inkeasel.apk`, a copy under a fixed name, so
+`releases/latest/download/inkeasel.apk` always serves the newest APK, and a Downloader short code (1236481)
+points at that address for typing on a TV remote; adb is the fallback. Granting notification access leads with
+the in-app path, adb only where the TV has no screen for it.
+
+Rejected: one `docs/development.md` (the same long page, moved); a documentation site (a build and a deploy for
+a few pages); a Russian README (one set of texts to keep in step with the code).
+
 ## 2026-11-09 — The first signed release is 0.2.0, with a new release key
 
 The release key is a PKCS12 keystore holding one RSA 4096 key (alias `inkeasel`, certificate `CN=InkEasel`,
