@@ -1,6 +1,8 @@
 package io.github.hsw.inkeasel.catalog
 
 import io.github.hsw.inkeasel.Picture
+import kotlin.math.ceil
+import kotlin.math.min
 
 /**
  * A catalog row as the app's [Picture]: what the grid, the details panel, the viewer and an upload take. Pure:
@@ -18,6 +20,19 @@ object CatalogPicture {
      * [CARD_WIDTH] (a little soft on the widest columns, but a card is a preview).
      */
     fun cardWidth(columnPx: Int): Int = if (columnPx <= SMALL_CARD_WIDTH) SMALL_CARD_WIDTH else CARD_WIDTH
+
+    /**
+     * The thumbnail width ([cardWidth]) for a picture of [width] × [height] px (`null`: unknown) fitted whole
+     * into a card [columnPx] wide whose shape is [cardAspect] (width / height): the width the picture takes in
+     * the card, all of the column for a picture at least as wide as the card, less for a narrower one (a
+     * portrait is as high as the card). A Commons thumbnail is asked for by width, so a portrait takes the
+     * smaller one. Without a known size the picture is taken as wide as the column.
+     */
+    fun thumbWidth(columnPx: Int, cardAspect: Float, width: Int?, height: Int?): Int {
+        if (width == null || height == null || width <= 0 || height <= 0 || cardAspect <= 0f) return cardWidth(columnPx)
+        val fitted = ceil(columnPx / cardAspect.toDouble() * width / height).toInt()
+        return cardWidth(min(columnPx, fitted))
+    }
 
     /** The item's page on Wikidata, e.g. `https://www.wikidata.org/wiki/Q12418`. */
     fun wikidataPage(qid: String): String = "https://www.wikidata.org/wiki/$qid"

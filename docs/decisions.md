@@ -3,6 +3,22 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — Catalog cards show the whole picture
+A card showed its thumbnail cropped to the card's shape (`ContentScale.Crop`), so a portrait painting kept
+only its middle. Now the picture is fitted whole into the card (`ContentScale.Fit`) on black, in the Catalog
+and in My pictures: the cards keep their size and the frame's shape, so the grid stays regular and the D-pad
+moves through it as before, and the title and credit keep their scrim at the bottom, over the picture or the
+black around it. With uploads fitted too (above), the card shows what the frame gets, without the white.
+A Commons thumbnail is asked for by width, and a portrait fitted into a landscape card needs much less of it
+than the column: the card asks for the width the picture takes in the card (`CatalogPicture.thumbWidth`: the
+column for a picture at least as wide as the card's shape, less for a narrower one, then 330 or 500 px as
+before), so a portrait on a TV card (about 160 of 402 px) takes 330 px instead of 500, less than half the
+pixels and still taller than the card. The viewer's stand-in and the details panel's picture are the same
+thumbnail.
+Rejected: keeping the crop (hides most of a portrait), cards in each picture's own shape (an uneven grid, and
+a placeholder does not know its picture's shape), a blurred copy of the picture behind it (a second image per
+card), a 250 px or smaller thumbnail for narrow pictures (the details panel shows the same one larger).
+
 ## 2026-11-09 — Uploads fit the whole picture on white
 An upload scaled the picture to cover the panel and cut off what stuck out, so a portrait painting on a
 landscape frame (the Mona Lisa on 1024 × 600) lost most of itself. The user's decision after testing the

@@ -90,6 +90,22 @@ class CatalogPictureTest {
     }
 
     @Test
+    fun thumbWidth_byTheWidthThePictureTakesInTheCard() {
+        val tv = 402 // a TV card: 201 dp at density 2, 1024×600 frame shape (236 px high)
+        val shape = 1024f / 600
+        assertEquals(500, CatalogPicture.thumbWidth(tv, shape, 1920, 1080)) // wider than the card: the column
+        assertEquals(500, CatalogPicture.thumbWidth(tv, shape, 1024, 600))
+        // the Mona Lisa (portrait, about 2:3): about 159 px wide in the card, so the smaller thumbnail
+        assertEquals(330, CatalogPicture.thumbWidth(tv, shape, 7479, 11146))
+        assertEquals(330, CatalogPicture.thumbWidth(tv, shape, 1000, 1000)) // square: 236 px
+        // a little narrower than the card still needs more than 330 px
+        assertEquals(500, CatalogPicture.thumbWidth(tv, shape, 1500, 1000)) // 354 px
+        assertEquals(330, CatalogPicture.thumbWidth(300, shape, 1920, 1080)) // a narrow column as before
+        assertEquals(500, CatalogPicture.thumbWidth(tv, shape, null, 1000)) // unknown size: the column
+        assertEquals(500, CatalogPicture.thumbWidth(tv, shape, 0, 0))
+    }
+
+    @Test
     fun cardWidth_asChosen_narrowOriginal_theOriginal() {
         assertEquals(
             "$guernicaDir/330px-Mural_del_%22Guernica%22_de_Picasso.jpg",

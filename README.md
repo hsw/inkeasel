@@ -258,8 +258,10 @@ The Catalog tab pages through the database (Paging 3): it holds about 9,600 pain
 near the screen are read, and at most 360 rows stay loaded (pages far from the screen are dropped and read
 again when scrolled back to). A card not read yet is an empty card of the same size, which the D-pad focus
 moves through like any other (a press on it does nothing), so a long scroll never jumps; a card keeps its
-place in the grid when its row arrives, so a focused card keeps the focus. Cards take a 330 or
-500 px Commons thumbnail, whichever covers their width. Titles, artists and museums are the labels of the
+place in the grid when its row arrives, so a focused card keeps the focus. A card shows its picture whole,
+fitted on black inside the card (the cards keep the frame's shape, so the grid stays regular), with the title
+and credit over a dark band at the bottom. It takes a 330 or 500 px Commons thumbnail, whichever covers the
+width the picture takes in the card: the whole column for a wide picture, less for a portrait one. Titles, artists and museums are the labels of the
 app language's chain (see "Language"); artists are joined with a translatable separator. While the starter
 set imports at the first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather
 than showing an empty grid, and the list starts only after it, so its first query does not wait for the

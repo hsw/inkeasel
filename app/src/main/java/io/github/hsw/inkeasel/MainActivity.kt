@@ -545,10 +545,12 @@ fun App(
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
                 val width = maxWidth.value.toInt()
                 val layout = CatalogLayout.forWidth(width)
-                val cardWidth = CatalogPicture.cardWidth((layout.cardWidth(width) * density).roundToInt())
-                // a catalog row as the grid and the viewer show it: the same thumbnail, so the viewer's stand-in
-                // is the card's, already cached
-                val catalogPicture = remember(names, cardWidth) { { row: CatalogRow -> CatalogPicture.of(row, names, cardWidth) } }
+                val columnPx = (layout.cardWidth(width) * density).roundToInt()
+                // a catalog row as the grid and the viewer show it: the same thumbnail (by the width the picture
+                // takes in the card), so the viewer's stand-in is the card's, already cached
+                val catalogPicture = remember(names, columnPx, aspect) {
+                    { row: CatalogRow -> CatalogPicture.of(row, names, CatalogPicture.thumbWidth(columnPx, aspect, row.width, row.height)) }
+                }
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader, tabFocus)
                     Spacer(Modifier.height(16.dp))
@@ -742,8 +744,9 @@ private fun PagedGrid(
 }
 
 /**
- * A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details
- * ([onLongClick]). With no picture ([p] `null`: its row is still loading) it is the same card, empty and
+ * A catalog card: the whole picture fitted inside it on black, its title and credit over a scrim at the bottom
+ * (over the picture or the black around it). A press (CENTER or a tap) sends [p] at once ([onClick]), a long
+ * press opens its details ([onLongClick]). With no picture ([p] `null`: its row is still loading) it is the same card, empty and
  * focusable; it stays the same node when the picture arrives, so a focused card keeps the focus. Its
  * thumbnail may be held ([Holdable]); one refused with 429 or 503 (the host asked for a pause, often after a
  * fast scroll) is asked again once the pause is over ([RetryPolicy.thumbRetryMs]), as long as the card is shown.
@@ -763,7 +766,7 @@ fun PictureCard(p: Picture?, aspect: Float, onClick: () -> Unit, onLongClick: ()
         onLongClick = onLongClick,
         modifier = Modifier.fillMaxWidth().aspectRatio(aspect).onTap(onClick, onLongPress = onLongClick),
     ) {
-        if (p != null) Box(Modifier.fillMaxSize()) {
+        if (p != null) Box(Modifier.fillMaxSize().background(Color.Black)) {
             val context = LocalContext.current
             key(retries) {
                 val request = remember(p.thumbUrl) {
@@ -772,7 +775,7 @@ fun PictureCard(p: Picture?, aspect: Float, onClick: () -> Unit, onLongClick: ()
                 AsyncImage(
                     model = request,
                     contentDescription = p.title,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),
                     onError = { e ->
                         retryIn = RetryPolicy.thumbRetryMs(e.result.throwable, retries, System.currentTimeMillis())
