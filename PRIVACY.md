@@ -19,6 +19,11 @@ sent to the developer.**
   log (logcat); only a debug build, made for development, does.
 - **Pictures you share to InkEasel** from a gallery or a file manager: the app copies the picture into its own
   storage so it can send it to the frame and show it under "My pictures".
+- **Whether the device restricts what you see.** Each time the app's screen opens (when the app starts or
+  comes back to the foreground) and when its settings open, the app asks Android whether the TV's parental
+  controls are on and whether the user may not change accounts (as in a restricted profile). Either one fixes
+  the Catalog's nudity filter at "Hide all nudity". The answer is used only for that: it is neither stored nor
+  sent.
 - **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them, and during
   an upload (also of a poster, in the background) when the chosen frame does not answer at its saved address
   and has to be found again by its name: the search asks Android only for devices that advertise the frame's
@@ -54,9 +59,9 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
 ## What is stored on the device
 
 - the chosen frame (its name, Bluetooth address and advertised properties);
-- the default picture, the switches in the settings, and small app state such as when the frame last drew a
-  picture, whether you denied the Bluetooth permission or answered the app's first question about it,
-  and a shared picture that waits for it;
+- the default picture, the switches in the settings, the Catalog's nudity filter as you chose it, and small
+  app state such as when the frame last drew a picture, whether you denied the Bluetooth permission or
+  answered the app's first question about it, and a shared picture that waits for it;
 - which picture is on the frame: for a now-playing poster, its artwork address or a fingerprint of its
   artwork;
 - the artwork of recent now-playing sessions (in the app's cache, also while the poster is switched off):
@@ -97,7 +102,10 @@ settings, deletes all of them.
 
 ## Children
 
-The app is not directed at children and collects no personal information from anyone.
+The app is not directed at children and collects no personal information from anyone. Its catalog of
+paintings includes artistic nudity: by default it hides explicit works, and with the TV's parental controls
+on, or in a restricted profile, it hides all nudity and the setting cannot be changed (see "What the app
+reads"). The works are marked from Wikidata and a hand-checked list, so some may not be marked.
 
 ## Changes and contact
 

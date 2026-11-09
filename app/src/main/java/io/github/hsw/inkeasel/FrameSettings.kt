@@ -65,6 +65,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
+import io.github.hsw.inkeasel.catalog.NudityFilter
 import kotlinx.coroutines.delay
 
 private const val TAG = "FrameSettings"
@@ -72,7 +73,8 @@ private const val TAG = "FrameSettings"
 /**
  * "Settings": a full-screen dialog over the catalog. Section "Frame": while the dialog is open it scans for
  * frames and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves
- * it and closes the dialog. Section "Permissions and features" ([FeaturesSection]): the Bluetooth permission
+ * it and closes the dialog. Section "Catalog" ([CatalogSection]): the nudity filter. Section "Permissions and
+ * features" ([FeaturesSection]): the Bluetooth permission
  * and the now-playing poster switch with its notification access (a change there applies at once), and the
  * privacy policy link. "Close" and Back call [onCancel] and leave the frame as it was (Back closes the
  * notification-access disclosure first, while it is open). The scan stops when the dialog closes and while
@@ -98,6 +100,9 @@ fun FrameSettingsDialog(
     poster: Boolean,
     access: Boolean,
     pending: Boolean,
+    nudity: NudityFilter,
+    nudityLock: NudityLock?,
+    onNudity: () -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
@@ -117,6 +122,9 @@ fun FrameSettingsDialog(
                     poster = poster,
                     access = access,
                     pending = pending,
+                    nudity = nudity,
+                    nudityLock = nudityLock,
+                    onNudity = onNudity,
                     onPoster = onPoster,
                     onDisclosureConfirmed = onDisclosureConfirmed,
                     sidePadding = sidePadding,
@@ -154,6 +162,9 @@ private fun FrameSettings(
     poster: Boolean,
     access: Boolean,
     pending: Boolean,
+    nudity: NudityFilter,
+    nudityLock: NudityLock?,
+    onNudity: () -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     sidePadding: Int,
@@ -283,8 +294,37 @@ private fun FrameSettings(
             }
         }
         Spacer(Modifier.height(32.dp))
+        CatalogSection(nudity, nudityLock, onNudity)
+        Spacer(Modifier.height(32.dp))
         FeaturesSection(ble, poster, access, pending, onPoster, onDisclosureConfirmed)
     }
+}
+
+/**
+ * "Catalog": the nudity filter ([NuditySetting]). The row shows the filter in force ([nudity]); a press (OK or a
+ * tap) calls [onNudity] (`MainViewModel.pressNudity`), which moves to the next value and applies it at once.
+ * Under the value, where the marks come from and that some works may be unmarked. While the device locks the
+ * filter ([lock]) the row is disabled (still focusable, so the D-pad reaches its text) and says why.
+ */
+@Composable
+private fun CatalogSection(nudity: NudityFilter, lock: NudityLock?, onNudity: () -> Unit) {
+    val press: () -> Unit = { if (lock == null) onNudity() }
+    Text(stringResource(R.string.settings_catalog), style = MaterialTheme.typography.titleLarge)
+    Spacer(Modifier.height(8.dp))
+    ListItem(
+        selected = false,
+        onClick = press,
+        enabled = lock == null,
+        modifier = Modifier.onTap(press),
+        headlineContent = { Text(stringResource(R.string.settings_nudity)) },
+        supportingContent = {
+            Column {
+                Text(NuditySetting.valueText(nudity).text(), style = MaterialTheme.typography.bodyMedium)
+                lock?.let { Text(it.reason.text(), style = MaterialTheme.typography.bodyMedium) }
+                Text(stringResource(R.string.settings_nudity_about), style = MaterialTheme.typography.bodyMedium)
+            }
+        },
+    )
 }
 
 /**

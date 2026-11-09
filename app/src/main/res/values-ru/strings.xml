@@ -67,6 +67,16 @@
     <string name="frame_unavailable">недоступна</string>
     <string name="close">Закрыть</string>
 
+    <!-- settings: catalog -->
+    <string name="settings_catalog">Каталог</string>
+    <string name="settings_nudity">Нагота</string>
+    <string name="settings_nudity_hide_explicit">Скрывать откровенное</string>
+    <string name="settings_nudity_hide_nudes">Скрывать всю наготу</string>
+    <string name="settings_nudity_show_all">Показывать всё</string>
+    <string name="settings_nudity_about">Работы отмечены по данным Викиданных и по списку, проверенному вручную; некоторые могут быть не отмечены.</string>
+    <string name="settings_nudity_locked_tv">Заблокировано родительским контролем телевизора.</string>
+    <string name="settings_nudity_locked_profile">Заблокировано для этого профиля.</string>
+
     <!-- settings: permissions and features -->
     <string name="settings_features">Разрешения и функции</string>
     <string name="perm_bt">Bluetooth</string>

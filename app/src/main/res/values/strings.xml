@@ -82,6 +82,18 @@
     <string name="frame_unavailable">unavailable</string>
     <string name="close">Close</string>
 
+    <!-- settings: catalog -->
+    <string name="settings_catalog">Catalog</string>
+    <string name="settings_nudity">Nudity</string>
+    <!-- the nudity filter's three values (NuditySetting.valueText), shown under settings_nudity -->
+    <string name="settings_nudity_hide_explicit">Hide explicit works</string>
+    <string name="settings_nudity_hide_nudes">Hide all nudity</string>
+    <string name="settings_nudity_show_all">Show all</string>
+    <string name="settings_nudity_about">Works are marked from Wikidata and a hand-checked list; some may not be marked.</string>
+    <!-- the filter is fixed at settings_nudity_hide_nudes and the row cannot be changed, because of: -->
+    <string name="settings_nudity_locked_tv">Locked by the TV\'s parental controls.</string>
+    <string name="settings_nudity_locked_profile">Locked for this profile.</string>
+
     <!-- settings: permissions and features -->
     <string name="settings_features">Permissions and features</string>
     <string name="perm_bt">Bluetooth</string>

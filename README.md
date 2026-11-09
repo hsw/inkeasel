@@ -279,11 +279,11 @@ Every catalog painting has a nudity level, stored with its row: explicit (genita
 shown, such as Courbet's "L'Origine du monde"), nude, or none. It is the strictest of the release's `nsfw`
 field, the list `tools/catalog-nsfw.txt` (built into the app too, so it applies to a release already
 published; each process start raises stored rows to it) and Wikidata's nude genre; Cleveland and Commons
-rows carry none. The Catalog shows the rows below a filter's bound, for now always "hide explicit": the
-paging query, the count and the viewer's "n / N" and Left/Right all leave the explicit ones out, and a
-Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the filter. When the
-filter changes, the grid goes back to its top and an open Catalog viewer closes. The starter set never
-carries an explicit painting.
+rows carry none. The Catalog shows the rows below the bound of the filter in force (**Settings → Catalog →
+Nudity**, below): the paging query, the count and the viewer's "n / N" and Left/Right all leave the hidden
+ones out, and a Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate whatever the
+filter. When the filter changes, the grid goes back to its top and an open Catalog viewer closes. The starter
+set never carries an explicit painting.
 
 The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
 Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
@@ -417,9 +417,24 @@ one that can be chosen), unless the user has already moved onto the list.
   A dialog closed without an answer (Back, a tap outside) is not a denial: "Allow" asks again. Only after a
   real denial has been seen once (remembered in prefs `permissions`) does a silent "no" count as blocked.
 
+## Catalog filter
+
+Below the frame list, **Settings → Catalog** has one row, **Nudity**, with the filter in force: "Hide
+explicit works" (the default), "Hide all nudity" or "Show all". A press (OK or a tap) moves to the next value
+in that order and applies it at once (prefs `catalog`, key `nudity`); under the value the row says that works
+are marked from Wikidata and a hand-checked list and that some may not be marked (Cleveland and Commons rows
+never are). The device can lock it at "Hide all nudity" (`CatalogFilterStore.readLock`, read at each start of
+the activity, so also on a return to the foreground, and when the settings open; never stored): Android TV's
+parental controls on (`TvInputManager.isParentalControlsEnabled()`; phones and tablets without
+`android.software.live_tv` have no such service), or a user that may not change accounts
+(`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for a restricted profile, and on some managed devices). The row
+then shows that value with the reason ("Locked by the TV's parental controls" or "Locked for this profile"),
+is disabled (the D-pad still reaches it) and a press does nothing; the stored choice comes back once the lock
+is off. Family Link and Google TV kids profiles have no public API and are not seen.
+
 ## Permissions and features
 
-Below the frame list, **Settings → Permissions and features** collects what the app needs:
+Below the Catalog section, **Settings → Permissions and features** collects what the app needs:
 
 - **Bluetooth**: whether the permission is granted, with "Allow" (or "App info", as above) when it is not.
   One permission set everywhere (`BlePermissions`): Nearby devices (`BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`)

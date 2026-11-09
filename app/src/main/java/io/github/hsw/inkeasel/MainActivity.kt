@@ -81,6 +81,7 @@ import io.github.hsw.inkeasel.catalog.CatalogPicture
 import io.github.hsw.inkeasel.catalog.CatalogRow
 import io.github.hsw.inkeasel.catalog.CatalogSteps
 import io.github.hsw.inkeasel.catalog.CatalogStore
+import io.github.hsw.inkeasel.catalog.NudityFilter
 import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.FeatureStore
 import io.github.hsw.inkeasel.nowplaying.FrameController
@@ -117,6 +118,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The nudity filter in force ([CatalogStore.nudityBelow]): a change takes the Catalog grid to its top. */
     val catalogNudityBelow: StateFlow<Int> = store.nudityBelow
+
+    private val catalogFilter = CatalogFilterStore(app)
+
+    /** The Catalog's nudity filter as chosen in the settings ([CatalogFilterStore.nudity]). */
+    var nudityChoice by mutableStateOf(catalogFilter.nudity)
+        private set
+
+    /** The device's lock on the filter ([CatalogFilterStore.readLock]): read at each start and when the settings open. */
+    var nudityLock by mutableStateOf<NudityLock?>(null)
+        private set
+
+    /** The filter in force: [nudityChoice], or the lock's ([NudityFilter.effective]). */
+    val nudityInForce: NudityFilter get() = NudityFilter.effective(nudityChoice, nudityLock != null)
+
+    /**
+     * Read the device's lock again and put the filter in force on the Catalog ([CatalogStore.applyFilter]); a
+     * new one re-pages the grid and closes an open Catalog viewer. At each start of the activity, so a lock
+     * switched on while the app was in the background applies on its return, and when the settings open.
+     */
+    fun readNudityLock() {
+        nudityLock = CatalogFilterStore.readLock(getApplication())
+        applyNudity()
+    }
+
+    /** "Catalog → Nudity" pressed: the next value ([NuditySetting.next]), saved and in force; nothing while locked. */
+    fun pressNudity() {
+        if (nudityLock != null) return
+        nudityChoice = NuditySetting.next(nudityChoice)
+        catalogFilter.nudity = nudityChoice
+        applyNudity()
+    }
+
+    private fun applyNudity() {
+        val filter = nudityInForce
+        if (store.nudityBelow.value != filter.nudityBelow) Log.i(TAG, "nudity filter: $filter (choice $nudityChoice, lock $nudityLock)")
+        store.applyFilter(filter)
+    }
 
     /** My pictures ([LOCAL_TAB]): a list loaded whole ([readLocal]), re-scanned when its folder changes. */
     private val local = LocalImages(app)
@@ -263,6 +301,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         blePanel = null
         details = null
         nav.close()
+        readNudityLock()
         settingsOpen = true
     }
 
@@ -537,6 +576,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // The device's lock on the Catalog's nudity filter may have changed while the app was away.
+    override fun onStart() {
+        super.onStart()
+        vm.readNudityLock()
+    }
+
     // Returning to the app re-scans the local folder, in case files changed while it was away.
     // Permissions and notification access may also have been granted from the system settings meanwhile.
     override fun onResume() {
@@ -649,6 +694,9 @@ fun App(
                         poster = vm.posterOn,
                         access = vm.listenerAccess,
                         pending = vm.posterPending,
+                        nudity = vm.nudityInForce,
+                        nudityLock = vm.nudityLock,
+                        onNudity = vm::pressNudity,
                         onPoster = vm::pressPoster,
                         onDisclosureConfirmed = vm::confirmDisclosure,
                         onSelect = { f -> vm.select(f); onFrameSelected() },

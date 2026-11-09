@@ -3,6 +3,34 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The Catalog's nudity filter is a setting with three values; the device can lock it
+**Settings → Catalog → Nudity** chooses the filter: "Hide explicit works" (the default), "Hide all nudity" or
+"Show all"; a press (OK or a tap) moves to the next value in that order, and the choice is stored in plain
+preferences (`CatalogFilterStore`, like the poster switch). The levels are those the catalog marks (explicit:
+genitals in focus, a sexual act or assault; nude: other nudity), from the release's `nsfw` field, the
+built-in list and Wikidata's nude genre; the row says that some works may not be marked (the live sources
+never are). The default hides only explicit works (user decision): a classic nude such as Botticelli's Venus
+or Olympia is part of what a painting catalog shows, while "L'Origine du monde" on the first screen of a
+family TV is not. The section is its own group, not a row of "Permissions and features", which holds only
+permissions and feature switches.
+The device locks the filter at "Hide all nudity" while Android TV's parental controls are on
+(`TvInputManager.isParentalControlsEnabled()`; the service is missing on a device without
+`android.software.live_tv`, so a phone or tablet reads it as off) or while the user may not change accounts
+(`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for every restricted profile; also on some managed devices,
+where a stricter filter does no harm). It is read at each start of the activity and when the settings open,
+never stored or sent, so a lock switched on while the app was in the background applies on its return (the
+grid goes back to its top, an open Catalog viewer closes); the row shows the reason and a press does
+nothing; the stored choice comes back once the lock is off.
+Not detected: Family Link supervision and Google TV kids profiles. Android has no public API for either on
+API 26–36 (a supervised account sets no user restriction an app can read, and a kids profile is an ordinary
+user to the app), so the default filter is what protects them.
+Rejected: hiding all nudes by default (it takes much of the classic canon out of an art catalog for every
+user, to cover a case the lock and the setting cover), a filter only in the export with no setting (no way to
+see the works hidden, or to hide more), a fixed filter with no switch (the same), guessing a kids profile
+from launcher packages or the account list (no stable signal, and reading the accounts needs a permission
+this app has no other use for), storing the lock (a stale value would outlive the parental controls being
+switched off), an app restriction for device admins (later, if asked for).
+
 ## 2026-11-09 — Each picture stores its nudity level; the Catalog's queries filter on it
 Every catalog row has a `nudity` column (`picture` and `picture_stage`, INTEGER NOT NULL DEFAULT 0): the
 `NudityLevel` ordinal, 0 none, 1 nude, 2 explicit. It is computed in Kotlin as a row is read
@@ -15,8 +43,9 @@ hides all nudes): the paging query, the count, and the viewer's place, count and
 "n / N" counts the same list as the grid. The stored order holds every row whatever its level (the hard hide
 of listed explicit rows in `CatalogRank.place` is gone), so another filter needs no write: the store starts a
 new pager, the grid goes back to its top, and an open Catalog viewer closes (it steps under the bound it
-opened with). The every-10th live card may move up by the rows a filter leaves out before it. Until the
-setting exists the bound is `NudityFilter.DEFAULT`, hide explicit, so explicit works stay hidden as before.
+opened with). The every-10th live card may move up by the rows a filter leaves out before it. The bound is
+the setting's (see "The Catalog's nudity filter is a setting with three values"), hide explicit by default,
+so explicit works stay hidden as before.
 Whether the catalog has any picture at all ("no pictures yet") is counted without the filter.
 The import reads a release only when it changed, so a newer app version's longer list would not reach a
 release already imported: each process start raises the stored Wikidata rows to the built-in list's level
