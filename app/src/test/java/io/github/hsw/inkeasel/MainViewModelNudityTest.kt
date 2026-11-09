@@ -311,6 +311,110 @@ class MainViewModelNudityTest {
     }
 
     @Test
+    fun aTabSwitchWhileAnOpenWaitsAtTheGate_dropsIt() {
+        val read = storedPicture("wd:Q0-tab")
+        var sent = false
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true) { sent = true }
+        assertEquals(true, vm.gatePending)
+        vm.selectTab(MainViewModel.LOCAL_TAB)
+        assertEquals(false, vm.gatePending)
+        opened()
+        assertNull(vm.viewer)
+        assertEquals(false, sent)
+    }
+
+    @Test
+    fun theSameTabSelectedAgain_keepsTheOpen() {
+        // the tab's focus again (Back from the content moves it there) is no switch
+        val read = storedPicture("wd:Q0-sametab")
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)
+        vm.selectTab(vm.tab)
+        opened()
+        assertEquals(read.id, vm.viewer?.picture?.id)
+        assertEquals(false, vm.gatePending)
+    }
+
+    @Test
+    fun aCatalogPicture_opensACatalogViewer_whateverTheTab() {
+        // whether it is a Catalog viewer comes from the picture, not from the tab when the gate returns
+        val read = storedPicture("wd:Q0-anytab")
+        vm.selectTab(MainViewModel.LOCAL_TAB)
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)
+        idleUntil { vm.viewer?.rank != null }
+        assertEquals(read.id, vm.viewer?.picture?.id)
+
+        raise(read.id, NudityLevel.EXPLICIT) // an import: the Catalog viewer goes
+        idleUntil { vm.viewer == null }
+        assertNull(vm.viewer)
+    }
+
+    @Test
+    fun aNewFilterWhileAnOpenWaitsAtTheGate_dropsIt() {
+        // the open read its steps under the old filter
+        val read = storedPicture("wd:Q0-newfilter")
+        vm.openDetails(read)
+        restricted(true)
+        vm.readNudityLock()
+        opened()
+        assertNull(vm.details)
+    }
+
+    @Test
+    fun backWhileAnOpenWaitsAtTheGate_dropsIt() {
+        val read = storedPicture("wd:Q0-back")
+        var sent = false
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true) { sent = true }
+        vm.dropPending() // the Back handler while gatePending
+        opened()
+        assertNull(vm.viewer)
+        assertEquals(false, sent)
+    }
+
+    @Test
+    fun aSendAtTheGate_runsOnceLetThrough_andIsDroppedByTheSettings() {
+        val read = storedPicture("wd:Q0-send")
+        var sent = 0
+        vm.whenAllowed(read) { sent++ } // "Send to frame"
+        opened()
+        assertEquals(1, sent)
+
+        vm.whenAllowed(read) { sent++ }
+        vm.openSettings()
+        opened()
+        assertEquals(1, sent)
+        vm.closeSettings()
+
+        raisedAfterTheRecheck(read)
+        vm.whenAllowed(read) { sent++ }
+        opened()
+        assertEquals(1, sent)
+    }
+
+    @Test
+    fun aNewerOpenOrSend_dropsTheOneAtTheGate() {
+        val first = storedPicture("wd:Q0-older")
+        val second = storedPicture("wd:Q0-newer")
+        var sent = false
+        vm.whenAllowed(first) { sent = true }
+        vm.openDetails(second)
+        opened()
+        assertEquals(false, sent)
+        assertEquals(second, vm.details)
+    }
+
+    @Test
+    fun detailsDismissedWhileViewFullScreenWaits_opensNoViewer() {
+        val read = storedPicture("wd:Q0-dismissed")
+        vm.openDetails(read)
+        opened()
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") })
+        vm.closeDetails()
+        opened()
+        assertNull(vm.viewer)
+        assertNull(vm.details)
+    }
+
+    @Test
     fun aLevelRaisedByAnImport_closesTheCatalogViewerOnThatPicture() {
         val read = storedPicture("wd:Q0-viewed")
         vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)

@@ -60,16 +60,24 @@ with it. A press (the viewer, then the send path), a long press (the details pan
 each Left/Right of the viewer (`ViewerNav`'s gate: the step's own query filters too, but an import may commit
 after it) and "Send to frame" (the Bluetooth panel's later send too) open or send only after it; a hidden
 picture opens and sends nothing, and only the log says so, as its card is about to go. An open still at the
-gate is dropped by a newer one, the settings and the Bluetooth panel. A release import or the built-in list
-can also raise the level of a picture already shown: after each write to the catalog (`CatalogStore.writes`),
-and when the viewer finds no place for its picture, the viewer, the details panel and the Bluetooth panel's
-picture go through the gate again and go as for a new bound. Back from a viewer opened from the details panel
-brings them back for the picture it showed, at once: that picture passed the gate and is under the re-check.
+gate (one at a time, `MainViewModel.whenAllowed`; "Send to frame" too) is dropped by a newer one and by
+every action that changes what the screen is about: another tab (the tab's focus again is none), the details
+panel dismissed, the settings, the Bluetooth panel, a new bound and Back. What an open depends on is taken
+before the gate: whether it is a Catalog viewer comes from the picture (`Picture.local`), not the tab when
+the read returns, and its list (the bound and the languages, or My pictures' loaded list) is read at the
+press. A press's send path follows its viewer's open without a second read. A release import or the
+built-in list can also raise the level of a picture already shown: after each write to the catalog
+(`CatalogStore.writes`), and when the viewer finds no place for its picture, the viewer, the details panel and
+the Bluetooth panel's picture go through the gate again and go as for a new bound. Back from a viewer opened
+from the details panel brings them back for the picture it showed, at once: that picture passed the gate and
+is under the re-check.
 Rejected: trusting the level read with the row for an open (each round of review found another path where a
 retained card's level let a filtered picture show; a gate per path would miss the next one), relying on the
 grid having refreshed (a press in that window opened the viewer on the picture alone and sent it), Room's
 invalidation tracker for the re-check (every write already goes through the store's one write lock, which
-counts it), showing first and closing after the read (the picture would flash). When the
+counts it), showing first and closing after the read (the picture would flash), reading the tab once the gate
+returns (a tab switched meanwhile made a Catalog viewer one of My pictures, which a new bound or an import then
+left open). When the
 filter leaves no row of a catalog that has some, the tab says so and where to change the filter
 (`CatalogView.FILTERED`: the list read to its end with no row), instead of "Loading" for good. The every-10th
 live card may move up by the rows a filter

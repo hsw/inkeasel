@@ -61,7 +61,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
 import androidx.paging.PagingData
@@ -89,6 +88,7 @@ import io.github.hsw.inkeasel.nowplaying.FeatureStore
 import io.github.hsw.inkeasel.nowplaying.FrameController
 import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -164,6 +164,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val filter = nudityInForce
         if (store.nudityBelow.value != filter.nudityBelow) {
             Log.i(TAG, "nudity filter: $filter (choice $nudityChoice, lock $nudityLock)")
+            dropPending() // an open waiting at the gate reads its steps under the old filter
             if (viewerOnCatalog && viewer != null) {
                 Log.i(TAG, "nudity filter changed: Catalog viewer closed")
                 nav.close()
@@ -216,16 +217,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return passes(if (level == null) p else p.copy(nudity = level))
     }
 
-    /** An open waiting for [allowed]; a newer one, the settings or the Bluetooth panel drop it. */
-    private var opening: Job? = null
+    /**
+     * The open or send waiting for [allowed] ([whenAllowed]), one at a time; dropped ([dropPending]) by a newer
+     * one and by each user action that changes what the screen is about: another tab, the details panel
+     * dismissed, the settings, the Bluetooth panel, a new nudity filter, Back while it waits.
+     */
+    private var pending: Job? = null
 
-    /** An open is still waiting for the gate (tests). */
-    internal val openPending: Boolean get() = opening?.isActive == true
+    /** An open or send waits for the gate: Back drops it ([dropPending]) before anything else takes Back. */
+    var gatePending by mutableStateOf(false)
+        private set
 
-    /** Runs [open] once [p] passes the gate ([allowed]); at once for a picture of My pictures. */
-    private fun gated(p: Picture, open: () -> Unit) {
-        opening?.cancel()
-        opening = viewModelScope.launch { if (allowed(p)) open() }
+    /** An open or send is still waiting for the gate (tests). */
+    internal val openPending: Boolean get() = pending?.isActive == true
+
+    /**
+     * Runs [action] once [p] passes the gate ([allowed]), unless dropped meanwhile ([pending]); at once for a
+     * picture of My pictures. [action] reads nothing that may have changed while it waited: what it depends on
+     * is taken before the call.
+     */
+    fun whenAllowed(p: Picture, action: () -> Unit) {
+        dropPending()
+        lateinit var job: Job
+        job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                if (!allowed(p) || pending !== job) return@launch
+            } finally {
+                if (pending === job) {
+                    pending = null
+                    gatePending = false
+                }
+            }
+            action()
+        }
+        pending = job
+        gatePending = true
+        job.start()
+    }
+
+    /** Drops the open or send waiting for the gate, if one does ([whenAllowed]). */
+    fun dropPending() {
+        pending?.let {
+            Log.i(TAG, "open or send at the gate dropped")
+            it.cancel()
+        }
+        pending = null
+        gatePending = false
     }
 
     /**
@@ -309,7 +346,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
-        opening?.cancel()
+        dropPending()
         settingsOpen = false
         details = null
         nav.close()
@@ -324,12 +361,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     /** The details panel of [p] (a long press on its card), once it passes the gate ([allowed]). */
-    fun openDetails(p: Picture) = gated(p) {
+    fun openDetails(p: Picture) = whenAllowed(p) {
         Log.i(TAG, "details of ${p.id}")
         details = p
     }
 
+    /** The details panel dismissed (or left for its send path): "View full screen" still at the gate goes too. */
     fun closeDetails() {
+        dropPending()
         details = null
     }
 
@@ -360,31 +399,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
      * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
      * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]). It opens
-     * once [p] passes the gate ([allowed]), and only then [then] runs (a press's send path).
+     * once [p] passes the gate ([allowed]), and only then [then] runs (a press's send path). Whether it is a
+     * Catalog viewer comes from [p] itself, and its list is taken at the call, before the gate: a tab switched
+     * while the gate reads drops the open anyway ([whenAllowed]).
      */
     fun openViewer(
         p: Picture,
         catalogPicture: (CatalogRow) -> Picture,
         byPress: Boolean = false,
         then: () -> Unit = {},
-    ) = gated(p) {
-        details = null
-        viewerByPress = byPress
-        viewerOnCatalog = tab == CATALOG_TAB
-        if (viewerOnCatalog) {
+    ) {
+        val onCatalog = !p.local
+        val show: () -> Unit
+        if (onCatalog) {
             val steps = CatalogSteps(store.db.catalog(), store.chain.value, store.nudityBelow.value, catalogPicture)
-            nav.open(ViewerState.alone(p), steps) {
-                // no place in the list: the card may hold a level an import has raised since it was read
-                steps.open(p.id)?.also(::logViewer) ?: run {
-                    viewModelScope.launch { recheckShown() }
-                    null
+            show = {
+                nav.open(ViewerState.alone(p), steps) {
+                    // no place in the list: the card may hold a level an import has raised since it was read
+                    steps.open(p.id)?.also(::logViewer) ?: run {
+                        viewModelScope.launch { recheckShown() }
+                        null
+                    }
                 }
             }
         } else {
             val steps = ListSteps((localState as? LocalState.Loaded)?.items.orEmpty())
-            nav.open(steps.open(p).also(::logViewer), steps)
+            show = { nav.open(steps.open(p).also(::logViewer), steps) }
         }
-        then()
+        whenAllowed(p) {
+            details = null
+            viewerByPress = byPress
+            viewerOnCatalog = onCatalog
+            show()
+            then()
+        }
     }
 
     private fun logViewer(s: ViewerState) = Log.i(TAG, "viewer on ${s.picture.id} (${s.index + 1} of ${s.count})")
@@ -403,7 +451,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openSettings() {
-        opening?.cancel()
+        dropPending()
         blePanel = null
         details = null
         nav.close()
@@ -469,7 +517,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Another tab drops an open still at the gate ([dropPending]); the same one (its focus again) does not. */
     fun selectTab(i: Int) {
+        if (i != tab) dropPending()
         tab = i
         if (i == LOCAL_TAB && localState.needsLoad()) loadLocal()
     }
@@ -610,8 +660,9 @@ class MainActivity : ComponentActivity() {
                 vm,
                 ble = BleAccess(permitted, blocked, ::requestPermissions),
                 onFrameSelected = ::sendPendingShare,
-                onSend = { p -> send(p, byPress = false) },
-                onPress = { p -> send(p, byPress = true) },
+                onSend = ::send,
+                // after the viewer's open passed the gate ([MainViewModel.openViewer]): not read again
+                onPress = { p -> sendAllowed(p, byPress = true) },
                 onPanelConfirm = { askPermissions.launch(BlePermissions.all) },
                 onPanelDismiss = ::dismissPanel,
             )
@@ -622,10 +673,11 @@ class MainActivity : ComponentActivity() {
      * The send path of a picture ([BleAsk.onSend]): sent, the Bluetooth panel (which replaces any open
      * viewer), or a toast why not. A press on a card ([byPress]) has the viewer open on the picture, whose
      * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast. Only a
-     * picture that passes the gate ([MainViewModel.allowed]) takes it.
+     * picture that passes the gate ([MainViewModel.whenAllowed]) takes it: "Send to frame" here, a press
+     * through the viewer it opens ([MainViewModel.openViewer]), so a press reads the level once.
      */
-    private fun send(p: Picture, byPress: Boolean) {
-        lifecycleScope.launch { if (vm.allowed(p)) sendAllowed(p, byPress) }
+    private fun send(p: Picture) {
+        vm.whenAllowed(p) { sendAllowed(p, byPress = false) }
     }
 
     private fun sendAllowed(p: Picture, byPress: Boolean) {
@@ -647,7 +699,7 @@ class MainActivity : ComponentActivity() {
     // The Bluetooth panel's send, once the permission is granted, of the picture it was opened with: through
     // the gate again, as the filter or the picture's stored level may have changed meanwhile.
     private fun sendToFrame(p: Picture) {
-        lifecycleScope.launch { if (vm.allowed(p)) upload(p) }
+        vm.whenAllowed(p) { upload(p) }
     }
 
     // Hand the upload to the background service, so it survives leaving the app and does not
@@ -784,6 +836,9 @@ fun App(
                         if (back.focusTab) runCatching { tabFocus.requestFocus() } // before the scroll drops the focused card
                         if (back.scrollToTop) scope.launch { shownGrid.scrollToItem(0) }
                     }
+                    // Back while a press or "Send to frame" waits for the gate drops it, as Back would close
+                    // the viewer it opens; registered after the grid's, so it comes first
+                    BackHandler(enabled = vm.gatePending && !vm.settingsOpen) { vm.dropPending() }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
                         if (catalog) {
                             val view = CatalogView.of(

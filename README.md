@@ -298,7 +298,8 @@ new list's first page arrives (and after an import until the grid re-pages), so 
 an old card the new filter hides shows empty. A press, a long press (details), "View full screen", each
 Left/Right of the viewer and "Send to frame" go through one gate (`MainViewModel.allowed`), which reads the
 level stored at that moment and checks it against the filter in force: a hidden picture opens and sends
-nothing. An import that raises a shown picture's level (a new release, the built-in list) takes it away the
+nothing. What waits for that read is dropped by a newer press or send, another tab, the details panel
+dismissed, the settings, the Bluetooth panel, a new filter and Back. An import that raises a shown picture's level (a new release, the built-in list) takes it away the
 same way.
 When the filter leaves no picture of a catalog that has some, the tab says so and where to change it. The
 starter set never carries an explicit painting.
