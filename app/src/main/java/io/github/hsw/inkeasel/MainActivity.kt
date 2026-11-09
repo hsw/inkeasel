@@ -182,58 +182,74 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         store.applyFilter(filter)
     }
 
-    /**
-     * [p] may be shown or sent under the nudity filter in force now ([Picture.shownUnder]). A new filter re-pages
-     * the grid, but its old cards stay, and can be pressed, until the new list's first page arrives; so the
-     * press, the details panel, the viewer and the send path check the picture itself rather than rely on the
-     * grid having refreshed. A refusal is only logged: the card goes with the old list.
-     */
-    fun passes(p: Picture): Boolean {
+    /** [p] may be shown or sent under the nudity filter in force now ([Picture.shownUnder]), at its level as given. */
+    private fun passes(p: Picture): Boolean {
         val ok = p.shownUnder(store.nudityBelow.value)
         if (!ok) Log.i(TAG, "${p.id} refused: the nudity filter in force hides it")
         return ok
     }
 
     /**
-     * [p] [passes] at the nudity level stored for it now ([CatalogDao.nudity]): a release import or the built-in
-     * list ([CatalogDao.markListed]) may have raised it since [p] was read. The send path checks this; a picture
-     * gone from the database, or a failed read, keeps the level it was read with.
+     * The one gate before a Catalog picture shows or is sent: a press (the viewer), a long press (the details
+     * panel), "View full screen", each Left/Right of the viewer ([ViewerNav]), "Send to frame" and the
+     * Bluetooth panel's later send. [p] [passes] at the level stored for it now ([CatalogDao.nudity]), not the
+     * one read with it: the grid keeps its old cards until a new filter's first page or an import's re-page
+     * arrives, and a release import or the built-in list ([CatalogDao.markListed]) may have raised the level
+     * since. A write that finishes during the read ([CatalogStore.writes]) reads it again; one that finishes
+     * after it is [recheckShown]'s. A picture gone from the database, or a failed read, keeps the level it was
+     * read with; one of My pictures is never read. A refusal is only logged: its card is about to go.
      */
-    suspend fun passesStored(p: Picture): Boolean {
+    suspend fun allowed(p: Picture): Boolean {
         if (p.local) return passes(p)
-        val level = try {
-            store.db.catalog().nudity(p.id)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "nudity level of ${p.id} not read", e)
-            null
-        }
+        var level: Int?
+        do {
+            val writes = store.writes.value
+            level = try {
+                store.db.catalog().nudity(p.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "nudity level of ${p.id} not read", e)
+                null
+            }
+        } while (store.writes.value != writes)
         return passes(if (level == null) p else p.copy(nudity = level))
+    }
+
+    /** An open waiting for [allowed]; a newer one, the settings or the Bluetooth panel drop it. */
+    private var opening: Job? = null
+
+    /** An open is still waiting for the gate (tests). */
+    internal val openPending: Boolean get() = opening?.isActive == true
+
+    /** Runs [open] once [p] passes the gate ([allowed]); at once for a picture of My pictures. */
+    private fun gated(p: Picture, open: () -> Unit) {
+        opening?.cancel()
+        opening = viewModelScope.launch { if (allowed(p)) open() }
     }
 
     /**
      * After each write to the catalog ([CatalogStore.writes]), and when the viewer finds no place for its
      * picture: whatever shows a Catalog picture goes if the level stored for it now is one the filter in force
-     * hides ([passesStored]), as [applyNudity] takes it away for a new filter: the viewer closes, so does the
+     * hides ([allowed]), as [applyNudity] takes it away for a new filter: the viewer closes, so does the
      * details panel, and the Bluetooth panel forgets its picture. Each goes only while it still shows the
      * picture checked.
      */
     private suspend fun recheckShown() {
         viewer?.picture?.takeIf { viewerOnCatalog }?.let { p ->
-            if (!passesStored(p) && viewerOnCatalog && viewer?.picture == p) {
+            if (!allowed(p) && viewerOnCatalog && viewer?.picture == p) {
                 Log.i(TAG, "nudity level of ${p.id} raised: Catalog viewer closed")
                 nav.close()
             }
         }
         details?.takeIf { !it.local }?.let { p ->
-            if (!passesStored(p) && details == p) {
+            if (!allowed(p) && details == p) {
                 Log.i(TAG, "nudity level of ${p.id} raised: details closed")
                 details = null
             }
         }
         blePanel?.picture?.takeIf { !it.local }?.let { p ->
-            if (!passesStored(p)) blePanel?.takeIf { it.picture == p }?.let { panel ->
+            if (!allowed(p)) blePanel?.takeIf { it.picture == p }?.let { panel ->
                 Log.i(TAG, "nudity level of ${p.id} raised: the Bluetooth panel sends no Catalog picture")
                 blePanel = panel.copy(picture = null)
             }
@@ -293,6 +309,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         private set
 
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
+        opening?.cancel()
         settingsOpen = false
         details = null
         nav.close()
@@ -306,9 +323,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var details by mutableStateOf<Picture?>(null)
         private set
 
-    /** The details panel of [p], unless the filter in force hides it ([passes]). */
-    fun openDetails(p: Picture) {
-        if (!passes(p)) return
+    /** The details panel of [p] (a long press on its card), once it passes the gate ([allowed]). */
+    fun openDetails(p: Picture) = gated(p) {
         Log.i(TAG, "details of ${p.id}")
         details = p
     }
@@ -326,7 +342,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     var viewer by mutableStateOf<ViewerState?>(null)
         private set
-    private val nav = ViewerNav(viewModelScope) { viewer = it }
+    private val nav = ViewerNav(viewModelScope, gate = { allowed(it) }) { viewer = it }
 
     /** The open viewer steps through the Catalog ([CatalogSteps]), not My pictures. */
     private var viewerOnCatalog = false
@@ -343,11 +359,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
      * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
-     * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]). Nothing
-     * opens for a picture the filter in force hides ([passes]).
+     * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]). It opens
+     * once [p] passes the gate ([allowed]), and only then [then] runs (a press's send path).
      */
-    fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture, byPress: Boolean = false) {
-        if (!passes(p)) return
+    fun openViewer(
+        p: Picture,
+        catalogPicture: (CatalogRow) -> Picture,
+        byPress: Boolean = false,
+        then: () -> Unit = {},
+    ) = gated(p) {
         details = null
         viewerByPress = byPress
         viewerOnCatalog = tab == CATALOG_TAB
@@ -364,6 +384,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             val steps = ListSteps((localState as? LocalState.Loaded)?.items.orEmpty())
             nav.open(steps.open(p).also(::logViewer), steps)
         }
+        then()
     }
 
     private fun logViewer(s: ViewerState) = Log.i(TAG, "viewer on ${s.picture.id} (${s.index + 1} of ${s.count})")
@@ -382,6 +403,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openSettings() {
+        opening?.cancel()
         blePanel = null
         details = null
         nav.close()
@@ -599,14 +621,17 @@ class MainActivity : ComponentActivity() {
     /**
      * The send path of a picture ([BleAsk.onSend]): sent, the Bluetooth panel (which replaces any open
      * viewer), or a toast why not. A press on a card ([byPress]) has the viewer open on the picture, whose
-     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast. A picture
-     * the nudity filter in force hides is not sent ([MainViewModel.passes]).
+     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast. Only a
+     * picture that passes the gate ([MainViewModel.allowed]) takes it.
      */
     private fun send(p: Picture, byPress: Boolean) {
-        if (!vm.passes(p)) return
+        lifecycleScope.launch { if (vm.allowed(p)) sendAllowed(p, byPress) }
+    }
+
+    private fun sendAllowed(p: Picture, byPress: Boolean) {
         readBle()
         when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
-            BleAsk.Send.SEND -> sendToFrame(p)
+            BleAsk.Send.SEND -> upload(p)
             BleAsk.Send.NO_FRAME -> {
                 Log.i(TAG, "no frame selected: upload of ${p.title} refused")
                 if (!byPress) Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
@@ -619,17 +644,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Hand the upload to the background service, so it survives leaving the app and does not
-    // interrupt playback in another app. A short toast confirms; the service toasts again when done. Checked
-    // against the nudity filter here too, at the level stored now: the Bluetooth panel sends the picture it was
-    // opened with later, and an import may have raised the level of a picture read before it.
+    // The Bluetooth panel's send, once the permission is granted, of the picture it was opened with: through
+    // the gate again, as the filter or the picture's stored level may have changed meanwhile.
     private fun sendToFrame(p: Picture) {
-        lifecycleScope.launch {
-            if (!vm.passesStored(p)) return@launch
-            if (p.local) UploadService.startManual(this@MainActivity, Art.File(p.fullUrl))
-            else UploadService.startManual(this@MainActivity, Art.Url(p.fullUrl), p.title)
-            Toast.makeText(this@MainActivity, R.string.upload_sending, Toast.LENGTH_SHORT).show()
-        }
+        lifecycleScope.launch { if (vm.allowed(p)) upload(p) }
+    }
+
+    // Hand the upload to the background service, so it survives leaving the app and does not
+    // interrupt playback in another app. A short toast confirms; the service toasts again when done.
+    private fun upload(p: Picture) {
+        if (p.local) UploadService.startManual(this, Art.File(p.fullUrl))
+        else UploadService.startManual(this, Art.Url(p.fullUrl), p.title)
+        Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
     /**
@@ -735,12 +761,10 @@ fun App(
                     { row: CatalogRow -> CatalogPicture.of(row, names, CatalogPicture.thumbWidth(columnPx, aspect, row.width, row.height)) }
                 }
                 // a press on a card: the viewer on it, then the send path (whose Bluetooth panel replaces the viewer);
-                // nothing for a card of the old list that the filter in force hides
-                val press = press@{ p: Picture ->
+                // both once the picture passes the gate (nothing for one the filter in force hides)
+                val press = { p: Picture ->
                     Log.i(TAG, "press on ${p.id}")
-                    if (!vm.passes(p)) return@press
-                    vm.openViewer(p, catalogPicture, byPress = true)
-                    onPress(p)
+                    vm.openViewer(p, catalogPicture, byPress = true) { onPress(p) }
                 }
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader, tabFocus)

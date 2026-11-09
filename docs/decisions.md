@@ -50,19 +50,26 @@ focused card goes), and whatever shows a Catalog picture picked under the old bo
 new bound hides: an open Catalog viewer closes (it steps under the bound it opened with), so does a details
 panel on a Catalog picture, and the Bluetooth panel keeps asking for the permission but no longer sends its
 Catalog picture. My pictures is not touched. The grid's old cards stay until the new list's first page
-arrives, so the row and the `Picture` made from it carry the stored level: an old card the bound in force hides
-shows empty at once, as a row still loading (`CatalogPicture.card`), and a press, the details panel, the
-viewer and the send path (the Bluetooth panel's later send too) check the level against the bound in force at
-that moment (`MainViewModel.passes`); a hidden picture opens and sends nothing, and only the log says so, as
-its card is about to go. A release import or the built-in list can also raise the level of a picture already
-shown: after each write to the catalog (`CatalogStore.writes`), and when the viewer finds no place for its
-picture, the viewer, the details panel and the Bluetooth panel's picture are checked against the level stored
-now (`CatalogDao.nudity`) and go as for a new bound; the send itself reads the stored level too
-(`MainViewModel.passesStored`, one indexed read before the upload starts). Rejected: a database read at each
-press (the press opens the viewer at once, and the level read with the row is the one the grid showed it
-under; the send that follows reads it), relying on the grid having refreshed (a press in that window opened
-the viewer on the picture alone and sent it), Room's invalidation tracker for the re-check (every write
-already goes through the store's one write lock, which counts it). When the
+arrives, and after a write to the catalog until Room's paging source, invalidated by it, re-pages the grid
+(a short window, not for good), so the row and the `Picture` made from it carry the stored level: an old card
+the bound in force hides shows empty at once, as a row still loading (`CatalogPicture.card`). Every way a
+Catalog picture shows or is sent goes through one gate, `MainViewModel.allowed`: the level stored now
+(`CatalogDao.nudity`, one indexed read off the main thread) against the bound in force when it returns, read
+again if a write finished meanwhile; a picture gone from the database, or a failed read, keeps the level read
+with it. A press (the viewer, then the send path), a long press (the details panel), "View full screen",
+each Left/Right of the viewer (`ViewerNav`'s gate: the step's own query filters too, but an import may commit
+after it) and "Send to frame" (the Bluetooth panel's later send too) open or send only after it; a hidden
+picture opens and sends nothing, and only the log says so, as its card is about to go. An open still at the
+gate is dropped by a newer one, the settings and the Bluetooth panel. A release import or the built-in list
+can also raise the level of a picture already shown: after each write to the catalog (`CatalogStore.writes`),
+and when the viewer finds no place for its picture, the viewer, the details panel and the Bluetooth panel's
+picture go through the gate again and go as for a new bound. Back from a viewer opened from the details panel
+brings them back for the picture it showed, at once: that picture passed the gate and is under the re-check.
+Rejected: trusting the level read with the row for an open (each round of review found another path where a
+retained card's level let a filtered picture show; a gate per path would miss the next one), relying on the
+grid having refreshed (a press in that window opened the viewer on the picture alone and sent it), Room's
+invalidation tracker for the re-check (every write already goes through the store's one write lock, which
+counts it), showing first and closing after the read (the picture would flash). When the
 filter leaves no row of a catalog that has some, the tab says so and where to change the filter
 (`CatalogView.FILTERED`: the list read to its end with no row), instead of "Loading" for good. The every-10th
 live card may move up by the rows a filter

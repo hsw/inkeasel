@@ -50,9 +50,15 @@ class ListSteps(private val items: List<Picture>) : ViewerSteps {
  * place in the list afterwards; [step] reads a neighbour, and a step pressed while the previous one (or the
  * place) is still being read is dropped (a held key repeats faster); a result is applied only while the viewer
  * still shows what it was read from, so a late one never replaces a newer picture, a closed viewer or one
- * opened again. Every change of [state] goes to [onChange] (the screen's state). Pure.
+ * opened again. A neighbour shows only if it passes [gate] (the nudity filter at the level stored now: an
+ * import may raise it after the step read it). Every change of [state] goes to [onChange] (the screen's
+ * state). Pure.
  */
-class ViewerNav(private val scope: CoroutineScope, private val onChange: (ViewerState?) -> Unit = {}) {
+class ViewerNav(
+    private val scope: CoroutineScope,
+    private val gate: suspend (Picture) -> Boolean = { true },
+    private val onChange: (ViewerState?) -> Unit = {},
+) {
     var state: ViewerState? = null
         private set(value) {
             field = value
@@ -85,7 +91,7 @@ class ViewerNav(private val scope: CoroutineScope, private val onChange: (Viewer
         if (move?.isActive == true) return
         move = scope.launch {
             val to = steps.step(from, delta) ?: return@launch
-            if (state == from) state = to
+            if (gate(to.picture) && state == from) state = to
         }
     }
 

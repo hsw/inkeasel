@@ -132,6 +132,29 @@ class ViewerNavTest {
     }
 
     @Test
+    fun aNeighbourTheGateRefuses_isNotShown() = runTest {
+        // the step read pic(2) before an import raised its level: the gate reads the level stored now
+        val refused = mutableSetOf(pic(2).id)
+        val checked = ArrayList<String>()
+        val nav = ViewerNav(backgroundScope, gate = { p -> checked += p.id; p.id !in refused })
+        val steps = Pending()
+        nav.open(at(1), steps)
+        nav.step(1)
+        runCurrent()
+        steps.answer(at(2))
+        runCurrent()
+        assertEquals(at(1), nav.state)
+        assertEquals(listOf(pic(2).id), checked)
+
+        // the next step reads again (the list leaves it out by now) and shows what passes
+        nav.step(1)
+        runCurrent()
+        steps.answer(at(3))
+        runCurrent()
+        assertEquals(at(3), nav.state)
+    }
+
+    @Test
     fun closingAClosedViewerReportsNothing() = runTest {
         val changes = ArrayList<ViewerState?>()
         val nav = nav(changes)

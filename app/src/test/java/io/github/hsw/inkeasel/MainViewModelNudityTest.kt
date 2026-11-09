@@ -100,9 +100,12 @@ class MainViewModelNudityTest {
     private fun restricted(on: Boolean) =
         shadowOf(users).setUserRestriction(Process.myUserHandle(), UserManager.DISALLOW_MODIFY_ACCOUNTS, on)
 
+    /** Runs the main looper until no open waits for the gate ([MainViewModel.allowed] reads the database). */
+    private fun opened() = idleUntil { !vm.openPending }
+
     private fun openCatalogViewer() {
         vm.openViewer(picture, catalogPicture = { error("no step expected") }, byPress = true)
-        idle()
+        opened()
         assertNotNull(vm.viewer)
     }
 
@@ -154,6 +157,8 @@ class MainViewModelNudityTest {
     @Test
     fun aLockSwitchedOnWhileAway_closesTheDetailsOfACatalogPicture() {
         vm.openDetails(picture)
+        opened()
+        assertEquals(picture, vm.details)
         restricted(true)
         vm.readNudityLock()
         idle()
@@ -204,35 +209,105 @@ class MainViewModelNudityTest {
     fun aCardOfTheOldListThatTheFilterInForceHides_opensNothing() {
         // a nude card still on the grid while the stricter filter's first page loads
         val nude = picture.copy(id = "wd:Q0-nude", nudity = NudityLevel.NUDE.ordinal)
-        assertEquals(true, vm.passes(nude))
+        assertEquals(true, runBlocking { vm.allowed(nude) })
         restricted(true)
         vm.readNudityLock()
         idle()
 
-        assertEquals(false, vm.passes(nude))
-        vm.openViewer(nude, catalogPicture = { error("no step expected") }, byPress = true)
-        idle()
+        assertEquals(false, runBlocking { vm.allowed(nude) })
+        var sent = false
+        vm.openViewer(nude, catalogPicture = { error("no step expected") }, byPress = true) { sent = true }
+        opened()
         assertNull(vm.viewer)
+        assertEquals(false, sent) // the press's send path follows only an open viewer
         vm.openDetails(nude)
+        opened()
         assertNull(vm.details)
         // a picture the filter lets through, and one of mine at any level, still open
-        assertEquals(true, vm.passes(picture))
         vm.openDetails(picture)
+        opened()
         assertEquals(picture, vm.details)
-        assertEquals(true, vm.passes(mine.copy(nudity = NudityLevel.EXPLICIT.ordinal)))
+        assertEquals(true, runBlocking { vm.allowed(mine.copy(nudity = NudityLevel.EXPLICIT.ordinal)) })
     }
 
     @Test
-    fun theSendPath_checksTheLevelStoredNow_notTheOneReadWithThePicture() {
+    fun theGate_checksTheLevelStoredNow_notTheOneReadWithThePicture() {
+        // what "Send to frame" and the Bluetooth panel's later send check before the upload
         val read = storedPicture("wd:Q0-raised")
-        assertEquals(true, runBlocking { vm.passesStored(read) })
+        assertEquals(true, runBlocking { vm.allowed(read) })
         raise(read.id, NudityLevel.EXPLICIT)
-        assertEquals(true, vm.passes(read)) // the level it was read with
-        assertEquals(false, runBlocking { vm.passesStored(read) })
+        assertEquals(true, read.shownUnder(store.nudityBelow.value)) // the level it was read with
+        assertEquals(false, runBlocking { vm.allowed(read) })
         // a picture gone from the database keeps the level it was read with; one of mine is never read
-        assertEquals(true, runBlocking { vm.passesStored(picture) })
-        assertEquals(false, runBlocking { vm.passesStored(picture.copy(nudity = NudityLevel.EXPLICIT.ordinal)) })
-        assertEquals(true, runBlocking { vm.passesStored(mine.copy(id = read.id)) })
+        assertEquals(true, runBlocking { vm.allowed(picture) })
+        assertEquals(false, runBlocking { vm.allowed(picture.copy(nudity = NudityLevel.EXPLICIT.ordinal)) })
+        assertEquals(true, runBlocking { vm.allowed(mine.copy(id = read.id)) })
+    }
+
+    /** [read]'s card of the old list stays on the grid after an import raised its level and the re-check ran. */
+    private fun raisedAfterTheRecheck(read: Picture) {
+        raise(read.id, NudityLevel.EXPLICIT)
+        idle()
+        assertEquals(true, read.shownUnder(store.nudityBelow.value)) // the card's level still passes
+    }
+
+    @Test
+    fun aLongPressOnARaisedCard_opensNoDetails() {
+        val read = storedPicture("wd:Q0-long")
+        raisedAfterTheRecheck(read)
+        vm.openDetails(read)
+        opened()
+        assertNull(vm.details)
+    }
+
+    @Test
+    fun aPressOnARaisedCard_opensNoViewer_andSendsNothing() {
+        val read = storedPicture("wd:Q0-press")
+        raisedAfterTheRecheck(read)
+        var sent = false
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true) { sent = true }
+        opened()
+        assertNull(vm.viewer)
+        assertEquals(false, sent)
+    }
+
+    @Test
+    fun viewFullScreenOfARaisedPicture_opensNoViewer_andLeavesTheDetails() {
+        val shown = storedPicture("wd:Q0-shown")
+        val read = storedPicture("wd:Q0-full")
+        vm.openDetails(shown)
+        opened()
+        raisedAfterTheRecheck(read)
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") })
+        opened()
+        assertNull(vm.viewer)
+        assertEquals(shown, vm.details)
+    }
+
+    @Test
+    fun theViewerStepsThroughTheGate_toAPictureItLetsThrough() {
+        val first = storedPicture("wd:Q0-step1")
+        val before = storedPicture("wd:Q0-step2") // ranked just before the first
+        vm.openViewer(first, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)
+        idleUntil { vm.viewer?.rank != null }
+        vm.stepViewer(-1)
+        idleUntil { vm.viewer?.picture?.id == before.id }
+        assertEquals(before.id, vm.viewer?.picture?.id)
+    }
+
+    @Test
+    fun anOpenStillAtTheGate_isDroppedByTheSettingsAndTheBluetoothPanel() {
+        val read = storedPicture("wd:Q0-dropped")
+        vm.openDetails(read)
+        vm.openSettings()
+        opened()
+        assertNull(vm.details)
+        vm.closeSettings()
+
+        vm.openViewer(read, catalogPicture = { CatalogPicture.of(it, " ") }, byPress = true)
+        vm.showBlePanel(BleAsk.Stage.FIRST, null)
+        opened()
+        assertNull(vm.viewer)
     }
 
     @Test
@@ -252,9 +327,10 @@ class MainViewModelNudityTest {
     fun aLevelRaisedByAnImport_closesItsDetails_andEmptiesTheBluetoothPanel_butNotOthers() {
         val kept = storedPicture("wd:Q0-kept")
         val raised = storedPicture("wd:Q0-panel")
+        vm.showBlePanel(BleAsk.Stage.FIRST, raised)
         vm.openDetails(kept)
-        vm.showBlePanel(BleAsk.Stage.FIRST, raised) // closes the details
-        vm.openDetails(kept)
+        opened()
+        assertEquals(kept, vm.details)
 
         raise(raised.id, NudityLevel.NUDE) // still let through by the default filter
         raise(kept.id, NudityLevel.NUDE)
@@ -274,18 +350,18 @@ class MainViewModelNudityTest {
     @Test
     fun anExplicitCard_passesOnlyWhenTheChoiceShowsAll() {
         val explicit = picture.copy(id = "wd:Q0-explicit", nudity = NudityLevel.EXPLICIT.ordinal)
-        assertEquals(false, vm.passes(explicit)) // the default hides explicit works
+        assertEquals(false, runBlocking { vm.allowed(explicit) }) // the default hides explicit works
         vm.pressNudity() // hide all nudes
-        assertEquals(false, vm.passes(explicit))
+        assertEquals(false, runBlocking { vm.allowed(explicit) })
         vm.pressNudity() // show all
-        assertEquals(true, vm.passes(explicit))
+        assertEquals(true, runBlocking { vm.allowed(explicit) })
         vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
-        idle()
+        opened()
         assertEquals(explicit.id, vm.viewer?.picture?.id)
         vm.pressNudity() // back to the default: the viewer closes, and the card no longer opens it
         assertNull(vm.viewer)
         vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
-        idle()
+        opened()
         assertNull(vm.viewer)
     }
 
