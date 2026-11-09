@@ -1,7 +1,10 @@
 package io.github.hsw.inkeasel
 
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.net.UnknownHostException
@@ -150,20 +153,28 @@ class ViewerRulesTest {
     }
 
     @Test
-    fun state_stepsStopAtTheEnds() {
+    fun listSteps_stopAtTheEnds() = runTest {
         val items = listOf(commons(1, 1).copy(id = "a"), commons(1, 1).copy(id = "b"), commons(1, 1).copy(id = "c"))
-        val s = ViewerState.of(items[1], items)
-        assertEquals(1, s.index)
-        assertEquals("c", s.step(1)?.picture?.id)
-        assertEquals("a", s.step(-1)?.picture?.id)
-        assertNull(s.step(1)!!.step(1))
-        assertNull(s.step(-1)!!.step(-1))
+        val steps = ListSteps(items)
+        val s = steps.open(items[1])
+        assertEquals(ViewerState(items[1], 1, 3), s)
+        assertTrue(s.showsPosition)
+        assertEquals(ViewerState(items[2], 2, 3), steps.step(s, 1))
+        assertEquals(ViewerState(items[0], 0, 3), steps.step(s, -1))
+        assertNull(steps.step(steps.step(s, 1)!!, 1))
+        assertNull(steps.step(steps.step(s, -1)!!, -1))
+        assertNull(steps.step(s, 0))
     }
 
     @Test
-    fun state_pictureNoLongerInTheList_shownAlone() {
+    fun listSteps_pictureNoLongerInTheList_shownAlone() = runTest {
         val p = commons(1, 1).copy(id = "gone")
-        assertEquals(ViewerState(listOf(p), 0), ViewerState.of(p, listOf(commons(1, 1))))
+        val steps = ListSteps(listOf(commons(1, 1), commons(2, 1).copy(id = "commons:2")))
+        val s = steps.open(p)
+        assertEquals(ViewerState.alone(p), s)
+        assertFalse(s.showsPosition)
+        // alone, it has no neighbours, although index 0 is a picture of the list
+        assertNull(steps.step(s, 1))
     }
 
     @Test

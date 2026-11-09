@@ -39,6 +39,12 @@ object CatalogRank {
     private const val STEP = 10L
     private const val BETWEEN = 5L
 
+    /**
+     * The rank of the [line]-th Wikidata row while no other row is stored: the starter set going into an empty
+     * database is written at its places at once, and [place] then moves nothing.
+     */
+    fun wikidataRank(line: Int): Long = STEP * line
+
     fun place(rows: List<RankKey>): List<Placement> {
         val wikidata = rows.filter { it.source == WIKIDATA }.sortedWith(ORDER)
         val files = wikidata.mapNotNullTo(HashSet()) { it.commonsFile?.let(::fileKey) }
@@ -47,7 +53,7 @@ object CatalogRank {
             live.commonsFile?.let(::fileKey) in files || live.museumRef?.let(::refKey) in refs
         }
         val placed = ArrayList<Placement>(rows.size)
-        wikidata.forEachIndexed { i, row -> placed += Placement(row.id, STEP * i, false) }
+        wikidata.forEachIndexed { i, row -> placed += Placement(row.id, wikidataRank(i), false) }
         val n = wikidata.size.toLong()
         var tail = 0L
         alternate(shown).forEachIndexed { j, row ->
@@ -65,6 +71,17 @@ object CatalogRank {
     fun changes(rows: List<RankKey>): List<Placement> {
         val now = rows.associateBy { it.id }
         return place(rows).filter { p -> now.getValue(p.id).let { it.rank != p.rank || it.hidden != p.hidden } }
+    }
+
+    /**
+     * Whether writing [changes] straight over [rows] could break the unique rank: some row's new rank is held
+     * now by another row. When none is, each row can move to its rank at once; otherwise the moving rows go
+     * to free ranks first.
+     */
+    fun clash(rows: List<RankKey>, changes: List<Placement>): Boolean {
+        val held = HashMap<Long, String>(rows.size * 2)
+        rows.forEach { held[it.rank] = it.id }
+        return changes.any { p -> held[p.rank].let { it != null && it != p.id } }
     }
 
     /** Commons file names as the same file: underscores are spaces in a page title. */

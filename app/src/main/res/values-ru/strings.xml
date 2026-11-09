@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="list_names_separator">", "</string>
+
     <!-- catalog -->
+    <string name="tab_catalog">Каталог</string>
     <string name="tab_local">Мои картинки</string>
     <string name="tab_paintings">Картины</string>
     <string name="tab_landscapes">Пейзажи</string>
     <string name="header_frame">Рамка: %1$s</string>
     <string name="header_no_frame">Рамка не выбрана</string>
     <string name="catalog_loading">Загрузка каталога…</string>
+    <string name="catalog_none">В каталоге пока нет картинок. Он загрузится, когда устройство будет в сети.</string>
     <string name="catalog_failed">Не удалось загрузить каталог: %1$s</string>
     <string name="catalog_err_offline">Нет связи с источником. Проверьте сеть и повторите.</string>
     <string name="catalog_err_timeout">Источник не отвечает. Попробуйте позже.</string>

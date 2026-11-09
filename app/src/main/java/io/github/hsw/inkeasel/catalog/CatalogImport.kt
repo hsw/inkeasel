@@ -42,7 +42,7 @@ data class ImportResult(
 /**
  * Imports the catalog's JSON Lines files ([CatalogRows], [JsonLinesReader]) into [CatalogDb]:
  * - [starter]: the starter set from the APK into a database with no Wikidata row yet, written straight into
- *   the live tables in one transaction;
+ *   the live tables in one transaction, reading only the labels files of the stored languages;
  * - [release]: release files streamed into the `_stage` tables in batch transactions (one batch in memory at
  *   a time), then one swap transaction that replaces the Wikidata rows, their links and the labels of the
  *   imported languages, sweeps the rows absent from the new `core`, drops labels outside the chain and
@@ -61,30 +61,35 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
     }
 
     /**
-     * Imports the starter set ([core] and a [labels] file whose rows carry their language) into a database
-     * that has no Wikidata row, keeping only labels in the [chain]'s languages, English and `mul`. All or
-     * nothing (one transaction). `null` when the database already has Wikidata rows: nothing is read.
+     * Imports the starter set ([core] and its [labels] files: `labels-<lang>`, or one whose rows carry their
+     * language) into a database that has no Wikidata row, keeping only labels in the [chain]'s languages,
+     * English and `mul`; a single-language file outside them is not read. All or nothing (one transaction).
+     * `null` when the database already has Wikidata rows: nothing is read.
      */
-    suspend fun starter(core: ImportFile, labels: ImportFile, chain: List<String>): ImportResult? =
+    suspend fun starter(core: ImportFile, labels: List<ImportFile>, chain: List<String>): ImportResult? =
         withContext(Dispatchers.IO) {
             val langs = languages(chain)
             db.withTransaction {
                 if (dao.hasWikidata()) return@withTransaction null
-                val base = minOf(0L, dao.lowestRank() ?: 0L) - 1
+                // into an empty table the rows go straight to their places; else below every rank in use
+                val lowest = dao.lowestRank()
+                val rank = if (lowest == null) CatalogRank::wikidataRank else { line: Int -> minOf(0L, lowest) - 1 - line }
                 var added = 0
                 val coreRead = readCore(core) { pictures, links ->
-                    catalog.insertPictures(pictures.map { it.live(rank = base - it.sourceRank) })
+                    catalog.insertPictures(pictures.map { it.live(rank(it.sourceRank)) })
                     catalog.insertLinks(links.map { it.live() })
                     added += pictures.size
                 }
                 if (added == 0) throw IOException("${core.name}: no valid row")
                 var written = 0
-                val labelsRead = readLabels(labels, langs) { rows ->
-                    catalog.insertLabels(rows.map { it.live() })
-                    written += rows.size
+                val labelsRead = labels.filter { it.lang == null || it.lang in langs }.map { file ->
+                    readLabels(file, langs) { rows ->
+                        catalog.insertLabels(rows.map { it.live() })
+                        written += rows.size
+                    }
                 }
                 catalog.rerank()
-                ImportResult(listOf(coreRead, labelsRead), added = added, labels = written)
+                ImportResult(listOf(coreRead) + labelsRead, added = added, labels = written)
             }
         }
 
@@ -131,14 +136,14 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         }
 
     /**
-     * Adds the labels of the languages [add] (those of them the [chain] stores) from [labels], a file whose
-     * rows carry their language (the starter's), each replacing that language: the starter set as the offline
-     * source of a language that joined the chain later. Staged and swapped like [release] (labels outside the
-     * chain are dropped, [commit] runs inside the swap); `null` when the file has no row in those languages,
-     * and then nothing is swapped.
+     * Adds the labels of the languages [add] (those of them the [chain] stores) from [labels] (the starter's
+     * `labels-<lang>` files, or a file whose rows carry their language), each replacing that language: the
+     * starter set as the offline source of a language that joined the chain later. Staged and swapped like
+     * [release] (labels outside the chain are dropped, [commit] runs inside the swap); `null` when the files
+     * have no row in those languages, and then nothing is swapped.
      */
     suspend fun addLabels(
-        labels: ImportFile,
+        labels: List<ImportFile>,
         add: Collection<String>,
         chain: List<String>,
         commit: suspend (ImportResult) -> Unit = {},
@@ -148,12 +153,14 @@ class CatalogImport(private val db: CatalogDb, private val batch: Int = BATCH) {
         if (wanted.isEmpty()) return@withContext null
         dao.clearStage()
         try {
-            val read = readLabels(labels, wanted) { rows -> dao.stageLabels(rows) }
+            val read = labels.filter { it.lang == null || it.lang in wanted }.map { file ->
+                readLabels(file, wanted) { rows -> dao.stageLabels(rows) }
+            }
             if (dao.stagedLabels() == 0) {
                 dao.clearStage()
                 return@withContext null
             }
-            swap(listOf(read), false, wanted, langs, commit)
+            swap(read, false, wanted, langs, commit)
         } catch (e: Throwable) {
             withContext(NonCancellable) { runCatching { dao.clearStage() } }
             throw e

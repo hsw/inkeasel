@@ -27,8 +27,10 @@ or deviation made in a change gets its entry in the same commit.
 - The catalog starter set (`app/src/main/assets/catalog/`) is cut from the published `catalog` release, never
   edited by hand: download its `core.jsonl.gz` and `labels-all.jsonl.gz`, then
   `python3 tools/catalog-export.py app/src/main/assets/catalog --starter-from <dir>` (no Wikimedia request;
-  `StarterAssetsTest` checks the result). AGP's asset merge decompresses `.gz` assets, so the APK holds
-  `catalog/core.jsonl` and `catalog/labels.jsonl` (deflated, about the same size): open those names.
+  `StarterAssetsTest` checks the result). Its labels are one `labels-<lang>.jsonl.gz` per language, as in the
+  release, so the first start reads only its languages' files. AGP's asset merge decompresses `.gz` assets,
+  so the APK holds `catalog/core.jsonl` and `catalog/labels-<lang>.jsonl` (deflated, about the same size):
+  open those names (`CatalogStore.labelsAsset`).
   `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the starter cut); it
   is not in CI, so run it after changing the tool. A full export takes 20+ minutes of Wikidata load: test a
   change with `--fame-file` on a handful of ids instead.

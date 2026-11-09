@@ -58,11 +58,12 @@ data class LabelRow(
     val wikiTitle: String?,
 )
 
-/** Parses one line of a release file; a line that is not a valid row throws [JSONException] or [IllegalArgumentException]. */
+/**
+ * Parses one line of a release file; a line that is not a valid row throws [JSONException] or
+ * [IllegalArgumentException]. The checks of ids and language codes are plain loops, not regular expressions:
+ * an import checks tens of thousands of them, and a regex match allocates a matcher each time.
+ */
 object CatalogRows {
-    private val ITEM = Regex("Q[1-9][0-9]*")
-    private val LANG = Regex("[a-z]{2,3}(-[a-z0-9]+)*")
-
     /** A `core.jsonl.gz` row. Keys the app does not know are ignored; an optional key of the wrong type counts as absent. */
     fun core(line: String): CoreRow {
         val o = JSONObject(line)
@@ -90,7 +91,7 @@ object CatalogRows {
         val o = JSONObject(line)
         val lang = o.opt("lang")?.takeUnless { it == JSONObject.NULL }
             ?.let { it as? String ?: bad("lang") }
-            ?.also { if (!LANG.matches(it)) bad("lang") }
+            ?.also { if (!isLang(it)) bad("lang") }
         return LabelRow(
             id = item(o),
             lang = lang,
@@ -100,7 +101,28 @@ object CatalogRows {
         )
     }
 
-    private fun item(o: JSONObject): String = o.text("id")?.takeIf { ITEM.matches(it) } ?: bad("id")
+    /** A Wikidata item id: `Q` and a number without leading zeros (`Q12418`). */
+    fun isItem(s: String): Boolean {
+        if (s.length < 2 || s[0] != 'Q' || s[1] !in '1'..'9') return false
+        for (i in 2 until s.length) if (s[i] !in '0'..'9') return false
+        return true
+    }
+
+    /** A Wikidata language code: 2 or 3 lowercase letters, then any `-` parts of lowercase letters and digits. */
+    fun isLang(s: String): Boolean {
+        var i = 0
+        while (i < s.length && s[i] in 'a'..'z') i++
+        if (i !in 2..3) return false
+        while (i < s.length) {
+            if (s[i] != '-') return false
+            val start = ++i
+            while (i < s.length && (s[i] in 'a'..'z' || s[i] in '0'..'9')) i++
+            if (i == start) return false
+        }
+        return true
+    }
+
+    private fun item(o: JSONObject): String = o.text("id")?.takeIf(::isItem) ?: bad("id")
 
     private fun bad(key: String): Nothing = throw IllegalArgumentException("bad or missing \"$key\"")
 
@@ -118,7 +140,7 @@ object CatalogRows {
         return (0 until a.length()).mapNotNull { (a.opt(it) as? String)?.takeIf { s -> s.isNotEmpty() } }
     }
 
-    private fun JSONObject.items(key: String): List<String> = texts(key).filter { ITEM.matches(it) }
+    private fun JSONObject.items(key: String): List<String> = texts(key).filter(::isItem)
 }
 
 /**

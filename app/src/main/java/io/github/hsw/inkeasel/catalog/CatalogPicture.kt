@@ -11,6 +11,15 @@ object CatalogPicture {
     /** The card's Commons thumbnail width when the caller does not choose one (a standard width). */
     const val CARD_WIDTH = 500
 
+    /** The smaller card thumbnail, for columns up to this many pixels wide (a standard Commons width). */
+    const val SMALL_CARD_WIDTH = 330
+
+    /**
+     * The thumbnail width for cards [columnPx] pixels wide: [SMALL_CARD_WIDTH] when that covers them, else
+     * [CARD_WIDTH] (a little soft on the widest columns, but a card is a preview).
+     */
+    fun cardWidth(columnPx: Int): Int = if (columnPx <= SMALL_CARD_WIDTH) SMALL_CARD_WIDTH else CARD_WIDTH
+
     /** The item's page on Wikidata, e.g. `https://www.wikidata.org/wiki/Q12418`. */
     fun wikidataPage(qid: String): String = "https://www.wikidata.org/wiki/$qid"
 

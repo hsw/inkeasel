@@ -81,6 +81,15 @@ class CatalogPictureTest {
     }
 
     @Test
+    fun cardWidth_byColumnWidth() {
+        assertEquals(330, CatalogPicture.cardWidth(200))
+        assertEquals(330, CatalogPicture.cardWidth(330))
+        assertEquals(500, CatalogPicture.cardWidth(331))
+        assertEquals(500, CatalogPicture.cardWidth(402)) // a TV card: 201 dp at density 2
+        assertEquals(500, CatalogPicture.cardWidth(900))
+    }
+
+    @Test
     fun cardWidth_asChosen_narrowOriginal_theOriginal() {
         assertEquals(
             "$guernicaDir/330px-Mural_del_%22Guernica%22_de_Picasso.jpg",

@@ -3,6 +3,48 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The Catalog tab pages from the database; the viewer steps by rank
+The Catalog is the first tab and the one the app starts on; My pictures and, until the live sources move
+into the database, Paintings and Landscapes follow. It shows `CatalogStore`'s Paging 3 list
+(`collectAsLazyPagingItems`, pages of 60 rows, placeholders on): a row not read yet is an empty card of the
+same size that takes the D-pad focus and does nothing when pressed, so the grid has its full length at once
+and the focus never jumps when a page arrives. A row becomes a picture at the edge (`CatalogPicture.of`)
+with a translatable `list_names_separator` for the artists and a 330 or 500 px thumbnail, the smallest
+standard width that covers the card's column in pixels. The viewer opened from a Catalog picture steps
+through the database, not through what the grid has loaded: the shown neighbour by rank, with its place
+and the list's size (`COUNT` queries) for "n / N" (`CatalogSteps`); it shows the picture alone for the
+moment its place is read, and a step pressed while one is read is dropped. My pictures and the old tabs keep
+stepping through their loaded list (`ListSteps`). The list's pager starts only once the starter step has
+run: until then the tab says "Loading the catalog…", and its first query neither waits for the starter's
+transaction nor holds it up; should the starter set fail to import and leave the database empty, the tab
+says so instead of loading for ever. Back counts the placeholders as cards (`CatalogBack`), so it scrolls a
+far-scrolled Catalog back to the top. The Catalog keeps its own grid state, so its place survives a visit
+to another tab.
+Rejected: the whole list in memory (about 9,600 rows on 2 GB TV boxes, and the paging query exists for
+this), stepping the viewer through the loaded pages (it would stop where the grid stopped loading, and "N"
+would be the loaded count), placeholders off (the grid grows under the focus while pages arrive), the cards
+in a fixed 500 px thumbnail (twice the pixels a phone or a three-column window needs).
+
+## 2026-11-09 — The starter set is one labels file per language
+The first start imports the starter set before the Catalog can show anything, and measured on the TV
+emulator (release build, fresh install) it took about 7 s warm and over a minute right after a cold boot:
+it read the one starter labels file of every UI language (41,643 rows, 4.6 MB of text), parsed each row
+with `org.json` to learn its language and kept about 2,000. The starter's labels are now cut as in the
+release, one `labels-<lang>.jsonl.gz` per language (`--starter-from` writes them, 1.12 MB together, 68 KB
+more than one file), and a start opens only the files of its chain, English and `mul`. The import also lost
+its regular expressions (a matcher per id and language code; plain loops now), writes the starter's rows at
+their final ranks when the table is empty (no rank pass afterwards), and the rank pass moves rows through
+free ranks only when a new rank is taken. On the same emulator (five alternating fresh installs of each
+release build), from the process start to the starter set in the database: 6.8–10.6 s before, 1.7–2.1 s
+after; the import itself, the database's creation included, 1.0–1.3 s, about 0.5 s when nothing else
+runs (the app's first frame and the TV launcher compete for the CPU). A debug build is several times
+slower (5–9 s), as debuggable code runs unoptimised.
+Rejected: a prebuilt SQLite file in the APK (Room's schema and identity hash in the export, as rejected
+before), skipping other languages' rows of the one file by their first bytes without parsing (tried: still
+inflates, hashes and decodes 4.6 MB, and depends on the key order), showing the pictures before their
+labels (titles would flip from file names to labels), a background start before the activity (no
+Application class for it; the import already runs off the main thread from `onCreate`).
+
 ## 2026-11-09 — Catalog pictures build their Commons URLs from the file name
 A catalog row becomes a `Picture` by a pure mapping (`CatalogPicture`): id `wd:Q…`, title, artists and first
 collection from the labels (the file name without its extension when there is no title label), the inception
@@ -55,14 +97,15 @@ the conditional GET already costs nothing when the file is unchanged).
 
 ## 2026-11-09 — The starter set is cut from the published release
 The APK's starter set (`app/src/main/assets/catalog/`: the first 1,000 rows of the release `core` and their
-labels in the UI languages plus `mul`, 1.1 MB gzipped) is cut from the published release files by
+labels in the UI languages plus `mul`, 1.1 MB gzipped; one labels file per language since the entry "The
+starter set is one labels file per language") is cut from the published release files by
 `tools/catalog-export.py --starter-from`, through the same writer as a full export and with no Wikimedia
 request, so its rows are byte for byte the first lines of the release `core` and the release import replaces
 them in place. It is committed and cut again after each release upload; the build stays offline. All 75
 default languages fit well under the 1.5 MB budget, so the default (`--starter-langs`: the Android UI locales
 that Wikidata covers, plus `mul`) stays. AGP's asset merge decompresses `.gz` assets: the APK holds
-`catalog/core.jsonl` and `catalog/labels.jsonl` (deflated, about the same size), and the app opens those
-names. The export also writes `cma` (Wikidata P11110, the Cleveland Museum of Art ID, which is the museum's
+`catalog/core.jsonl` and the labels files without `.gz` (deflated, about the same size), and the app opens
+those names. The export also writes `cma` (Wikidata P11110, the Cleveland Museum of Art ID, which is the museum's
 accession number), to hide live Cleveland rows that duplicate a Wikidata row, and `licUrl` (Commons
 `LicenseUrl`, always https, left out when Commons gives none or not a plain URL) for the licence link. The
 published release gets both only when it is exported again; until then the reader treats them as absent.

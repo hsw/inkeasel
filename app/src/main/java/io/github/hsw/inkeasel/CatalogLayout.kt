@@ -14,6 +14,9 @@ data class CatalogLayout(
     val gap: Int,
     val splitHeader: Boolean,
 ) {
+    /** The width of one card in dp, in a window [widthDp] wide (the width this layout was chosen for). */
+    fun cardWidth(widthDp: Int): Int = maxOf(0, (widthDp - 2 * sidePadding - (columns - 1) * gap) / columns)
+
     companion object {
         private const val MEDIUM = 600
         private const val SPLIT_BELOW = 720

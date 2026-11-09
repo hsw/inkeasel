@@ -146,9 +146,9 @@ tablet).
 - **Design decisions**, with their reasons and the options turned down: [docs/decisions.md](docs/decisions.md).
 - **Catalog export**: `uv run --script tools/catalog-export.py <outdir>` exports famous paintings from
   Wikidata and Commons as gzipped JSON Lines for the GitHub release `catalog`, which the app downloads (see
-  "Catalog"; the tabs do not show it yet). The APK's starter set (`app/src/main/assets/catalog/`, the top
-  1,000 with labels in the UI languages) is cut from that release with `--starter-from <dir of the
-  downloaded release files>`.
+  "Catalog"). The APK's starter set (`app/src/main/assets/catalog/`, the top 1,000 with their labels in the
+  UI languages, one file per language as in the release) is cut from that release with `--starter-from <dir
+  of the downloaded release files>`.
 - **CI** (`.github/workflows/ci.yml`): every branch push and pull request runs
   `./gradlew testDebugUnitTest assembleDebug assembleRelease lintDebug` on JDK 21 (the release build signed
   with the debug key, only to see it builds; a lint error fails the run, warnings are only reported); the
@@ -156,7 +156,7 @@ tablet).
 - **Release build**: R8 shrinks the code and the resources (`proguard-android-optimize.txt` plus
   `app/proguard-rules.pro`) but does not obfuscate (`-dontobfuscate`): the code is public, and kept names
   make crash traces readable without a mapping file. No keep rule was needed; one is added only when an R8
-  warning or a release smoke test proves it necessary. The release APK is about 2.6 MB, 1.1 MB of it the
+  warning or a release smoke test proves it necessary. The release APK is about 2.8 MB, 1.2 MB of it the
   catalog's starter set.
 - **Release signing** (`app/build.gradle.kts`): the release build is signed with the key given by four
   environment variables, `INKEASEL_KEYSTORE` (path to the keystore), `INKEASEL_KEYSTORE_PASSWORD`,
@@ -222,7 +222,8 @@ one scrolling column, the buttons under the title.
 
 **View full screen** shows the picture on black, fitted to the screen and never cropped, with the system bars
 hidden; no frame is needed. Left and Right (or a swipe) go to the previous and next picture of the same tab
-and stop at its ends; any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
+and stop at its ends (in the Catalog the next one is read from the database, so it does not matter how far
+the grid has loaded; "n / N" is the place in the whole list); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
 tap hides it again. The credit line (title; artist, source and licence) shows for 5 s on open, on each new
 picture and with the button. Back returns to the details panel of the picture on screen. The image is loaded
 in a size that fits the screen: for Commons a standard width (960, 1280, 1920 or 3840 px), for Cleveland the
@@ -236,8 +237,19 @@ or button navigation; the settings dialog does the same. A TV has no bars, so no
 
 ## Catalog
 
-Tabs: "My pictures" (the app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and
-"Landscapes" (Wikimedia Commons featured pictures). A list request gives up after 20 s; Commons reads at
+Tabs: "Catalog" (the start tab: famous paintings from the catalog database, below), "My pictures" (the
+app's own folder on the device), "Paintings" (Cleveland Museum of Art, CC0) and "Landscapes" (Wikimedia
+Commons featured pictures); the last two go into the Catalog later.
+
+The Catalog tab pages through the database (Paging 3): it holds about 9,600 paintings, so only the rows
+near the screen are read. A card not read yet is an empty card of the same size, which the D-pad focus
+moves through like any other (a press on it does nothing), so a long scroll never jumps. Cards take a 330 or
+500 px Commons thumbnail, whichever covers their width. Titles, artists and museums are the labels of the UI
+language's chain; artists are joined with a translatable separator. While the starter set imports at the
+first start (about a second on a TV emulator) the tab says "Loading the catalog…" rather than
+showing an empty grid, and the list starts only after it, so its first query does not wait for the import.
+
+The other tabs load their whole list. A list request gives up after 20 s; Commons reads at
 most 3 pages within 30 s and shows what came in by then, also when a later page fails. A source that
 answers with no usable picture says so ("The source returned no pictures.") with **Retry**. A failure reads as a sentence (no connection, the
 source is not responding, HTTP code, unreadable answer) with **Retry**. "My pictures" speaks of your pictures, not
@@ -259,10 +271,10 @@ licence with its link and the original's size; a picture in "My pictures" only i
 The saved lists keep these fields (format 2); a list saved by an older version still reads, without them,
 until the next good load replaces it.
 
-The painting catalog (not shown in the tabs yet) lives in a Room database, `catalog.db`, owned by one
-process-wide `CatalogStore` that the app's start (`MainActivity`) wakes. On the first start the APK's starter
-set (the top 1,000) goes into the empty database with the labels of the UI language's chain, English and
-`mul`. Then, at every start, the store checks the files of the GitHub release `catalog` that are due:
+The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
+`CatalogStore` that the app's start (`MainActivity`) wakes. On the first start the APK's starter set (the
+top 1,000) goes into the empty database with the labels of the UI language's chain, English and `mul`,
+read from those languages' own files only. Then, at every start, the store checks the files of the GitHub release `catalog` that are due:
 `core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
 week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
 later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
@@ -510,7 +522,9 @@ Code:
 - `catalog/`: the painting catalog database (`CatalogDb`, the stored order in `CatalogRank`), the release
   rows (`CatalogRows`) and their import (`CatalogImport`), the label languages (`LanguageChain`), and its
   process-wide owner `CatalogStore`, which runs the starter import and the release sync (`CatalogSync`; which
-  files are due and what is recorded: `CatalogSyncPlan`, pure)
+  files are due and what is recorded: `CatalogSyncPlan`, pure) and gives the Catalog tab its pages; a row as
+  a `Picture` (`CatalogPicture`, its Commons URLs from `CommonsUrls`, both pure) and the viewer's steps
+  through the list (`CatalogSteps`)
 - `EpdImage.kt`: decode and crop to the frame's size, then dither and pack via its `FrameFormat`, or draw
   the dithered picture in the frame's inks for the details panel's preview
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,

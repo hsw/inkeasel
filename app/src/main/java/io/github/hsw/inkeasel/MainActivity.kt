@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -55,11 +56,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.LoadState
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.tv.material3.Button
 import androidx.tv.material3.Card
 import androidx.tv.material3.MaterialTheme
@@ -71,6 +79,9 @@ import androidx.tv.material3.darkColorScheme
 import coil.Coil
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import io.github.hsw.inkeasel.catalog.CatalogPicture
+import io.github.hsw.inkeasel.catalog.CatalogRow
+import io.github.hsw.inkeasel.catalog.CatalogSteps
 import io.github.hsw.inkeasel.catalog.CatalogStore
 import io.github.hsw.inkeasel.nowplaying.Art
 import io.github.hsw.inkeasel.nowplaying.FeatureStore
@@ -78,8 +89,11 @@ import io.github.hsw.inkeasel.nowplaying.FrameController
 import io.github.hsw.inkeasel.nowplaying.FrameControllers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.roundToInt
 
 private const val TAG = "MainActivity"
 
@@ -94,19 +108,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var settingsOpen by mutableStateOf(false)
         private set
 
+    private val store = CatalogStore.get(app)
+
+    /** The Catalog tab's list, paged from the catalog database; it survives a switch to another tab. */
+    val catalogPages: Flow<PagingData<CatalogRow>> = store.pages.cachedIn(viewModelScope)
+
+    /** The catalog database has no picture once its starter step has run ([CatalogStore.empty]). */
+    val catalogEmpty: StateFlow<Boolean> = store.empty
+
+    /** The tabs after the Catalog, each a list loaded whole ([loadCatalog]). */
     val sources = buildSources(app)
-    var tab by mutableIntStateOf(0)
+
+    /** The tab names: the Catalog ([CATALOG_TAB]), then [sources]. */
+    val tabNames: List<Txt> = listOf(Txt(R.string.tab_catalog)) + sources.map { it.name }
+    var tab by mutableIntStateOf(CATALOG_TAB)
         private set
+
+    /** The state of each tab of [sources], by tab index. */
     val catalogs = mutableStateMapOf<Int, CatalogState>()
+
+    /** The source of tab [i]; `null` for the Catalog. */
+    private fun sourceOf(i: Int): Source? = sources.getOrNull(i - 1)
 
     /** The last good list of each remote source, shown when it fails. */
     private val cache = CatalogCache(File(app.filesDir, "catalog"))
     private val loads = mutableMapOf<Int, Job>()
 
     /** The "My pictures" tab, if present; it is re-scanned when its folder changes. */
-    val localTab = sources.indexOfFirst { it.local }
+    val localTab = sources.indexOfFirst { it.local }.let { if (it < 0) -1 else it + 1 }
     private var localReload: Job? = null
-    private val localWatcher: FileObserver? = (sources.getOrNull(localTab) as? LocalImages)?.let { src ->
+    private val localWatcher: FileObserver? = (sourceOf(localTab) as? LocalImages)?.let { src ->
         val mask = FileObserver.CREATE or FileObserver.DELETE or FileObserver.MOVED_TO or
             FileObserver.MOVED_FROM or FileObserver.CLOSE_WRITE
         @Suppress("DEPRECATION") // File ctor is API 29+; the path ctor works down to minSdk
@@ -169,27 +200,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * The open full-screen viewer ([FullscreenViewer], from "View full screen" in the details panel), on the
-     * list of the tab it was opened from; `null` while it is closed. It replaces the details panel, and Back
-     * brings that back for the picture then shown ([closeViewer]). Never open with the settings or the
-     * Bluetooth panel.
+     * list of the tab it was opened from ([viewerSteps]); `null` while it is closed. It replaces the details
+     * panel, and Back brings that back for the picture then shown ([closeViewer]). Never open with the
+     * settings or the Bluetooth panel.
      */
     var viewer by mutableStateOf<ViewerState?>(null)
         private set
+    private var viewerSteps: ViewerSteps? = null
+    private var viewerMove: Job? = null
 
-    fun openViewer(p: Picture) {
-        val items = (catalogs[tab] as? CatalogState.Loaded)?.items.orEmpty()
-        viewer = ViewerState.of(p, items).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.items.size})") }
+    /**
+     * The viewer on [p]: in the Catalog it steps through the database by rank ([CatalogSteps], each row made
+     * a picture by [catalogPicture], as the grid makes it) and shows [p] alone until its place is read; in
+     * another tab through that tab's loaded list ([ListSteps]).
+     */
+    fun openViewer(p: Picture, catalogPicture: (CatalogRow) -> Picture) {
         details = null
+        viewerMove?.cancel()
+        if (tab == CATALOG_TAB) {
+            val steps = CatalogSteps(store.db.catalog(), store.chain.value, catalogPicture)
+            viewerSteps = steps
+            viewer = ViewerState.alone(p)
+            viewerMove = viewModelScope.launch {
+                val placed = steps.open(p.id) ?: return@launch
+                if (viewer?.picture?.id == p.id) viewer = placed
+                Log.i(TAG, "viewer on ${p.id} (${placed.index + 1} of ${placed.count})")
+            }
+        } else {
+            val steps = ListSteps((catalogs[tab] as? CatalogState.Loaded)?.items.orEmpty())
+            viewerSteps = steps
+            viewer = steps.open(p).also { Log.i(TAG, "viewer on ${p.id} (${it.index + 1} of ${it.count})") }
+        }
     }
 
-    /** Left/Right in the viewer: the picture [delta] places on, or nothing past either end of the list. */
+    /**
+     * Left/Right in the viewer: the picture [delta] places on, or nothing past either end of the list. A step
+     * pressed while the previous one is still being read is dropped (a held key repeats faster).
+     */
     fun stepViewer(delta: Int) {
-        viewer = viewer?.step(delta) ?: viewer
+        val from = viewer ?: return
+        val steps = viewerSteps ?: return
+        if (viewerMove?.isActive == true) return
+        viewerMove = viewModelScope.launch {
+            val to = steps.step(from, delta) ?: return@launch
+            if (viewer == from) viewer = to
+        }
     }
 
     fun closeViewer() {
+        viewerMove?.cancel()
         details = viewer?.picture
         viewer = null
+        viewerSteps = null
     }
 
     fun closeBlePanel() {
@@ -263,7 +325,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectTab(i: Int) {
         tab = i
-        if (catalogs[i].needsLoad()) load(i)
+        if (i != CATALOG_TAB && catalogs[i].needsLoad()) load(i)
     }
 
     /** Re-scan the local folder (debounced — a single file push fires several events). */
@@ -272,12 +334,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         localReload?.cancel()
         localReload = viewModelScope.launch {
             delay(300)
-            catalogs[localTab] = loadCatalog(sources[localTab], cache = null, System::currentTimeMillis) { Log.w(TAG, it) }
+            val src = sourceOf(localTab) ?: return@launch
+            catalogs[localTab] = loadCatalog(src, cache = null, System::currentTimeMillis) { Log.w(TAG, it) }
         }
     }
 
     override fun onCleared() {
         localWatcher?.stopWatching()
+    }
+
+    companion object {
+        /** The Catalog: the first tab, the one the app starts on. */
+        const val CATALOG_TAB = 0
     }
 
     /**
@@ -286,7 +354,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun load(i: Int) {
         if (loads[i]?.isActive == true) return
-        val src = sources[i]
+        val src = sourceOf(i) ?: return
         catalogs[i] = CatalogState.reloading(catalogs[i])
         loads[i] = viewModelScope.launch {
             catalogs[i] = loadCatalog(src, cache.takeIf { i != localTab }, System::currentTimeMillis) { Log.w(TAG, it) }
@@ -491,6 +559,12 @@ fun App(
     // the cards take the chosen frame's shape; the frame this app was built with while none is chosen
     val aspect = (vm.selected?.lookup?.formatOrNull ?: FrameFormats.DEFAULT).aspect
     val grid = rememberLazyGridState()
+    // the Catalog's own grid state: its place in the long list survives a visit to another tab
+    val catalogGrid = rememberLazyGridState()
+    val pages = vm.catalogPages.collectAsLazyPagingItems()
+    val catalogEmpty by vm.catalogEmpty.collectAsState()
+    val names = stringResource(R.string.list_names_separator)
+    val density = LocalDensity.current.density
     val tabFocus = remember { FocusRequester() }
     var contentFocused by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -498,21 +572,42 @@ fun App(
         Surface(Modifier.fillMaxSize(), shape = RectangleShape) {
             // the width outside the layout padding (inside the system bars) picks the columns and the padding
             BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-                val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
+                val width = maxWidth.value.toInt()
+                val layout = CatalogLayout.forWidth(width)
+                val cardWidth = CatalogPicture.cardWidth((layout.cardWidth(width) * density).roundToInt())
+                // a catalog row as the grid and the viewer show it: the same thumbnail, so the viewer's stand-in
+                // is the card's, already cached
+                val catalogPicture = remember(names, cardWidth) { { row: CatalogRow -> CatalogPicture.of(row, names, cardWidth) } }
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader, tabFocus)
                     Spacer(Modifier.height(16.dp))
                     LaunchedEffect(Unit) { vm.selectTab(vm.tab) }
+                    val catalog = vm.tab == MainViewModel.CATALOG_TAB
                     val st = vm.catalogs[vm.tab] ?: CatalogState.Loading
                     // Back from the content goes to the tabs first ([CatalogBack]); the settings dialog has its own
-                    val gridShown = st is CatalogState.Loaded && st.items.isNotEmpty()
-                    val back = CatalogBack.of(contentFocused, scrolledDown = gridShown && grid.canScrollBackward)
+                    val shownGrid = if (catalog) catalogGrid else grid
+                    val gridItems = when {
+                        catalog -> pages.itemCount
+                        st is CatalogState.Loaded -> st.items.size
+                        else -> 0
+                    }
+                    val back = CatalogBack.of(contentFocused, gridItems, shownGrid.canScrollBackward)
                     BackHandler(enabled = back.taken && !vm.settingsOpen) {
                         if (back.focusTab) runCatching { tabFocus.requestFocus() } // before the scroll drops the focused card
-                        if (back.scrollToTop) scope.launch { grid.scrollToItem(0) }
+                        if (back.scrollToTop) scope.launch { shownGrid.scrollToItem(0) }
                     }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
-                        when (st) {
+                        if (catalog) {
+                            when {
+                                pages.itemCount > 0 -> PagedGrid(
+                                    pages, catalogPicture, aspect, layout, catalogGrid, onSend = onSend, onDetails = vm::openDetails,
+                                )
+                                // the starter set imports at the first start: a loading text, not an empty grid
+                                catalogEmpty && pages.loadState.refresh !is LoadState.Loading ->
+                                    Text(stringResource(R.string.catalog_none))
+                                else -> Text(stringResource(R.string.catalog_loading))
+                            }
+                        } else when (st) {
                             CatalogState.Loading -> Text(CatalogState.loadingText(local = vm.tab == vm.localTab).text())
                             is CatalogState.Failed -> Column {
                                 Text(st.reason.text())
@@ -529,37 +624,38 @@ fun App(
                         }
                     }
                 }
-            }
-            if (vm.settingsOpen) {
-                FrameSettingsDialog(
-                    selected = vm.selected,
-                    ble = ble,
-                    poster = vm.posterOn,
-                    access = vm.listenerAccess,
-                    pending = vm.posterPending,
-                    onPoster = vm::pressPoster,
-                    onDisclosureConfirmed = vm::confirmDisclosure,
-                    onSelect = { f -> vm.select(f); onFrameSelected() },
-                    onCancel = vm::closeSettings,
-                )
-            } else {
-                val panel = vm.blePanel
-                val details = vm.details
-                val viewer = vm.viewer
-                if (panel != null) {
-                    BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
-                } else if (viewer != null) {
-                    // "Send to frame" keeps the viewer open (a toast), unless the Bluetooth panel replaces it
-                    FullscreenViewer(viewer, vm.selected, onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer)
-                } else if (details != null) {
-                    // "Send to frame" closes the panel and takes the card's own path (a toast, or the Bluetooth
-                    // panel); "View full screen" replaces it with the viewer, and Back from there brings it back
-                    DetailsPanel(
-                        details, vm.selected,
-                        onSend = { vm.closeDetails(); onSend(details) },
-                        onView = { vm.openViewer(details) },
-                        onClose = vm::closeDetails,
+                // the dialogs over the catalog (here for the card width the viewer shares with the grid)
+                if (vm.settingsOpen) {
+                    FrameSettingsDialog(
+                        selected = vm.selected,
+                        ble = ble,
+                        poster = vm.posterOn,
+                        access = vm.listenerAccess,
+                        pending = vm.posterPending,
+                        onPoster = vm::pressPoster,
+                        onDisclosureConfirmed = vm::confirmDisclosure,
+                        onSelect = { f -> vm.select(f); onFrameSelected() },
+                        onCancel = vm::closeSettings,
                     )
+                } else {
+                    val panel = vm.blePanel
+                    val details = vm.details
+                    val viewer = vm.viewer
+                    if (panel != null) {
+                        BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
+                    } else if (viewer != null) {
+                        // "Send to frame" keeps the viewer open (a toast), unless the Bluetooth panel replaces it
+                        FullscreenViewer(viewer, vm.selected, onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer)
+                    } else if (details != null) {
+                        // "Send to frame" closes the panel and takes the card's own path (a toast, or the Bluetooth
+                        // panel); "View full screen" replaces it with the viewer, and Back from there brings it back
+                        DetailsPanel(
+                            details, vm.selected,
+                            onSend = { vm.closeDetails(); onSend(details) },
+                            onView = { vm.openViewer(details, catalogPicture) },
+                            onClose = vm::closeDetails,
+                        )
+                    }
                 }
             }
         }
@@ -578,13 +674,13 @@ private fun Header(vm: MainViewModel, split: Boolean, tabFocus: FocusRequester) 
     }
     val tabs = @Composable {
         TabRow(selectedTabIndex = vm.tab) {
-            vm.sources.forEachIndexed { i, s ->
+            vm.tabNames.forEachIndexed { i, name ->
                 Tab(
                     selected = vm.tab == i,
                     onFocus = { vm.selectTab(i) },
                     modifier = (if (vm.tab == i) Modifier.focusRequester(tabFocus) else Modifier).onTap { vm.selectTab(i) },
                 ) {
-                    Text(s.name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), maxLines = 1)
+                    Text(name.text(), Modifier.padding(horizontal = 16.dp, vertical = 6.dp), maxLines = 1)
                 }
             }
         }
@@ -674,6 +770,45 @@ private fun CatalogGrid(
     ) {
         items(st.items, key = { it.id }) { p -> PictureCard(p, aspect, onClick = { onSend(p) }, onLongClick = { onDetails(p) }) }
     }
+}
+
+/**
+ * The Catalog's grid over its [pages]: a loaded row is a [PictureCard] ([picture] maps it), a row not loaded yet
+ * a [PlaceholderCard] of the same size, so the D-pad focus moves through the list as it will look.
+ */
+@Composable
+private fun PagedGrid(
+    pages: LazyPagingItems<CatalogRow>,
+    picture: (CatalogRow) -> Picture,
+    aspect: Float,
+    layout: CatalogLayout,
+    grid: LazyGridState,
+    onSend: (Picture) -> Unit,
+    onDetails: (Picture) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(layout.columns),
+        state = grid,
+        contentPadding = PaddingValues(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(layout.gap.dp),
+        verticalArrangement = Arrangement.spacedBy(layout.gap.dp),
+    ) {
+        items(pages.itemCount, key = pages.itemKey { it.id }) { i ->
+            val row = pages[i]
+            if (row == null) {
+                PlaceholderCard(aspect)
+            } else {
+                val p = remember(row, picture) { picture(row) }
+                PictureCard(p, aspect, onClick = { onSend(p) }, onLongClick = { onDetails(p) })
+            }
+        }
+    }
+}
+
+/** A card whose row is still loading: the size of a [PictureCard], focusable, and a press does nothing. */
+@Composable
+private fun PlaceholderCard(aspect: Float) {
+    Card(onClick = {}, modifier = Modifier.fillMaxWidth().aspectRatio(aspect)) {}
 }
 
 /** A catalog card: a press (CENTER or a tap) sends [p] at once ([onClick]), a long press opens its details ([onLongClick]). */

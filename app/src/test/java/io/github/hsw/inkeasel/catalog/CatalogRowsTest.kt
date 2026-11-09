@@ -267,6 +267,14 @@ class CatalogRowsTest {
         }
     }
 
+    @Test
+    fun itemAndLanguageChecks() {
+        listOf("Q1", "Q12418", "Q9999999999").forEach { assertTrue(it, CatalogRows.isItem(it)) }
+        listOf("", "Q", "Q0", "Q01", "q1", "P31", "Q1a", " Q1").forEach { assertFalse(it, CatalogRows.isItem(it)) }
+        listOf("ru", "mul", "pt-br", "zh-hant", "de-1901", "be-tarask").forEach { assertTrue(it, CatalogRows.isLang(it)) }
+        listOf("", "r", "abcd", "RU", "ru-", "ru--x", "-ru", "ru_RU", "pt-BR", "1a").forEach { assertFalse(it, CatalogRows.isLang(it)) }
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun reader_batchSizeMustBePositive() {
         JsonLinesReader(ByteArrayInputStream(ByteArray(0)), CatalogRows::core).use { it.nextBatch(0) }

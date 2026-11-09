@@ -2,18 +2,25 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import io.github.hsw.inkeasel.Http
 import io.github.hsw.inkeasel.logTo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -22,11 +29,22 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
-/** The starter set in the APK: its `core` and its labels file (rows with their language). */
-class StarterSet(val core: () -> InputStream, val labels: () -> InputStream) {
+/**
+ * The starter set in the APK: its `core` and one labels file per language, as in the release ([languages]
+ * lists them, [labels] opens one), so a start reads only the files of its own languages.
+ */
+class StarterSet(
+    val core: () -> InputStream,
+    val languages: () -> Set<String>,
+    val labels: (String) -> InputStream,
+) {
     fun coreFile() = ImportFile(CatalogStore.CORE_ASSET, open = core)
 
-    fun labelsFile() = ImportFile(CatalogStore.LABELS_ASSET, open = labels)
+    /** The labels files of those of [langs] the starter set has. */
+    fun labelsFiles(langs: Collection<String>): List<ImportFile> {
+        val have = languages()
+        return langs.filter { it in have }.map { lang -> ImportFile(CatalogStore.labelsAsset(lang), lang) { labels(lang) } }
+    }
 }
 
 /**
@@ -36,7 +54,7 @@ class StarterSet(val core: () -> InputStream, val labels: () -> InputStream) {
  * UI language, which re-creates the activity) runs a pass: the starter's labels of a language that joined the
  * [chain] since, then the release sync, which fetches only the files that are due ([CatalogSyncPlan]), so a
  * pass with nothing due makes no request. Passes run one after another; a [start] during a pass asks for one
- * more. A failed step is logged and the next pass tries again.
+ * more. A failed step is logged and the next pass tries again. The Catalog tab reads the list through [pages].
  */
 class CatalogStore internal constructor(
     val db: CatalogDb,
@@ -59,6 +77,30 @@ class CatalogStore internal constructor(
 
     /** The label languages of the UI language ([LanguageChain]); the list's queries follow it. */
     val chain: StateFlow<List<String>> = _chain.asStateFlow()
+
+    private val _empty = MutableStateFlow(false)
+
+    /**
+     * The list has no picture although the starter step has run (its import failed, which a sound APK never
+     * does); read again after each pass. Until then an empty list is one still loading: the starter set is on
+     * its way.
+     */
+    val empty: StateFlow<Boolean> = _empty.asStateFlow()
+
+    /** The starter step of this process has run. */
+    private val ready = MutableStateFlow(false)
+
+    /**
+     * The list ([CatalogDao.pages]) over the current [chain]: a new chain starts a new pager. It starts once
+     * the starter step has run, so its first query neither waits for the starter's transaction nor holds it
+     * up; until then it gives nothing, and the list shows that it is loading.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val pages: Flow<PagingData<CatalogRow>> = ready.filter { it }.flatMapLatest { _chain }.flatMapLatest { chain ->
+        Pager(PagingConfig(pageSize = PAGE, prefetchDistance = PAGE, initialLoadSize = 2 * PAGE)) {
+            db.catalog().pages(CatalogRow.chainKey(chain))
+        }.flow
+    }
 
     private val _passes = MutableStateFlow(0)
 
@@ -83,11 +125,24 @@ class CatalogStore internal constructor(
 
     private suspend fun work() {
         step("starter import") { starter(chain.value) }
+        checkEmpty()
+        ready.value = true
         for (signal in wake) {
             val chain = chain.value
             step("starter labels") { starterLabels(chain) }
             step("release sync") { sync.run(chain) }
+            checkEmpty()
             _passes.update { it + 1 }
+        }
+    }
+
+    private suspend fun checkEmpty() {
+        try {
+            _empty.value = db.catalog().count() == 0
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("count failed", e)
         }
     }
 
@@ -103,9 +158,11 @@ class CatalogStore internal constructor(
 
     /** The starter set into a database with no Wikidata row (the first start, or after a schema change). */
     private suspend fun starter(chain: List<String>) {
-        val result = import.starter(starter.coreFile(), starter.labelsFile(), chain) ?: return
-        starterLangs += CatalogImport.languages(chain)
-        log("starter set imported: $result", null)
+        val start = System.nanoTime()
+        val langs = CatalogImport.languages(chain)
+        val result = import.starter(starter.coreFile(), starter.labelsFiles(langs), chain) ?: return
+        starterLangs += langs
+        log("starter set imported in ${(System.nanoTime() - start) / 1_000_000} ms: $result", null)
     }
 
     /**
@@ -118,16 +175,32 @@ class CatalogStore internal constructor(
         val dao = db.imports()
         val missing = fresh.filter { !dao.hasLabels(it) }
         if (missing.isEmpty()) return
-        val result = import.addLabels(starter.labelsFile(), missing, chain) { sync.forgetOutside(chain) }
+        val result = import.addLabels(starter.labelsFiles(missing), missing, chain) { sync.forgetOutside(chain) }
         log("starter labels of $missing: ${result ?: "none"}", null)
     }
 
     companion object {
         private const val TAG = "CatalogStore"
 
-        /** The starter set's files as the APK holds them: AGP's asset merge stores `.gz` assets decompressed. */
-        const val CORE_ASSET = "catalog/core.jsonl"
-        const val LABELS_ASSET = "catalog/labels.jsonl"
+        /** Rows per page of the list: about 15 rows of 4 cards on a TV. */
+        const val PAGE = 60
+
+        /**
+         * The starter set's files as the APK holds them (`catalog/core.jsonl`, `catalog/labels-<lang>.jsonl`):
+         * AGP's asset merge stores `.gz` assets decompressed.
+         */
+        private const val ASSETS = "catalog"
+        const val CORE_ASSET = "$ASSETS/core.jsonl"
+        private const val LABELS_PREFIX = "labels-"
+        private const val LABELS_SUFFIX = ".jsonl"
+
+        fun labelsAsset(lang: String) = "$ASSETS/$LABELS_PREFIX$lang$LABELS_SUFFIX"
+
+        /** The language of a starter labels file named [name] (in the assets' `catalog` folder); `null` for another file. */
+        fun assetLanguage(name: String): String? =
+            name.takeIf { it.startsWith(LABELS_PREFIX) && it.endsWith(LABELS_SUFFIX) }
+                ?.substring(LABELS_PREFIX.length, name.length - LABELS_SUFFIX.length)
+                ?.takeIf(CatalogRows::isLang)
 
         @Volatile
         private var instance: CatalogStore? = null
@@ -142,7 +215,11 @@ class CatalogStore internal constructor(
             val db = CatalogDb.open(app)
             return CatalogStore(
                 db,
-                StarterSet({ app.assets.open(CORE_ASSET) }, { app.assets.open(LABELS_ASSET) }),
+                StarterSet(
+                    core = { app.assets.open(CORE_ASSET) },
+                    languages = { app.assets.list(ASSETS).orEmpty().mapNotNullTo(HashSet(), ::assetLanguage) },
+                    labels = { lang -> app.assets.open(labelsAsset(lang)) },
+                ),
                 CatalogSync(db, Http.client, File(app.cacheDir, "catalog-sync"), log = logTo("CatalogSync")),
                 chainOf(app.resources.configuration),
                 logTo(TAG),

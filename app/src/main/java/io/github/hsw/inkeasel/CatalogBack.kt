@@ -13,7 +13,12 @@ data class CatalogBack(val scrollToTop: Boolean, val focusTab: Boolean) {
     val taken: Boolean get() = scrollToTop || focusTab
 
     companion object {
-        fun of(focusInContent: Boolean, scrolledDown: Boolean): CatalogBack =
-            CatalogBack(scrollToTop = scrolledDown, focusTab = focusInContent)
+        /**
+         * Back with the focus in the content or not, over a grid of [gridItems] cards (a paged list counts its
+         * placeholders: the cards not loaded yet) that [canScrollBack] (it is scrolled down). A tab with no
+         * grid shown (loading, failed, empty) has nothing to scroll, whatever its grid state says.
+         */
+        fun of(focusInContent: Boolean, gridItems: Int, canScrollBack: Boolean): CatalogBack =
+            CatalogBack(scrollToTop = gridItems > 0 && canScrollBack, focusTab = focusInContent)
     }
 }

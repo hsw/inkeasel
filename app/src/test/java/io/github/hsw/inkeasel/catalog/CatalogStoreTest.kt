@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.paging.testing.asSnapshot
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
@@ -12,9 +13,12 @@ import io.github.hsw.inkeasel.catalog.ReleaseFixtures.label
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -38,13 +42,16 @@ class CatalogStoreTest {
     private val logged = CopyOnWriteArrayList<String>()
 
     /** Q1, Q2 with Russian, English and German labels (the German one is imported only once German is wanted). */
+    private val starterLabels = mapOf(
+        "ru" to listOf(label(1, "Старт")),
+        "en" to listOf(label(1, "Start")),
+        "de" to listOf(label(2, "Zwei")),
+    )
+    private val opened = CopyOnWriteArrayList<String>()
     private val starter = StarterSet(
         core = { ByteArrayInputStream(gzip(listOf(core(1, fame = 50), core(2, fame = 40)))) },
-        labels = {
-            ByteArrayInputStream(
-                gzip(listOf(label(1, "Старт", "ru"), label(1, "Start", "en"), label(2, "Zwei", "de"))),
-            )
-        },
+        languages = { starterLabels.keys },
+        labels = { lang -> opened += lang; ByteArrayInputStream(gzip(starterLabels.getValue(lang))) },
     )
 
     @Before
@@ -84,6 +91,7 @@ class CatalogStoreTest {
         awaitPasses(1)
 
         assertTrue(logged.any { it.startsWith("starter set imported") })
+        assertEquals(listOf("ru", "en"), opened) // only the chain's own files: the German one stays shut
         assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3"), query("SELECT id FROM picture ORDER BY rank"))
         assertEquals("Один", title("wd:Q1", ruChain))
         assertEquals("Три", title("wd:Q3", ruChain))
@@ -159,9 +167,62 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun theListIsNotEmptyOnceTheStarterSetIsIn() {
+        release.server.shutdown()
+        assertFalse(store.empty.value) // before the starter step: still loading, not empty
+        // and the list has not started: its first query waits for the starter set
+        assertNull(runBlocking { withTimeoutOrNull(300) { store.pages.first() } })
+
+        store.start(ruChain)
+        awaitPasses(1)
+
+        assertFalse(store.empty.value)
+        val rows = runBlocking { store.pages.asSnapshot() }
+        assertEquals(listOf("wd:Q1", "wd:Q2"), rows.map { it.id })
+        assertEquals("Старт", rows.first().title)
+    }
+
+    @Test
+    fun aFailedStarterImportWithNothingStoredIsEmpty() {
+        release.server.shutdown()
+        val broken = StarterSet({ ByteArrayInputStream("not json\n".toByteArray()) }, starter.languages, starter.labels)
+        val log: (String, Throwable?) -> Unit = { msg, e -> logged += if (e == null) msg else "$msg: $e" }
+        val store = CatalogStore(db, broken, CatalogSync(db, Http.client, temp, release.base, log = log), ruChain, log)
+        try {
+            store.start(ruChain)
+            runBlocking { withTimeout(20_000) { store.passes.first { it >= 1 } } }
+            assertTrue(store.empty.value)
+            assertTrue(logged.any { it.startsWith("starter import failed") })
+        } finally {
+            store.close()
+        }
+    }
+
+    @Test
+    fun theListFollowsTheChain() {
+        release.server.shutdown()
+        store.start(ruChain)
+        awaitPasses(1)
+        assertEquals("Старт", runBlocking { store.pages.asSnapshot() }.first().title)
+
+        store.start(LanguageChain.of("en"))
+        awaitPasses(2)
+        assertEquals("Start", runBlocking { store.pages.asSnapshot() }.first().title)
+    }
+
+    @Test
     fun theChainComesFromTheConfigurationsFirstLocale() {
         val config = Configuration().apply { setLocales(android.os.LocaleList(Locale.forLanguageTag("pt-BR"), Locale.US)) }
         assertEquals(listOf("pt-br", "pt", "en", "mul"), CatalogStore.chainOf(config))
+    }
+
+    @Test
+    fun starterAssetNames() {
+        assertEquals("catalog/labels-pt-br.jsonl", CatalogStore.labelsAsset("pt-br"))
+        assertEquals("pt-br", CatalogStore.assetLanguage("labels-pt-br.jsonl"))
+        assertEquals("mul", CatalogStore.assetLanguage("labels-mul.jsonl"))
+        listOf("core.jsonl", "labels.jsonl", "labels-.jsonl", "labels-RU.jsonl", "labels-ru.jsonl.gz", "x-ru.jsonl")
+            .forEach { assertEquals(it, null, CatalogStore.assetLanguage(it)) }
     }
 
     @Test

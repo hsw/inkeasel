@@ -29,7 +29,7 @@ unchanged catalog gives byte-identical files):
     <outdir>/labels-<lang>.jsonl.gz     one file per language present in Wikidata
     <outdir>/labels-all.jsonl.gz        every language in one file
     <outdir>/starter/core.jsonl.gz      the top --starter-size paintings (the starter set for the APK)
-    <outdir>/starter/labels.jsonl.gz    their labels in the --starter-langs languages, in one file
+    <outdir>/starter/labels-<lang>.jsonl.gz  their labels, one file per --starter-langs language
     <outdir>/cache/                     WDQS bucket results and the merged fame list (not published)
 
 The top-level `*.jsonl.gz` files are the release assets: they are published, replacing the previous
@@ -41,8 +41,10 @@ directories), hence `labels-<lang>` rather than `labels/<lang>`. The `starter/` 
 Starter set from a published release: `--starter-from <dir>` reads `<dir>/core.jsonl.gz` and
 `<dir>/labels-all.jsonl.gz` (the release assets, downloaded from
 https://github.com/hsw/inkeasel/releases/download/catalog/<file>) and writes only `<outdir>/core.jsonl.gz`
-and `<outdir>/labels.jsonl.gz`, with the same writer and options as a full run and no Wikimedia request, so
-the APK's starter set always matches the published release. Run it after each release upload.
+and `<outdir>/labels-<lang>.jsonl.gz` (removing the `*.jsonl.gz` files already there), with the same writer
+and options as a full run and no Wikimedia request, so the APK's starter set always matches the published
+release. Run it after each release upload. The starter's labels are one file per language, as in the
+release, so the app's first start reads only the files of its languages.
 
 `--self-test` checks the row building and the starter cut on a small built-in fixture (no network, nothing
 written outside a temporary directory) and exits 0 when every check passes.
@@ -59,8 +61,7 @@ Core row:   {"id", "fame", "img" (Commons file name), "w", "h" (image size in pi
             museum's accession number, e.g. "1945.24"; left out when the painting has none)}
             (lists hold Wikidata ids).
 Label row:  {"id", "l" (label), "a" (aliases), "w" (Wikipedia article title in that language)}; keys
-            without a value are left out. In `labels-all` and `starter/labels` each row also has
-            "lang". The language `mul` holds Wikidata's language-independent labels.
+            without a value are left out. In `labels-all` each row also has "lang". The language `mul` holds Wikidata's language-independent labels.
 Paintings whose file is missing on Commons are left out.
 
 Wikimedia etiquette: a descriptive User-Agent naming the project, sequential requests with pauses
@@ -424,14 +425,20 @@ def write_release(d, core, labels, langs):
 
 
 def write_starter(d, core, labels, langs, size, wanted):
-    """The starter set: the first `size` core rows and their labels in the `wanted` languages, in one file.
-    Returns (paintings, languages, label rows)."""
+    """The starter set: the first `size` core rows and their labels in the `wanted` languages, one file per
+    language as in the release (a language with no label of a starter entity gets no file). Removes the
+    starter files already in `d`. Returns (paintings, languages, label rows)."""
     starter = core[:size]
-    starter_langs = [lang for lang in langs if lang in wanted]
+    order = entity_order(starter)
+    clear_old(d)
     write_gz(os.path.join(d, "core.jsonl.gz"), starter)
-    n = write_gz(os.path.join(d, "labels.jsonl.gz"),
-                 label_rows(labels, starter_langs, entity_order(starter), True))
-    return len(starter), len(starter_langs), n
+    n, n_langs = 0, 0
+    for lang in langs:
+        rows = label_rows(labels, [lang], order, False) if lang in wanted else []
+        if rows:
+            n += write_gz(os.path.join(d, f"labels-{lang}.jsonl.gz"), rows)
+            n_langs += 1
+    return len(starter), n_langs, n
 
 
 def read_gz(path):
@@ -546,8 +553,13 @@ def self_test():
             os.makedirs(d)
         write_release(rel, core, labels, langs)
         write_starter(mem, core, labels, langs, 3, wanted)
+        os.makedirs(cut)
+        write_gz(os.path.join(cut, "labels.jsonl.gz"), [{"id": "Q1"}])  # an old starter file: removed
         got = starter_from(rel, cut, 3, wanted)
-        for name in ("core.jsonl.gz", "labels.jsonl.gz"):
+        names = ["core.jsonl.gz", "labels-de.jsonl.gz", "labels-en.jsonl.gz", "labels-mul.jsonl.gz",
+                 "labels-ru.jsonl.gz"]
+        check(sorted(os.listdir(cut)) == names, "starter_from: core and one labels file per wanted language")
+        for name in names:
             with open(os.path.join(mem, name), "rb") as f1, open(os.path.join(cut, name), "rb") as f2:
                 check(f1.read() == f2.read(), f"starter_from: {name} byte-identical to a full run's starter")
         check(got[0] == 3 and got[1] == 4, "starter_from: 3 paintings, 4 languages")
@@ -556,20 +568,25 @@ def self_test():
         with gzip.open(os.path.join(cut, "core.jsonl.gz"), "rt", encoding="utf-8") as f:
             cut_lines = f.read().splitlines()
         check(cut_lines == rel_lines[:3], "starter_from: core lines are a prefix of the release core")
-        rows = list(read_gz(os.path.join(cut, "labels.jsonl.gz")))
-        check({r["lang"] for r in rows} == {"de", "en", "mul", "ru"}, "starter_from: only wanted languages")
+        def starter_labels(lang):
+            return list(read_gz(os.path.join(cut, f"labels-{lang}.jsonl.gz")))
         order = ["Q3", "Q100", "Q900", "Q9", "Q101", "Q10"]
-        check([r["id"] for r in rows if r["lang"] == "en"] == order, "starter_from: entity order")
-        check([r["lang"] for r in rows[:3]] == ["de", "en", "ru"], "starter_from: entity-major, sorted languages")
-        check(rows[2]["l"] == "Q3 Мона", "starter_from: non-ASCII label kept")
+        check([r["id"] for r in starter_labels("en")] == order, "starter_from: entity order")
+        check([r["id"] for r in starter_labels("de")] == [e for e in order if e != "Q9"],
+              "starter_from: a missing label left out")
+        check(all("lang" not in r for r in starter_labels("ru")), "starter_from: rows as in labels-<lang>")
+        check(starter_labels("ru")[0]["l"] == "Q3 Мона", "starter_from: non-ASCII label kept")
+        with gzip.open(os.path.join(rel, "labels-en.jsonl.gz"), "rt", encoding="utf-8") as f:
+            check([json.loads(x)["id"] for x in f.read().splitlines()][:len(order)] == order,
+                  "starter_from: a prefix of the release's labels-en")
         starter_from(rel, cut, 99, wanted)
         check(len(list(read_gz(os.path.join(cut, "core.jsonl.gz")))) == 5, "starter_from: size over the core")
         main_out = os.path.join(tmp, "main")
         code = main([main_out, "--starter-from", rel, "--starter-size", "3", "--starter-langs", "en,ru,mul,de,zz"])
-        check(code == 0 and sorted(os.listdir(main_out)) == ["core.jsonl.gz", "labels.jsonl.gz"],
-              "main --starter-from: exit 0, only the two starter files (no cache directory)")
-        with open(os.path.join(main_out, "labels.jsonl.gz"), "rb") as f1, \
-                open(os.path.join(mem, "labels.jsonl.gz"), "rb") as f2:
+        check(code == 0 and sorted(os.listdir(main_out)) == names,
+              "main --starter-from: exit 0, only the starter files (no cache directory)")
+        with open(os.path.join(main_out, "labels-ru.jsonl.gz"), "rb") as f1, \
+                open(os.path.join(mem, "labels-ru.jsonl.gz"), "rb") as f2:
             check(f1.read() == f2.read(), "main --starter-from: same labels as the writer")
         for args, what in (((rel, rel, 3, wanted), "output = release directory"),
                            ((rel, cut, 0, wanted), "size 0"),

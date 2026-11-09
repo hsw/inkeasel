@@ -79,9 +79,9 @@ private val SYSTEM_KEYS = setOf(Key.Back, Key.Escape, Key.VolumeUp, Key.VolumeDo
  * A picture full screen ([ViewerState]), opened by "View full screen" in the details panel: letterboxed on
  * black and fitted to the screen, no crop, in a rendition sized to the window ([ViewerRules.rendition]) and
  * decoded to the window's size; the card's thumbnail stands in while it loads. Left/Right (a swipe on a touch
- * screen) go to the previous and next picture of the same list ([onStep]); any other key, or a tap, shows the
- * action row: "Send to frame" ([onSend], the card's own path) with a frame chosen, otherwise a note that none
- * is. The credit line (title, artist, source, licence) shows on open, on every picture change and with the
+ * screen) go to the previous and next picture of the same list ([onStep]; the catalog's from the database,
+ * [ViewerSteps]); any other key, or a tap, shows the action row: "Send to frame" ([onSend], the card's own
+ * path) with a frame chosen, otherwise a note that none is. The credit line (title, artist, source, licence) shows on open, on every picture change and with the
  * action row, and hides after [ViewerOverlay.SHOWN_MS]. Back closes ([onClose]). The screen is not kept on:
  * a still picture lets the screen saver start as usual.
  */
@@ -103,9 +103,8 @@ fun FullscreenViewer(
         var overlay by remember { mutableStateOf(ViewerOverlay.CREDIT) }
         var shown by remember { mutableIntStateOf(0) } // bumped by every key, tap or step: restarts the hide timer
         var swallowUp by remember { mutableStateOf<Key?>(null) }
-        val currentState by rememberUpdatedState(state)
         val step = { delta: Int ->
-            if (currentState.step(delta) != null) onStep(delta)
+            onStep(delta) // nothing past either end of the list
             overlay = overlay.onStep()
             shown++
         }
@@ -243,10 +242,10 @@ private fun Overlay(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    if (state.items.size > 1) {
+                    if (state.showsPosition) {
                         Spacer(Modifier.width(16.dp))
                         Text(
-                            stringResource(R.string.viewer_position, state.index + 1, state.items.size),
+                            stringResource(R.string.viewer_position, state.index + 1, state.count),
                             style = MaterialTheme.typography.bodyMedium,
                             color = dim,
                             maxLines = 1,

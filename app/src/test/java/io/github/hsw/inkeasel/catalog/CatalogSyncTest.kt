@@ -87,7 +87,7 @@ class CatalogSyncTest {
     private suspend fun starter() {
         CatalogImport(db).starter(
             ImportFile("core.jsonl") { ByteArrayInputStream(gzip(listOf(core(1, fame = 50), core(2, fame = 40)))) },
-            ImportFile("labels.jsonl") { ByteArrayInputStream(gzip(listOf(label(1, "Старт", "ru")))) },
+            listOf(ImportFile("labels-ru.jsonl", "ru") { ByteArrayInputStream(gzip(listOf(label(1, "Старт")))) }),
             ruChain,
         )!!
     }

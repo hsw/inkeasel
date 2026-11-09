@@ -47,5 +47,13 @@ class CatalogLayoutTest {
     fun degenerateWidths_stillUsable() {
         assertEquals(2, layout(0).columns)
         assertEquals(4, layout(4000).columns)
+        assertEquals(0, layout(0).cardWidth(0))
+    }
+
+    @Test
+    fun cardWidth_whatIsLeftAfterPaddingAndGaps() {
+        assertEquals(201, layout(960).cardWidth(960)) // TV: (960 - 2·48 - 3·20) / 4
+        assertEquals(183, layout(411).cardWidth(411)) // phone: (411 - 2·16 - 12) / 2
+        assertEquals(234, layout(800).cardWidth(800)) // (800 - 2·32 - 2·16) / 3
     }
 }

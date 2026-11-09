@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel.catalog
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -8,11 +9,14 @@ import java.io.File
 /**
  * The committed starter set (`assets/catalog/`, cut from the release by `tools/catalog-export.py
  * --starter-from`) reads with [CatalogRows] without a bad line, is in the release's order and carries labels
- * for every UI language the app has. Unit tests run in the module directory.
+ * for every UI language the app has, one `labels-<lang>` file per language. Unit tests run in the module
+ * directory.
  */
 class StarterAssetsTest {
+    private val dir = File("src/main/assets/catalog")
+
     private fun asset(name: String): File =
-        File("src/main/assets/catalog/$name").also { assertTrue("$it not found (tests run in the app module)", it.isFile) }
+        File(dir, name).also { assertTrue("$it not found (tests run in the app module)", it.isFile) }
 
     private fun <T : Any> read(name: String, parse: (String) -> T): List<T> =
         JsonLinesReader(asset(name).inputStream(), parse).use { reader ->
@@ -23,7 +27,22 @@ class StarterAssetsTest {
         }
 
     private val core by lazy { read("core.jsonl.gz", CatalogRows::core) }
-    private val labels by lazy { read("labels.jsonl.gz", CatalogRows::label) }
+
+    /** The labels by language, from the file names (`labels-<lang>.jsonl.gz`). */
+    private val labels: Map<String, List<LabelRow>> by lazy {
+        dir.list()!!.filter { it.startsWith("labels-") }.sorted().associate { name ->
+            val lang = name.removePrefix("labels-").removeSuffix(".jsonl.gz")
+            assertEquals(name, CatalogStore.assetLanguage(name.removeSuffix(".gz")), lang)
+            lang to read(name, CatalogRows::label)
+        }
+    }
+
+    @Test
+    fun theFolderHoldsOnlyTheStarterFiles() {
+        dir.list()!!.forEach { name ->
+            assertTrue(name, name == "core.jsonl.gz" || name.startsWith("labels-") && name.endsWith(".jsonl.gz"))
+        }
+    }
 
     @Test
     fun core_isTheTopThousandInFameOrder() {
@@ -40,20 +59,24 @@ class StarterAssetsTest {
     }
 
     @Test
-    fun labels_carryTheirLanguageAndBelongToStarterEntities() {
+    fun labels_belongToStarterEntitiesInPrefixOrder() {
         assertTrue(labels.isNotEmpty())
-        assertTrue(labels.all { it.lang != null })
         val entities = core.flatMap { listOf(it.id) + it.creators + it.collections + it.movements + it.genres }
         val order = entities.distinct().withIndex().associate { (i, id) -> id to i }
-        // every label is of a starter painting or an entity one references, in the order a prefix import needs
-        val positions = labels.map { order[it.id] ?: error("label of ${it.id}, not in the starter core") }
-        assertEquals(positions.sorted(), positions)
-        assertEquals(labels.size, labels.map { it.id to it.lang }.toSet().size)
+        labels.forEach { (lang, rows) ->
+            assertTrue("$lang: empty file", rows.isNotEmpty())
+            // rows as in the release's labels-<lang>: the language is the file's
+            rows.forEach { assertNull("$lang: ${it.id} carries a language", it.lang) }
+            // every label is of a starter painting or an entity one references, in the order a prefix import needs
+            val positions = rows.map { order[it.id] ?: error("$lang: label of ${it.id}, not in the starter core") }
+            assertEquals(lang, positions.sorted(), positions)
+            assertEquals(lang, rows.size, rows.map { it.id }.toSet().size)
+        }
     }
 
     @Test
     fun labels_coverEveryAppLanguageWithEnglishAndMul() {
-        val langs = labels.mapNotNull { it.lang }.toSet()
+        val langs = labels.keys
         assertTrue("en" in langs)
         assertTrue("mul" in langs)
         val appLocales = File("src/main/res").list()!!
@@ -65,8 +88,7 @@ class StarterAssetsTest {
             val own = LanguageChain.of(tag).dropLast(2)
             assertTrue("$tag: no starter labels in $own", own.any { it in langs })
         }
-        val monaLisa = labels.filter { it.id == "Q12418" }.associateBy { it.lang }
-        assertEquals("Mona Lisa", monaLisa["en"]?.label)
-        assertTrue(monaLisa["ru"]?.label.orEmpty().isNotEmpty())
+        assertEquals("Mona Lisa", labels.getValue("en").first { it.id == "Q12418" }.label)
+        assertTrue(labels.getValue("ru").first { it.id == "Q12418" }.label.orEmpty().isNotEmpty())
     }
 }

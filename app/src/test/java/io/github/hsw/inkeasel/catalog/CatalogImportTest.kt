@@ -164,13 +164,15 @@ class CatalogImportTest {
     /** A starter set of Q1…Q3 with Russian, English and German labels; Q100 is Q2's artist. */
     private suspend fun starter(): ImportResult = CatalogImport(db).starter(
         coreFile(listOf(core(1, fame = 50), core(2, fame = 40, creators = listOf(100)), core(3, fame = 30))),
-        file(
-            "labels.jsonl.gz",
-            gzip(
-                listOf(
-                    label(1, "Один", "ru"), label(1, "One", "en"), label(1, "Eins", "de"),
-                    label(2, "Два", "ru"), label(2, "Two", "en"), label(3, "Three", "en"),
-                    label(100, "Художник", "ru"), label(100, "Painter", "mul"),
+        listOf(
+            file(
+                "labels.jsonl.gz",
+                gzip(
+                    listOf(
+                        label(1, "Один", "ru"), label(1, "One", "en"), label(1, "Eins", "de"),
+                        label(2, "Два", "ru"), label(2, "Two", "en"), label(3, "Three", "en"),
+                        label(100, "Художник", "ru"), label(100, "Painter", "mul"),
+                    ),
                 ),
             ),
         ),
@@ -197,13 +199,13 @@ class CatalogImportTest {
         // a second run reads nothing and changes nothing
         val before = visible()
         val untouched = ImportFile("core.jsonl.gz") { throw AssertionError("read again") }
-        assertNull(CatalogImport(db).starter(untouched, untouched, ruChain))
+        assertNull(CatalogImport(db).starter(untouched, listOf(untouched), ruChain))
         assertEquals(before, visible())
     }
 
     @Test
     fun theStarterReadsTheRealReleaseRows() = runTest {
-        val result = CatalogImport(db).starter(fixture("core.jsonl"), fixture("labels-all.jsonl"), ruChain)!!
+        val result = CatalogImport(db).starter(fixture("core.jsonl"), listOf(fixture("labels-all.jsonl")), ruChain)!!
         assertEquals(5, result.added)
         assertEquals(listOf("core.jsonl", "labels-all.jsonl"), result.files.map { it.name })
         val mona = dao.row("wd:Q12418", ru)!!
@@ -215,9 +217,46 @@ class CatalogImportTest {
     }
 
     @Test
+    fun theStarterReadsOnlyTheLabelsFilesOfItsLanguages() = runTest {
+        val notOpened = ImportFile("labels-de.jsonl", "de") { throw AssertionError("a German file opened") }
+        val result = CatalogImport(db).starter(
+            coreFile(listOf(core(1), core(2))),
+            listOf(
+                labelsFile("ru", listOf(label(1, "Один"), "not json", label(2, "Два"))),
+                notOpened,
+                labelsFile("mul", listOf(label(2, "Two (mul)"))),
+            ),
+            ruChain,
+        )!!
+        assertEquals(listOf("core.jsonl.gz", "labels-ru.jsonl.gz", "labels-mul.jsonl.gz"), result.files.map { it.name })
+        assertEquals(1, result.files[1].badLines)
+        assertEquals(3, result.labels)
+        assertEquals(
+            listOf("Q1|ru|Один", "Q2|mul|Two (mul)", "Q2|ru|Два"),
+            query("SELECT entityId, lang, label FROM label ORDER BY entityId, lang"),
+        )
+    }
+
+    @Test
+    fun aStarterBesideStoredLiveRowsIsPlacedByTheRankRules() = runTest {
+        // live rows already stored (not the usual order, but the import must not depend on it)
+        dao.insertPictures(
+            listOf(
+                PictureEntity("cma:7", "cma", 5, sourceRank = 0),
+                PictureEntity("commons:Painting_2.jpg", "commons", 0, commonsFile = "Painting_2.jpg", sourceRank = 0),
+            ),
+        )
+        CatalogImport(db).starter(coreFile((1..12).map { core(it) }), emptyList(), ruChain)!!
+        val placed = query("SELECT id, rank, hidden FROM picture ORDER BY rank")
+        assertEquals((0 until 9).map { "wd:Q${it + 1}|${it * 10}|0" }, placed.take(9))
+        assertEquals("cma:7|85|0", placed[9]) // the 10th card
+        assertEquals("commons:Painting_2.jpg|125|1", placed.last()) // a duplicate of wd:Q2, hidden
+    }
+
+    @Test
     fun aStarterWithNoValidRowWritesNothing() = runTest {
         val e = assertFails {
-            CatalogImport(db).starter(coreFile(listOf("{}", "not json")), labelsFile("ru", emptyList()), ruChain)
+            CatalogImport(db).starter(coreFile(listOf("{}", "not json")), listOf(labelsFile("ru", emptyList())), ruChain)
         }
         assertTrue(e is IOException)
         assertEquals(emptyList<String>(), visible())
@@ -411,9 +450,10 @@ class CatalogImportTest {
     fun addedLabelsReplaceOnlyTheirLanguageAndDropLanguagesOutsideTheChain() = runTest {
         starter()
         val deChain = LanguageChain.of("de")
-        val starterLabels = file(
-            "labels.jsonl",
-            gzip(listOf(label(1, "Eins", "de"), label(2, "Zwei", "de"), label(1, "One again", "en"), label(3, "Trois", "fr"))),
+        val starterLabels = listOf(
+            labelsFile("de", listOf(label(1, "Eins"), label(2, "Zwei"))),
+            labelsFile("en", listOf(label(1, "One again"))),
+            labelsFile("fr", listOf(label(3, "Trois"))),
         )
         var committed = 0
         val result = CatalogImport(db).addLabels(starterLabels, listOf("de", "fr"), deChain) { committed++ }!!
@@ -432,7 +472,7 @@ class CatalogImportTest {
         val before = visible()
         settled()
         invalidations.set(0)
-        val none = file("labels.jsonl", gzip(listOf(label(1, "Un", "fr"))))
+        val none = listOf(file("labels.jsonl", gzip(listOf(label(1, "Un", "fr")))))
 
         assertNull(CatalogImport(db).addLabels(none, listOf("de"), LanguageChain.of("de")))
         assertNull(CatalogImport(db).addLabels(none, listOf("it"), ruChain)) // not in the chain: nothing read

@@ -287,14 +287,19 @@ abstract class CatalogDao {
 
     /**
      * Recomputes every rank and the dedupe ([CatalogRank]) in one transaction, writing only the rows that
-     * change. They move to free negative ranks first, so the unique index holds at every step.
+     * change. When a new rank is held by another row ([CatalogRank.clash]), they move to free negative ranks
+     * first, so the unique index holds at every step; otherwise (new rows placed for the first time, such as
+     * the starter set's) each row is written once.
      */
     @Transaction
     open suspend fun rerank() {
-        val changes = CatalogRank.changes(rankKeys())
+        val keys = rankKeys()
+        val changes = CatalogRank.changes(keys)
         if (changes.isEmpty()) return
-        val free = minOf(0L, lowestRank() ?: 0L) - 1
-        changes.forEachIndexed { i, p -> place(p.id, free - i, p.hidden) }
+        if (CatalogRank.clash(keys, changes)) {
+            val free = minOf(0L, lowestRank() ?: 0L) - 1
+            changes.forEachIndexed { i, p -> place(p.id, free - i, p.hidden) }
+        }
         changes.forEach { p -> place(p.id, p.rank, p.hidden) }
     }
 }

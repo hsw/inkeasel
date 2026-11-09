@@ -4,23 +4,41 @@ import io.github.hsw.inkeasel.catalog.CommonsUrls
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sign
 
 /**
- * The open full-screen viewer ([FullscreenViewer]): the [items] of the list it was opened from and the [index]
- * of the picture shown. Left/Right (or a swipe) [step] through the same list and stop at its ends.
+ * The open full-screen viewer ([FullscreenViewer]): the [picture] shown, at the 0-based [index] of the list it
+ * was opened from, which holds [count] pictures. [rank] is a catalog picture's place in the catalog's order
+ * (its neighbours are read from the database by it); `null` for a picture of a list in memory.
  */
-data class ViewerState(val items: List<Picture>, val index: Int) {
-    val picture: Picture get() = items[index]
-
-    /** The state [delta] pictures on (+1 the next, -1 the previous); `null` past either end of the list. */
-    fun step(delta: Int): ViewerState? = (index + delta).takeIf { it in items.indices }?.let { copy(index = it) }
+data class ViewerState(val picture: Picture, val index: Int, val count: Int, val rank: Long? = null) {
+    /** "n / N" shows only in a list of more than one picture. */
+    val showsPosition: Boolean get() = count > 1
 
     companion object {
-        /** The viewer on [p] within [items] (the tab's list); a picture no longer in it is shown alone. */
-        fun of(p: Picture, items: List<Picture>): ViewerState {
-            val i = items.indexOfFirst { it.id == p.id }
-            return if (i >= 0) ViewerState(items, i) else ViewerState(listOf(p), 0)
-        }
+        /** [p] alone, until (or instead of) its place in a list. */
+        fun alone(p: Picture) = ViewerState(p, 0, 1)
+    }
+}
+
+/** How the viewer moves through the list it was opened from: Left/Right (or a swipe) stop at its ends. */
+fun interface ViewerSteps {
+    /** The state one picture on from [from] (+1 the next, -1 the previous); `null` past either end. */
+    suspend fun step(from: ViewerState, delta: Int): ViewerState?
+}
+
+/** The steps of a list in memory (a tab's loaded list, as My pictures has). Pure. */
+class ListSteps(private val items: List<Picture>) : ViewerSteps {
+    /** The viewer on [p] within the list; a picture no longer in it is shown alone. */
+    fun open(p: Picture): ViewerState {
+        val i = items.indexOfFirst { it.id == p.id }
+        return if (i >= 0) ViewerState(items[i], i, items.size) else ViewerState.alone(p)
+    }
+
+    override suspend fun step(from: ViewerState, delta: Int): ViewerState? {
+        if (items.getOrNull(from.index)?.id != from.picture.id) return null // shown alone
+        val i = from.index + delta.sign
+        return if (delta != 0 && i in items.indices) ViewerState(items[i], i, items.size) else null
     }
 }
 
