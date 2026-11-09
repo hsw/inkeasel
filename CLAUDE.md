@@ -124,6 +124,17 @@ or deviation made in a change gets its entry in the same commit.
   capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
   with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on
   Android 13+ (no notification permission), so the share reports its own outcome while in the foreground.
+- Catalog (`catalog/`): `CatalogStore` is the one owner of `CatalogDb` and its scope (never a screen's), and
+  every catalog write (starter, release swap, live refresh) takes its write `Mutex`; network requests run
+  outside it. A release import streams into the `_stage` tables, then swaps in one transaction that also
+  writes the files' ETag and SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes
+  nothing. `rank` (unique) and `hidden` are stored, recomputed by `CatalogDao.rerank` (rules in the pure
+  `CatalogRank`) inside the write transaction, never in the paging query (`WHERE hidden = 0 ORDER BY rank`).
+  Catalog files come only from `releases/download/catalog/<file>` (`CatalogSync.RELEASE`), never
+  `releases/latest` (the APK). The Pager keeps a bounded window (`maxSize = MAX_ROWS`); no DAO returns the
+  whole list. Every id keeps its `<source>:` prefix (`wd:`, `cma:`, `commons:`). The database holds only
+  re-downloadable data: a schema change bumps the version (destructive fallback both ways) and its export in
+  `app/schemas/` is committed.
 
 ## Public-repo hygiene
 This repository will become public. Committed text must contain no IP addresses, MAC addresses of real

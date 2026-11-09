@@ -13,7 +13,7 @@ License: [Apache-2.0](LICENSE).
 
 | Android TV | Tablet |
 |---|---|
-| ![The catalog on Android TV: the "Paintings" tab with four columns of cards](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
+| ![The catalog on Android TV: a tab of picture cards in four columns](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
 
 ![Settings: the frame search and the "Permissions and features" section](docs/screenshots/settings.png)
 
@@ -101,7 +101,7 @@ How the app asks for Bluetooth (`BleAsk`, pure):
 
   The poster can be switched off in the same section without revoking the access; what plays is still
   followed while the access is granted (see Privacy).
-- **Internet**: the catalogs and the posters (see Privacy).
+- **Internet**: the catalog and the posters (see Privacy).
 - **Foreground service** (connected device; no dialog): keeps a manual upload or a share running for the
   seconds it takes when you leave the app. Now-playing posters run without it, except while the notification
   listener is not bound, or unbinds with a poster upload under way (see "Now playing → poster").
@@ -125,8 +125,8 @@ tablet).
   given to the upload service from adb (debug builds only), and the poster artwork, downloaded over https
   from the address the playing app publishes.
 - Pictures are sent to the frame over BLE only. The chosen frame, the catalog database (the painting
-  catalog and the state of its release files), the saved catalog lists and images, your
-  pictures, the artwork of recent now-playing sessions (in the app's cache, pruned to the 20 most recent each
+  catalog, the live sources' lists and when each release file and list was last checked), the cached
+  images (at most 150 MB), your pictures, the artwork of recent now-playing sessions (in the app's cache, pruned to the 20 most recent each
   time a new one is stored, sparing any a tracked session or a pending poster still needs) and the key of the picture on the frame (for a poster, its
   artwork address or a hash of its artwork) stay in the app's storage on the device. "My pictures" is the
   app's folder on the shared storage (`getExternalFilesDir`), which other apps with the storage permission can
@@ -227,8 +227,9 @@ and stop at its ends (in the Catalog the next one is read from the database, so 
 the grid has loaded; "n / N" is the place in the whole list); any other key (or a tap) shows **Send to frame**, or a note that no frame is chosen; a
 tap hides it again. The credit line (title; artist, source and licence) shows for 5 s on open, on each new
 picture and with the button. Back returns to the details panel of the picture on screen. The image is loaded
-in a size that fits the screen: for Commons a standard width (960, 1280, 1920 or 3840 px), for Cleveland the
-`web` image up to a Full HD screen and the `print` image on larger ones, your own pictures as they are;
+in a size that fits the screen: for a Commons file (the release paintings and the Commons landscapes) a
+standard width (960, 1280, 1920 or 3840 px), for Cleveland the `web` image up to a Full HD screen and the
+`print` image on larger ones, your own pictures as they are;
 it is decoded to at most the screen's size, and the card's thumbnail shows while it loads. The screen is not
 kept on, so the screen saver starts as usual.
 
@@ -282,8 +283,12 @@ week after its own last check (a file of a language that just joined the chain a
 later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
 copy imported last (`If-None-Match`; github.com redirects to a signed address, which answers 304 when the
 file is unchanged); a downloaded file whose SHA-256 is the one imported last is not imported again. Changed
-files are imported together in one swap, and their ETag and hash are stored in that same transaction, so a
-failed import (or no network) leaves the list as it was and the files are asked for again at the next start.
+files are first streamed into staging tables (one batch in memory at a time), then swapped in by one
+transaction that replaces the release rows (a row already there keeps its place), removes those the new
+`core` no longer has, computes the stored order and the hidden duplicates again and stores the files' ETag
+and hash, so a failed import (or no network) leaves the list as it was and the files are asked for again at
+the next start. In short: starter set at the first start → staged release import in the background → a
+check of each file a week later.
 A language that joins the chain gets the starter set's labels at once, also offline; a language that leaves
 it loses its labels at the next import. To watch it:
 

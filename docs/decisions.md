@@ -71,8 +71,8 @@ own for the refresh state (a schema version for two rows), refreshing at every s
 slowly, and two sources' APIs would see each start).
 
 ## 2026-11-09 — The Catalog tab pages from the database; the viewer steps by rank
-The Catalog is the first tab and the one the app starts on; My pictures and, until the live sources move
-into the database, Paintings and Landscapes follow. It shows `CatalogStore`'s Paging 3 list
+The Catalog is the first tab and the one the app starts on; My pictures follows (Paintings and
+Landscapes stayed only until the live sources moved into the database, see above). It shows `CatalogStore`'s Paging 3 list
 (`collectAsLazyPagingItems`, pages of 60 rows, placeholders on): a row not read yet is an empty card of the
 same size that takes the D-pad focus and does nothing when pressed, so the grid has its full length at once
 and the focus never jumps when a page arrives. A row becomes a picture at the edge (`CatalogPicture.of`)
@@ -80,8 +80,8 @@ with a translatable `list_names_separator` for the artists and a 330 or 500 px t
 standard width that covers the card's column in pixels. The viewer opened from a Catalog picture steps
 through the database, not through what the grid has loaded: the shown neighbour by rank, with its place
 and the list's size (`COUNT` queries) for "n / N" (`CatalogSteps`); it shows the picture alone for the
-moment its place is read, and a step pressed while one is read is dropped. My pictures and the old tabs keep
-stepping through their loaded list (`ListSteps`). The list's pager starts only once the starter step has
+moment its place is read, and a step pressed while one is read is dropped. My pictures keeps
+stepping through its loaded list (`ListSteps`). The list's pager starts only once the starter step has
 run: until then the tab says "Loading the catalog…", and its first query neither waits for the starter's
 transaction nor holds it up; should the starter set fail to import and leave the database empty, the tab
 says so instead of loading for ever. Back counts the placeholders as cards (`CatalogBack`), so it scrolls a
@@ -154,8 +154,7 @@ others. A language that leaves the chain loses its labels at the next swap, and 
 same transaction, so a return downloads it again instead of getting a 304 for labels no longer stored. A
 language that joins the chain gets the starter set's labels at once (offline too), looked for once per
 process. The UI language is the configuration's first locale: the per-app language where Android 13+ sets
-one, else the system's. The tabs do not show the catalog yet, so the delivery entry below stays *planned*
-for the list itself and the weekly export job.
+one, else the system's.
 Rejected: WorkManager (a scheduler and a dependency for a check that only matters while the app is used;
 periodic work would wake a TV for a list nobody looks at), `releases/latest` (it is the newest APK release),
 recording the ETag as soon as the answer arrives (a 304 would then hide a failed import), checking once per
@@ -195,8 +194,7 @@ and the paging source, which reads only live tables, is invalidated once, by the
 cleared then and at the next start. In a `core` the first row of an id wins. Labels of entities no longer
 referenced stay until their language's file is imported again: removing them by reference would lose labels
 when a new `core` arrives after an unchanged labels file that is not imported again. No UPSERT (SQLite 3.18):
-`INSERT OR REPLACE` keeps the rank by reading it from the row it replaces. The delivery entry below stays
-*planned* (the starter import and the download came with the sync entry above; no list shows them yet).
+`INSERT OR REPLACE` keeps the rank by reading it from the row it replaces.
 Rejected: per-batch upserts into the live tables (a list mixing two releases while it imports, no sweep of
 absent rows, a paging invalidation per batch), staging the starter set too (it goes into an empty database,
 where one transaction already is all or nothing).
@@ -309,7 +307,8 @@ entities decoded, only `https:` links kept. Local files: the pixel size from the
 time is when it was copied, not the picture's date). The mapping is pure (`SourceMapping.kt`) and tested
 against trimmed real answers. `CatalogCache` writes format 2 with the new fields left out when `null`; a
 format-1 file still reads with them `null` (the cache is only a fallback, and the next good load rewrites
-it), a newer format reads as no cache.
+it), a newer format reads as no cache. (`CatalogCache` went with the tabs on 2026-11-09: the live lists are
+rows of the catalog database now.)
 Rejected: dropping old caches on the format change (a source that is down would show nothing until it
 recovers), a list of artists (the sources give one display text; the Room schema can split it), the Commons
 file page URL as the link (long and percent-encoded, hard to type).
@@ -389,7 +388,7 @@ the sources' own search APIs.
 Rejected: FTS5 or the `unicode61` tokenizer (not guaranteed in the SQLite of minSdk 26 devices), a bundled
 SQLite (`.so` files and their 16 KB alignment checks), a search server of our own.
 
-## 2026-11-08 — The catalog is exported from Wikidata and shipped as files, without a server (*planned*)
+## 2026-11-08 — The catalog is exported from Wikidata and shipped as files, without a server
 A script in the repository, run by hand or by a weekly CI job and never on devices, exports paintings with an
 image and at least 3 Wikipedia articles (about 9,600). Their metadata is CC0 and their files are on Commons,
 which hosts only free files, so there is no copyright or death-date filter. The script records each image's
@@ -406,6 +405,10 @@ retries only the failed queries, and fails rather than write a partial catalog. 
 one GitHub release with the fixed tag `catalog`, replaced on each update, and the app reads
 `https://github.com/hsw/inkeasel/releases/download/catalog/<file>`. Asset names are flat (`core.jsonl.gz`,
 `labels-<lang>.jsonl.gz`, `labels-all.jsonl.gz`), since a release asset cannot sit in a directory.
+Implemented (2026-11-09): the export, the starter set (one labels file per language), its import, the
+staged release import and the weekly check per file; the device fetches `core` and the labels of its
+language chain, English and `mul`. Still *planned*: the weekly CI job for the export, and the
+all-languages file on the device, which waits for the search.
 Rejected: one labels file with all languages on the device (3.8 MB gzip, but about 16 MB of text and an
 estimated 30–40 MB in SQLite with the search index, too much for 8 GB TV boxes), querying Wikidata from
 devices for the catalog, a backend of our own (not needed; the format lets a server serve it later),
@@ -417,6 +420,8 @@ English is the base. The app is translated into the languages that both Wikipedi
 support, and none gets preference: Russian is one translation among the others. Picture titles and artists
 come from the catalog in the UI language, falling back to English, then to the original label. Translation
 feedback goes to GitHub Issues.
+Implemented so far (2026-11-09): catalog titles, artists and museums follow the UI language's chain, then
+English, then any stored label. The translations beyond English and Russian are still *planned*.
 Rejected: keeping English and Russian as the two first-class languages.
 
 ## 2026-11-08 — One "Catalog" section, sorted by fame, with filters and search

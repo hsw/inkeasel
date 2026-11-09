@@ -85,7 +85,7 @@ settings, deletes all of them.
   poster can be switched off without revoking the access; the reading then goes on (see above) until the
   access is revoked. Low-memory devices with Android 10 or older do not allow this access at all: there the
   app has no poster and asks for nothing.
-- **Internet**: the catalog downloads (the catalog files and the lists and images of the catalogs) and
+- **Internet**: the catalog downloads (the catalog files, the Cleveland and Commons lists and the images) and
   poster artwork above.
 - **Foreground service** (connected device): keeps a picture upload to the frame running for the few seconds
   it takes when you leave the app. Now-playing posters normally run without it; it keeps one running only
