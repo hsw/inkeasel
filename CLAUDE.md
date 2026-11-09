@@ -2,185 +2,83 @@
 
 Android app (Kotlin, Compose; `androidx.tv.material3`) that uploads pictures and now-playing posters to an
 e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets and phones (touch via
-`Modifier.onTap`, `Touch.kt`). Behaviour and code map: `README.md`. Deferred work: `docs/backlog/`;
-implementation plans: `docs/plans/`. Both are local and git-ignored: never stage, commit or force-add them.
-Design decisions, with reasons and rejected options: `docs/decisions.md` (committed, newest first); a decision
-or deviation made in a change gets its entry in the same commit.
+`Modifier.onTap`, `Touch.kt`).
+
+## Where things are written
+
+- `README.md`: the user guide only (what it does, install, getting started, using it). No class names, prefs
+  keys or code paths there.
+- `docs/` by subsystem — read the one you are about to change first:
+  - `docs/architecture.md`: code map, screens and navigation, the gate, permissions UX, Share, uploads,
+    network, privacy in the code;
+  - `docs/catalog.md`: the catalog database, starter set, release sync, live sources, ranking, nudity,
+    `tools/catalog-export.py` and `tools/catalog-nsfw.txt`;
+  - `docs/now-playing.md`: the poster pipeline, granting notification access, its emulator tests;
+  - `docs/frames.md`: supported panels, choosing the frame, uploading to it;
+  - `docs/building.md`: build, tests, emulators and device techniques, lint, CI, R8, releasing and signing;
+  - `docs/protocol.md`: the frame's BLE protocol and image formats;
+  - `docs/decisions.md`: design decisions with reasons and rejected options (committed, newest first).
+- `PRIVACY.md` is the privacy policy (shown in the app as `settings_privacy_url`); it must say exactly what the
+  code does (what is read, when, what is stored): a change to either updates the other.
+- A behaviour change updates its subsystem's `docs/*.md` in the same commit, and `README.md` too when a user
+  would notice it. A decision or deviation made in a change gets its `docs/decisions.md` entry in the same
+  commit.
+- `docs/backlog/` (deferred work) and `docs/plans/` (implementation plans) are local and git-ignored: never
+  stage, commit or force-add them.
 
 ## Build and test
-- `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug lintDebug`
-  In the sandboxed agent shell `packageDebugResources` may fail (`clonefile` → "Operation not permitted"):
-  add `-x packageDebugResources` for a test-only run. A clean `app/build` can fail once in
-  `parseDebugLocalResources` ("!directory.isDirectory()"); rerunning passes.
-- Android SDK path is in `local.properties` (git-ignored). compileSdk and targetSdk 36 on AGP 8.9.1 (the oldest
-  that supports 36), Gradle 8.11.1, Kotlin 2.0.21, minSdk 26.
-- Room 2.6.1 (compiler through KSP `2.0.21-1.0.28`) and Paging 3.3.6 are pinned: Room 2.7+ pulls
-  kotlin-stdlib 2.1 over the 2.0.21 compiler, paging-compose 3.4+ pulls Compose foundation over the BOM.
-  After a dependency change check `./gradlew :app:dependencies` that Compose stays on the BOM and
-  kotlin-stdlib on 2.0.x. Room exports each schema version to `app/schemas/` (committed). MockWebServer is
-  pinned to 4.12.0 so the test classpath keeps the app's OkHttp 4.12.0 (5.x pulls OkHttp 5). After an entity
-  change KSP's incremental output can go stale (a `*_Impl.java` constructor mismatch in
-  `compileDebugJavaWithJavac`): delete `app/build/generated/ksp` and build again.
-- Room DAOs and the database run as JVM unit tests under Robolectric 4.16.1 at SDK 36
-  (`app/src/test/resources/robolectric.properties`; it needs JDK 21). Its first run downloads
-  `android-all-instrumented` (about 200 MB) from Maven Central into `~/.m2/repository`; a sandboxed shell
-  without network or write access there fails at that point, so run it once outside the sandbox. Its SQLite
-  is newer than minSdk 26's (3.18): a passing test does not make newer SQL safe (UPSERT needs 3.24, window
-  functions 3.25, `RETURNING` 3.35), and before 3.32 a statement binds at most 999 parameters, so a long
-  `IN (:ids)` goes in chunks (`CatalogDao.markListed`, `LISTED_CHUNK`; its test passes a small chunk, as
-  Robolectric binds far more). Room 2.6: `fallbackToDestructiveMigration()` alone covers an upgrade and a
-  downgrade; adding `fallbackToDestructiveMigrationOnDowngrade()` after it makes an upgrade ask for a
-  migration again. OkHttp's own `RetryAndFollowUpInterceptor` repeats a 503 carrying
-  `Retry-After: 0` once: a test that counts requests answers another code (`CatalogSyncTest` uses 500).
-- The catalog starter set (`app/src/main/assets/catalog/`) is cut from the published `catalog` release, never
-  edited by hand: download its `core.jsonl.gz` and `labels-all.jsonl.gz`, then
-  `python3 tools/catalog-export.py app/src/main/assets/catalog --starter-from <dir>` (no Wikimedia request;
-  `StarterAssetsTest` checks the result). Its labels are one `labels-<lang>.jsonl.gz` per language, as in the
-  release, so the first start reads only its languages' files. AGP's asset merge decompresses `.gz` assets,
-  so the APK holds `catalog/core.jsonl` and `catalog/labels-<lang>.jsonl` (deflated, about the same size):
-  open those names (`CatalogStore.labelsAsset`).
-  The starter never carries an explicit painting (listed in `tools/catalog-nsfw.txt`, or `"nsfw":
-  "explicit"` in the release): the cut leaves it out and reads on in fame order to 1,000 rows.
-  `tools/catalog-nsfw.txt` (`--nsfw-list`; `<Q-id> <explicit|nude>  # <title>`) is kept by hand; the app
-  builds the same ids in (`Nudity.EXPLICIT`, `Nudity.NUDE`) and `NudityTest` checks they equal the file, so an
-  edit changes both.
-  `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the nudity list, the
-  starter cut); it is not in CI, so run it after changing the tool. A full export takes 20+ minutes of
-  Wikidata load: test a change with `--fame-file` on a handful of ids instead.
-- Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
-  Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
-  Start: `$ANDROID_SDK/emulator/emulator -avd <name>` (the SDK that has the emulator and system images).
-  Emulator Bluetooth is virtual: uploads to a real frame need a real device.
-- The emulator's DNS is flaky right after boot; a catalog "Unable to resolve host" usually passes on retry.
-- `lintDebug` has no errors; a new one is a regression. `bluetooth_le` stays `required="true"` (BLE is the
-  only transport) with `UnsupportedTvHardware` suppressed in the manifest. `StringResourcesTest` checks that
-  both string tables have the same keys and placeholders.
-- CI (`.github/workflows/`): `ci.yml` runs the build above (a lint error fails it) plus `assembleRelease`;
-  `release.yml` builds a signed APK for a `v*` tag with a read-only token and publishes it from a separate job
-  that runs no build, marked latest (`releases/latest` is the app download). The catalog files live in a
-  separate release with the fixed tag `catalog` (built by `tools/catalog-export.py`, assets replaced in place,
-  never latest); no workflow touches it.
-  Release signing comes only from `INKEASEL_KEYSTORE`, `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`;
-  none set falls back to the debug key, a partial set fails a release packaging task (not release unit tests
-  or lint). No keystore or secret in the repo.
-- Release uses R8 (code and resource shrinking) with `-dontobfuscate` (public code; readable traces and
-  `Throwable.userText` class names). Add a keep rule to `app/proguard-rules.pro` only when an R8 warning or a
-  release smoke test proves it necessary; smoke-test the release APK after a dependency change.
-- Play requires 16 KB page-size alignment. After a dependency change that may bring native code, check the
-  release APK with `zipalign -c -P 16 -v 4 app-release.apk` and that each `.so` has 16 KB-aligned LOAD
-  segments (today the only one is Compose's `libandroidx.graphics.path.so`).
-- Emulator techniques: to force an offline or slow catalog, airplane mode does not cut the TV emulator's
-  ethernet; set a dead global proxy (`adb shell settings put global http_proxy localhost:9`; undo with
-  `settings delete global http_proxy` and `settings put global http_proxy :0`). `adb exec-out screencap -p`
-  returns black frames on the TV emulator: use `adb shell screencap -p /sdcard/s.png`, `adb pull`, then
-  delete the file. README screenshots live in `docs/screenshots/` (English UI, nothing identifying, the
-  tablet's status bar in demo mode, compressed with pngquant).
-- Catalog on an emulator: watch it with `adb logcat -s CatalogStore CatalogSync LiveRefresh` ("starter set
-  imported in N ms"). Measure import times only on a release build: a debug build is several times slower
-  (5–9 s against 1–2 s). An app locale outside the generated localeConfig (e.g. `doi-IN`) is not applied by
-  Android, so a label chain with no labels file is testable only in Robolectric (`CatalogStoreTest`). A fast
-  D-pad scroll makes `upload.wikimedia.org` answer 429 with `Retry-After: 11`: the case the host hold covers
-  (`RetryInterceptor`), visible in logcat after a scroll.
-- Poster path on an emulator: a poster needs a media session with artwork, and YouTube does not run there,
-  so use a throwaway media-session helper app (never committed, uninstalled afterwards). Unbind the listener
-  to test the hold fallback with
-  `adb shell cmd notification disallow_listener io.github.hsw.inkeasel/.nowplaying.NowPlayingListener`
-  (`allow_listener` undoes it). `adb shell dumpsys activity services io.github.hsw.inkeasel` shows whether
-  `UploadService` runs (a poster with the listener bound shows only `NowPlayingListener`), `dumpsys activity
-  processes` the `curProcState`. With the app in the background, Android 12+ refuses the hold start
-  (`ForegroundServiceStartNotAllowedException`), which reproduces the refused-hold path.
+
+- `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug lintDebug` (CI adds `assembleRelease`).
+  Everything else about building, testing and releasing: `docs/building.md`.
+- In the sandboxed agent shell `packageDebugResources` may fail (`clonefile` → "Operation not permitted"):
+  add `-x packageDebugResources` for a test-only run. Robolectric's first run downloads about 200 MB into
+  `~/.m2/repository`; a sandboxed shell without network or write access there fails at that point, so run it
+  once outside the sandbox.
+- Rules that cost a lot when broken (reasons in the docs):
+  - Room 2.6.1, Paging 3.3.6 and MockWebServer 4.12.0 are pinned; after a dependency change check
+    `./gradlew :app:dependencies` (Compose on the BOM, kotlin-stdlib on 2.0.x) and smoke-test the release APK.
+  - SQL must run on SQLite 3.18 (minSdk 26): no UPSERT, window functions or `RETURNING`; at most 999 bound
+    parameters per statement. A passing Robolectric test does not prove it.
+  - A catalog schema change bumps the version and commits its export in `app/schemas/`; keep
+    `fallbackToDestructiveMigration()` alone (adding `…OnDowngrade` breaks upgrades).
+  - The starter set in `app/src/main/assets/catalog/` is cut from the published `catalog` release with
+    `tools/catalog-export.py --starter-from`, never edited by hand; `tools/catalog-nsfw.txt` and
+    `Nudity.EXPLICIT`/`Nudity.NUDE` change together (`NudityTest`). Run `python3 tools/catalog-export.py
+    --self-test` after changing the tool.
+  - `lintDebug` has no errors; a new one is a regression.
+  - Add a keep rule to `app/proguard-rules.pro` only when an R8 warning or a release smoke test proves it
+    necessary.
+- Release signing comes only from the four `INKEASEL_*` secrets; never put a keystore or a secret in the repo.
 
 ## Conventions
-- Code, comments, commit messages, README and backlog items: English. UI strings live in resources:
-  English in `res/values/strings.xml`, Russian in `res/values-ru/strings.xml`; every new string goes into
-  both (`lintDebug` flags a gap as `MissingTranslation`). No hard-coded user-facing text in Kotlin, nor
-  capitalisation, punctuation or separators added to a resolved text (`list_separator`, `*_sentence` forms).
-  Name lists (a painting's artists) come from the database as lists and are joined at the edge with the
-  translatable `list_names_separator`, never in SQL or in a mapper.
-  Keys are `<area>_<what>` (`catalog_`, `details_`, `viewer_`, `settings_`, `frame_`, `perm_`, `access_`,
-  `feature_`, `advert_`, `reason_`, `bt_`, `scan_`, `upload_`, `share_`), in that area's block of the file; a lowercase fragment
-  nested in another text (an error's reason) is `<area>_err_<what>`, `<area>_toast_<what>` is only a toast.
-- Pure logic stays free of Android types so it runs as JVM unit tests (see `nowplaying/`, `FrameFormat.kt`).
-  `org.json` counts as pure, since the JVM tests use the real library (`testImplementation org.json:json`;
-  it differs from Android's in corner cases such as `optString` on JSON null, so keep to plain values); any
-  other `android.*` class does not.
-  It returns a `Txt` (`R.string` id + args; `Txt.kt`) instead of a string, and tests compare `Txt` values,
-  not translations. Upload- and share-path failures meant for the user throw `TxtException` (details such as
-  a URI or a file name go into its cause, for the log); other exceptions keep their raw message inside a
-  generic text (`Throwable.userText` in `Txt.kt`). `Txt` is put into words only at the edge
-  (`TxtAndroid.kt`: `resolve(ctx)`, `@Composable text()`). Stored data (`FrameStore`, `DefaultStore`) never
-  holds translated text.
+
+- Code, comments, commit messages, README, docs and backlog items: English. UI strings live in resources
+  (`res/values/strings.xml`, `res/values-ru/strings.xml`); every new string goes into both. No hard-coded
+  user-facing text in Kotlin, nor capitalisation, punctuation or separators added to a resolved text. Key
+  naming and the `Txt` rules: `docs/architecture.md`.
+- Pure logic stays free of Android types (`org.json` counts as pure) so it runs as JVM unit tests; it returns a
+  `Txt`, and tests compare `Txt` values, not translations.
 - tv-material components ignore touch: every new clickable component also gets `Modifier.onTap(...)`.
-- Orientation is free and rotation does not recreate `MainActivity` (`configChanges`): keep state that must
-  survive in Compose, not in a recreate. Widths come from `CatalogLayout.forWidth` (columns, padding, split
-  header); a TV (960 dp) must keep 4 columns, the 48 × 27 dp overscan margins and one header row.
-- `BlePermissions` is the one BLE permission set (scan + connect on 12+, fine location before); every screen
-  asks for and checks it through it. "Permissions and features" in the settings is where the app shows what
-  it needs; a new permission or feature switch gets a row there. A Catalog content setting goes into the
-  settings' "Catalog" group instead.
-- Now-playing poster: `FeatureStore.posterEnabled` (default on) gates `FrameController` before any frame
-  rule; whoever changes it calls `FrameController.onPosterSwitched()`. Notification access screens differ per
-  device (`ListenerAccess`: detail screen, list screen, or the adb hint on older Android TV).
-- Uploads: one process-wide `UploadEngine` (pure core `UploadEngineCore`) holds the queue and the worker.
-  Automatic uploads go straight to it from `FrameController` (`AutoUploader`) with no foreground service
-  while `NowPlayingListener` is bound; only while it is not bound they are held work and `UploadService`
-  is started with `ACTION_HOLD` (a refused start is only logged, the engine still reports the request once);
-  when it unbinds, unheld work still queued or in flight is made held (`AutoUploader.listenerLost`). A
-  replaced automatic request is reported from inside `submit`, so `FrameController.onUploadResult` re-enters
-  under the controller's lock: nothing may follow `uploader.upload` there. The report rules are pure
-  (`UploadReports`) and the controller tests use them; never copy them into a test rig.
-  Manual uploads and shares run in `UploadService` (`connectedDevice`), which stops with
-  `stopSelfResult` once the engine reports its held work done; it reports nothing itself. Lock order is
-  controller → engine: the engine resolves the controller lazily and never calls it (or `onIdle`) under its
-  own lock. `UploadService` takes only manual extras and is not exported; only the debug manifest overlay
-  (`app/src/debug/AndroidManifest.xml`) exports it for the adb trigger, and `ManifestTest` guards that.
-- What plays reaches the log only through `MediaLog` (`title`, `key`, `error`): a new log line with a
-  now-playing title, a poster or `onFrame` key, or an artwork address uses it, so a release build logs none.
-- Notification access is asked for only through the disclosure panel in "Permissions and features"
-  (`PosterSwitch.press` → `DISCLOSE`, then "Continue"); a new way into the grant, including a hint text such
-  as the TV menu path or the adb command, goes through it too (`ListenerAccessUi.rowMenuHint`). `PRIVACY.md`
-  must say exactly what the code does (what is read, when, and what is stored); a change to either updates
-  the other. The privacy policy is `PRIVACY.md`, shown as `settings_privacy_url`; a TV never launches a
-  browser.
-- Share → InkEasel (`ShareActivity`, rules in `ShareRules`): only `content://` URIs of other apps; the copy is
-  capped and goes through a `.part` file; without the permissions it waits in the app (pending share, 1 h),
-  with no frame chosen the share itself says so. Toasts after the share has finished may be dropped on
-  Android 13+ (no notification permission), so the share reports its own outcome while in the foreground.
-- Network: every request goes through `Http.client` (User-Agent, `maxRequestsPerHost = 4`,
-  `RetryInterceptor`); a `newBuilder()` of it is fine (a call timeout), a new `OkHttpClient` is not. The
-  interceptor's host hold applies only to requests tagged `Holdable` (a card's thumbnail, tagged on Coil's
-  `ImageRequest`, which passes its tags to OkHttp); a request a user asked for (the frame upload, the
-  viewer's image) is never tagged, so it is never refused locally. Coil's loader is installed only by
-  `Images.install` (once per process; Coil allows one `DiskCache` per folder, `cacheDir/image_cache`).
-- Catalog (`catalog/`): `CatalogStore` is the one owner of `CatalogDb` and its scope (never a screen's), and
-  every catalog write (starter, release swap, live refresh) takes its write `Mutex`; network requests run outside
-  it (the release sync and `LiveRefresh` fetch first, then write through the lock they are given). A release
-  import streams into the `_stage` tables, then swaps in one transaction that also writes the files' ETag and
-  SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes nothing. `rank` (unique) and `hidden`
-  are stored, recomputed by `CatalogDao.rerank` (rules in the pure `CatalogRank`) inside the write transaction,
-  never in the paging query (`WHERE hidden = 0 AND nudity < :nudityBelow ORDER BY rank`, on the index
-  `(hidden, rank, nudity)`). Catalog files come only from `releases/download/catalog/<file>`
-  (`CatalogSync.RELEASE`), never `releases/latest` (the APK). The Pager keeps a bounded window
-  (`maxSize = MAX_ROWS`); no DAO returns the whole list. Every id keeps its `<source>:` prefix
-  (`wd:`, `cma:`, `commons:`). The paged grid keys its items by index, not by row id (an id key replaces a
-  focused placeholder when its page arrives, and the D-pad focus is lost), and a placeholder is the same
-  `PictureCard` node, empty. Live sources (`LiveRefresh`, rules in the pure `LiveSourceRows`) keep their weekly
-  state as `live-<source>` rows in `catalog_file`; no release file may take that prefix. The database holds only
-  re-downloadable data: a schema change bumps the version (destructive fallback both ways) and its export in
-  `app/schemas/` is committed.
-- Catalog nudity: each row stores `nudity` (`NudityLevel` ordinal) = `Nudity.levelOf`, the strictest of the
-  release's `nsfw`, the built-in list and the nude genre (a source never lowers it; live rows 0), and each
-  process start raises stored rows to the list (`CatalogDao.markListed`). Every query the grid and the viewer
-  read takes `nudityBelow` (`pages`, `count`, `PLACED_ROW`, `FROM_RANK`), so "n / N" counts what the grid
-  shows; the order is computed over all levels, so a filter change writes nothing and a process start ranks
-  nothing again; only `checkEmpty` counts unfiltered. In force is `NudityFilter.effective(choice, lock)`; the
-  lock (`NudityLockReader`) is read at every `onStart` and when the settings open, never stored, and
-  `PRIVACY.md` says what it reads. A change of the filter in force (`MainViewModel.applyNudity`, the one
-  place) closes a Catalog viewer and the details of a Catalog picture and drops the Bluetooth panel's Catalog
-  picture; the grid scrolls to its top after moving a card's focus to the tab.
+- Rotation does not recreate `MainActivity`: keep state that must survive in Compose. Widths come from
+  `CatalogLayout.forWidth`; a TV (960 dp) must keep 4 columns, the 48 × 27 dp overscan margins and one header
+  row.
+- `BlePermissions` is the one BLE permission set; a new permission or feature switch gets a row in "Permissions
+  and features", a Catalog content setting goes into the settings' "Catalog" group.
+- Notification access is asked for only through the disclosure panel (`PosterSwitch.press` → `DISCLOSE`); any
+  new way into the grant goes through it too.
+- Whoever changes `FeatureStore.posterEnabled` calls `FrameController.onPosterSwitched()`. Nothing may follow
+  `uploader.upload` in `FrameController` (re-entry under its lock). Lock order is controller → engine. Never copy
+  `UploadReports` into a test rig.
+- What plays reaches the log only through `MediaLog`.
+- Every request goes through `Http.client` (a `newBuilder()` of it is fine, a new `OkHttpClient` is not); only
+  requests tagged `Holdable` may be held.
+- Every catalog write takes `CatalogStore`'s write `Mutex`; network requests run outside it. No DAO returns the
+  whole list. Every query the grid or the viewer reads takes `nudityBelow`; every open or send of a Catalog
+  picture goes through `MainViewModel.whenAllowed`.
+- `UploadService` is exported only in the debug manifest overlay (`ManifestTest`).
 
 ## Public-repo hygiene
-This repository will become public. Committed text must contain no IP addresses, MAC addresses of real
-devices, names of real frames (use `NM000001`), hostnames, local or home-directory paths, or names of other
-private projects. Commits use the GitHub noreply address (set in `.git/config`) and never carry a
-`Claude-Session` trailer or session links. Never commit `local.properties`, keystores or APKs.
+This repository is public. Committed text must contain no IP addresses, MAC addresses of real devices, names
+of real frames (use `NM000001`), hostnames, local or home-directory paths, or names of other private projects.
+Commits use the GitHub noreply address (set in `.git/config`) and never carry a `Claude-Session` trailer or
+session links. Never commit `local.properties`, keystores or APKs.
