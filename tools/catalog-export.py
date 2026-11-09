@@ -492,11 +492,12 @@ def explicit_ids(levels):
 
 
 def write_starter(d, core, labels, langs, size, wanted):
-    """The starter set: the first `size` core rows not marked `nsfw: "explicit"` (a full run's rows carry the
-    list's level; `starter_from` leaves listed ids out itself) and their labels in the `wanted` languages, one file per language as in the release (a language with no label of a starter
-    entity gets no file). Removes the starter files already in `d`. Returns (paintings, languages, label
-    rows)."""
-    starter = [row for row in core if row.get("nsfw") != "explicit"][:size]
+    """The starter set: the first `size` core rows not marked `nsfw: "explicit"` (`is_explicit` with no
+    listed ids: a full run's rows carry the list's level; `starter_from` leaves listed ids out itself) and
+    their labels in the `wanted` languages, one file per language as in the release (a language with no
+    label of a starter entity gets no file). Removes the starter files already in `d`. Returns (paintings,
+    languages, label rows)."""
+    starter = [row for row in core if not is_explicit(row, ())][:size]
     order = entity_order(starter)
     clear_old(d)
     write_gz(os.path.join(d, "core.jsonl.gz"), starter)

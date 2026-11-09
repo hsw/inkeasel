@@ -434,8 +434,8 @@ Below the frame list, **Settings → Catalog** has one row, **Nudity**, with the
 explicit works" (the default), "Hide all nudity" or "Show all". A press (OK or a tap) moves to the next value
 in that order and applies it at once (prefs `catalog`, key `nudity`); under the value the row says that works
 are marked from Wikidata and a hand-checked list and that some may not be marked (Cleveland and Commons rows
-never are). The device can lock it at "Hide all nudity" (`CatalogFilterStore.readLock`, read at each start of
-the activity, so also on a return to the foreground, and when the settings open; never stored): Android TV's
+never are). The device can lock it at "Hide all nudity" (`NudityLockReader`, read at each start of the
+activity, so also on a return to the foreground, and when the settings open; never stored): Android TV's
 parental controls on (`TvInputManager.isParentalControlsEnabled()`; phones and tablets without
 `android.software.live_tv` have no such service), or a user that may not change accounts
 (`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for a restricted profile, and on some managed devices). The row
@@ -638,9 +638,9 @@ Code:
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
   "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access,
   the privacy policy row)
-- `CatalogFilterStore.kt`: the Catalog's nudity filter as chosen (prefs `catalog`) and the device's lock on
-  it (`readLock`: TV parental controls, a restricted profile); `NuditySetting.kt`: the lock decision, the
-  press's next value and the row's texts (pure)
+- `CatalogFilterStore.kt`: the Catalog's nudity filter as chosen (prefs `catalog`); `NudityLockReader.kt`: the
+  device's lock on it (TV parental controls, a restricted profile); `NuditySetting.kt`: the lock decision,
+  the press's next value and the row's texts (pure)
 - `BlePermissions.kt`: the Bluetooth permission set, whether it is granted or blocked (only once a denial
   was seen: a dismissed dialog does not count), whether the first-run panel was answered, and App info
 - `BleAsk.kt`: when and how the app asks for Bluetooth: the first-run panel, a pressed or shared picture, its

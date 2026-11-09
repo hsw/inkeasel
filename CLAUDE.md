@@ -174,8 +174,8 @@ or deviation made in a change gets its entry in the same commit.
   read takes `nudityBelow` (`pages`, `count`, `PLACED_ROW`, `FROM_RANK`), so "n / N" counts what the grid
   shows; the order is computed over all levels, so a filter change writes nothing and a process start ranks
   nothing again; only `checkEmpty` counts unfiltered. In force is `NudityFilter.effective(choice, lock)`; the
-  lock (`CatalogFilterStore.readLock`) is read at every `onStart` and when the settings open, never stored,
-  and `PRIVACY.md` says what it reads. A change of the filter in force (`MainViewModel.applyNudity`, the one
+  lock (`NudityLockReader`) is read at every `onStart` and when the settings open, never stored, and
+  `PRIVACY.md` says what it reads. A change of the filter in force (`MainViewModel.applyNudity`, the one
   place) closes a Catalog viewer and the details of a Catalog picture and drops the Bluetooth panel's Catalog
   picture; the grid scrolls to its top after moving a card's focus to the tab.
 

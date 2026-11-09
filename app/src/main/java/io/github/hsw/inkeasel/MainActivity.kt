@@ -125,7 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     var nudityChoice by mutableStateOf(catalogFilter.nudity)
         private set
 
-    /** The device's lock on the filter ([CatalogFilterStore.readLock]): read at each start and when the settings open. */
+    /** The device's lock on the filter ([NudityLockReader]): read at each start and when the settings open. */
     var nudityLock by mutableStateOf<NudityLock?>(null)
         private set
 
@@ -138,7 +138,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * the settings open (in a split screen the system settings change it while the app stays started).
      */
     fun readNudityLock() {
-        nudityLock = CatalogFilterStore.readLock(getApplication())
+        nudityLock = NudityLockReader.read(getApplication())
         applyNudity()
     }
 
@@ -635,7 +635,8 @@ fun App(
     LaunchedEffect(Unit) {
         vm.catalogNudityBelow.drop(1).collect {
             if (contentFocused && vm.tab == MainViewModel.CATALOG_TAB) runCatching { tabFocus.requestFocus() }
-            catalogGrid.scrollToItem(0)
+            // its own coroutine, as Back's: a refused scroll (a drag holds the grid) must not end the collector
+            launch { catalogGrid.scrollToItem(0) }
         }
     }
     val scope = rememberCoroutineScope()

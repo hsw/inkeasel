@@ -61,12 +61,11 @@ class StarterSet(
  * the release it came with is not imported again; the order does not depend on the level, so nothing is
  * ranked again) and the old list cache, [legacy], is deleted; then each [start] (every app start, each return
  * of the app's screen to the foreground, [startOnEachStart], and a new UI language, which re-creates the
- * activity) runs a pass: the starter's labels of a chain
- * language the database has none of, the release sync, which fetches only the files that are due
- * ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch outside the lock and
- * write under it, so a pass with nothing due makes no request. Passes run one after another; a [start]
- * during a pass asks for one more. A failed step is logged and the next pass tries again.
- * The Catalog tab reads the list through [pages], filtered by [nudityBelow].
+ * activity) runs a pass: the starter's labels of a chain language the database has none of, the release sync,
+ * which fetches only the files that are due ([CatalogSyncPlan]), then the live sources that are due
+ * ([LiveRefresh]); both fetch outside the lock and write under it, so a pass with nothing due makes no request.
+ * Passes run one after another; a [start] during a pass asks for one more. A failed step is logged and the next
+ * pass tries again. The Catalog tab reads the list through [pages], filtered by [nudityBelow].
  */
 class CatalogStore internal constructor(
     val db: CatalogDb,
@@ -116,11 +115,11 @@ class CatalogStore internal constructor(
 
     /**
      * The list ([CatalogDao.pages]) over the current [chain] and [nudityBelow]: a change of either starts a new
-     * pager. It starts once
-     * the starter step has run, so its first query neither waits for the starter's transaction nor holds it
-     * up; until then it gives nothing, and the list shows that it is loading. At most [MAX_ROWS] rows stay
-     * loaded: pages far from where the list is read are dropped (they show as placeholders and load again
-     * when scrolled back to), so scrolling through the whole catalog never holds all of it in memory.
+     * pager. It starts once the starter step has run, so its first query neither waits for the starter's
+     * transaction nor holds it up; until then it gives nothing, and the list shows that it is loading. At most
+     * [MAX_ROWS] rows stay loaded: pages far from where the list is read are dropped (they show as placeholders
+     * and load again when scrolled back to), so scrolling through the whole catalog never holds all of it in
+     * memory.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val pages: Flow<PagingData<CatalogRow>> = ready.filter { it }

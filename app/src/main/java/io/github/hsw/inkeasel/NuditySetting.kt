@@ -5,7 +5,7 @@ import io.github.hsw.inkeasel.catalog.NudityFilter
 /**
  * Why the device locks the Catalog's nudity filter at [NudityFilter.HIDE_NUDES] ([NudityFilter.effective]),
  * with the [reason] the settings row shows instead of the press. Read at each start of the activity and when the
- * settings open (`CatalogFilterStore.readLock`); never stored or sent.
+ * settings open ([NudityLockReader]); never stored or sent.
  */
 enum class NudityLock(val reason: Txt) {
     /** Android TV's parental controls are on (`TvInputManager.isParentalControlsEnabled`). */

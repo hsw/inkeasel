@@ -23,8 +23,9 @@ import org.robolectric.Shadows.shadowOf
  * The device's lock read again at an activity start ([MainViewModel.readNudityLock], what `MainActivity.onStart`
  * calls) and when the settings open: a lock switched on or off while the app was in the background puts its
  * filter in force on its return and takes away what shows a Catalog picture picked under the old one (the
- * viewer, the details panel, the Bluetooth panel's picture), but nothing of My pictures. The TV emulator cannot switch parental controls from a
- * shell, so this covers the return path; the restricted-profile restriction stands in for either lock.
+ * viewer, the details panel, the Bluetooth panel's picture), but nothing of My pictures. The TV emulator
+ * cannot switch parental controls from a shell, so this covers the return path; the restricted-profile
+ * restriction stands in for either lock.
  */
 @RunWith(RobolectricTestRunner::class)
 class MainViewModelNudityTest {

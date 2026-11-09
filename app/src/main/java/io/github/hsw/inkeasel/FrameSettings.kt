@@ -74,11 +74,10 @@ private const val TAG = "FrameSettings"
  * "Settings": a full-screen dialog over the catalog. Section "Frame": while the dialog is open it scans for
  * frames and lists them live (one entry per name); choosing a supported frame calls [onSelect], which saves
  * it and closes the dialog. Section "Catalog" ([CatalogSection]): the nudity filter. Section "Permissions and
- * features" ([FeaturesSection]): the Bluetooth permission
- * and the now-playing poster switch with its notification access (a change there applies at once), and the
- * privacy policy link. "Close" and Back call [onCancel] and leave the frame as it was (Back closes the
- * notification-access disclosure first, while it is open). The scan stops when the dialog closes and while
- * the app is in the background.
+ * features" ([FeaturesSection]): the Bluetooth permission and the now-playing poster switch with its
+ * notification access (a change there applies at once), and the privacy policy link. "Close" and Back call
+ * [onCancel] and leave the frame as it was (Back closes the notification-access disclosure first, while it is
+ * open). The scan stops when the dialog closes and while the app is in the background.
  *
  * The whole content scrolls as one column (a phone in landscape is about 380 dp tall), and "Close" sits at
  * the top next to the title, so the first focus needs no scrolling.
