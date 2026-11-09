@@ -3,6 +3,31 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-09 — The catalog checks again each time the app comes back to the foreground
+Found in the review: the store was woken only from `MainActivity.onCreate`, and on a TV the activity and
+the process can stay alive for days, so a file or a live list that fell due, or a request that failed,
+waited for a new activity. Now the activity's lifecycle wakes it at every `onStart`
+(`CatalogStore.startOnEachStart`): the app's start, each return to the foreground and a re-created activity
+(a new UI language). This stays cheap on the main thread and on the network: a start only wakes the store's
+conflated channel, a pass with nothing due makes no request (each file and source keeps its own week, a day
+after a failed import), and the starter set still imports only once per process into an empty database.
+Rejected: `onResume` (it also runs after the permission dialog and the system's other short overlays, with no
+new reason to check), a timer while the app is shown (the weekly rhythm does not need one; a TV left on the
+app for days is the rare case), `ProcessLifecycleOwner` (a new dependency for the one screen that shows the
+catalog).
+
+## 2026-11-09 — A viewer step reads its neighbour, place and count in one statement
+Found in the review: a step read the shown picture's rank, its neighbour, the neighbour's place and the
+list's size in four queries, so an import or a live refresh that committed between them could make Right
+show the same picture again, skip one, or show an "n / N" of another list. Now each step and the viewer's
+opening is one SQL statement (`CatalogDao.next`, `previous`, `placed`): the neighbour with its place and the
+list's size as subqueries, from the shown picture's rank as stored now (the rank it was read with if it is
+gone or hidden). SQLite reads one statement from one state of the database, so a commit falls before or
+after the step, never inside it.
+Rejected: a Room transaction around the four reads (Room begins every transaction `IMMEDIATE` in WAL mode,
+taking the write lock, so a key press would wait behind a release swap that can take seconds on a TV, and
+it would hold up the next import).
+
 ## 2026-11-09 — Only a card's thumbnail is held; what a user asks for is always sent
 Found in the review of the host hold (below): it held a host for every request on the one client, so after a
 thumbnail storm on `upload.wikimedia.org` (`Retry-After: 11`, held up to a minute) **Send to frame** (the
@@ -191,8 +216,9 @@ and other licences (not a Creative Commons deed; a wrong link is worse than none
 ## 2026-11-09 — The catalog syncs at app start, file by file, from the fixed release address
 One process-wide `CatalogStore` owns the catalog database, a coroutine scope of its own (not a screen's) and
 the one write lock every catalog write takes. The app's start (`MainActivity.onCreate`, also after a change of
-the UI language, which re-creates it) wakes it: once per process the starter set goes into an empty database,
-and every start runs a pass that checks only the release files that are due (`CatalogSyncPlan`, pure): `core`
+the UI language, which re-creates it; each return to the foreground too since the entry "The catalog checks
+again each time the app comes back", above) wakes it: once per process the starter set goes into an empty
+database, and every start runs a pass that checks only the release files that are due (`CatalogSyncPlan`, pure): `core`
 and `labels-<lang>` for the chain's languages, English and `mul`, each a week after its own last check, a
 language new to the chain at once, a 404 again a week later. A pass with nothing due makes no request, so
 passes run at every start rather than once per process: on a TV the notification listener keeps the process

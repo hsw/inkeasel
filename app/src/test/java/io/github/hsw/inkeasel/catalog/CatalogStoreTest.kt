@@ -2,6 +2,9 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.paging.testing.asSnapshot
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.Http
@@ -14,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.mockwebserver.MockResponse
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -144,6 +148,38 @@ class CatalogStoreTest {
         awaitPasses(2)
 
         assertEquals(asked, release.requests.size)
+        assertEquals(1, logged.count { it.startsWith("starter set imported") })
+    }
+
+    @Test
+    fun eachReturnToTheForegroundRunsAPassThatFetchesOnlyWhatIsDue() {
+        release.serve(CORE, gzip(listOf(core(1, fame = 50), core(2, fame = 40), core(3))))
+        release.overrides[CORE] = { MockResponse().setResponseCode(500) }
+        val screen = object : LifecycleOwner {
+            override val lifecycle = LifecycleRegistry.createUnsafe(this)
+        }
+        store.startOnEachStart(screen.lifecycle) { ruChain }
+
+        screen.lifecycle.currentState = Lifecycle.State.CREATED
+        assertNull(runBlocking { withTimeoutOrNull(300) { store.passes.first { it >= 1 } } }) // not shown yet
+        screen.lifecycle.currentState = Lifecycle.State.RESUMED // the app's start
+        awaitPasses(1)
+        assertEquals(listOf("wd:Q1", "wd:Q2"), query("SELECT id FROM picture ORDER BY rank")) // core failed
+        val asked = release.requests.size
+
+        // back from the background: the failed core is asked again, the labels files checked just now are not
+        release.overrides.clear()
+        screen.lifecycle.currentState = Lifecycle.State.CREATED
+        screen.lifecycle.currentState = Lifecycle.State.RESUMED
+        awaitPasses(2)
+        assertEquals(asked + 1, release.requests.size)
+        assertEquals(listOf("wd:Q1", "wd:Q2", "wd:Q3"), query("SELECT id FROM picture ORDER BY rank"))
+
+        // and once more with nothing due: a pass, no request, never the starter set again
+        screen.lifecycle.currentState = Lifecycle.State.CREATED
+        screen.lifecycle.currentState = Lifecycle.State.STARTED
+        awaitPasses(3)
+        assertEquals(asked + 1, release.requests.size)
         assertEquals(1, logged.count { it.startsWith("starter set imported") })
     }
 

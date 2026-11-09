@@ -134,10 +134,10 @@ class CatalogImportTest {
     /** The shown pictures in list order, walked by the neighbour query. */
     private suspend fun ids(): List<String> {
         val out = ArrayList<String>()
-        var row = dao.next(Long.MIN_VALUE, ru)
+        var row = dao.next("", Long.MIN_VALUE, ru)?.row
         while (row != null) {
             out += row.id
-            row = dao.next(row.rank, ru)
+            row = dao.next(row.id, row.rank, ru)?.row
         }
         return out
     }

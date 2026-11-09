@@ -2,6 +2,9 @@ package io.github.hsw.inkeasel.catalog
 
 import android.content.Context
 import android.content.res.Configuration
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -53,11 +56,12 @@ class StarterSet(
  * The process-wide owner of the catalog ([get]): the database, a scope of its own (not tied to a screen) and
  * the one write lock that every write to the catalog's tables takes ([write]). [start] begins the work once
  * per process: the starter set goes into an empty database (and the old list cache, [legacy], is deleted),
- * then each [start] (every app start, and a new UI language, which re-creates the activity) runs a pass: the
- * starter's labels of a chain language the database has none of, the release sync, which fetches only the
- * files that are due ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch
- * outside the lock and write under it, so a pass with nothing due makes no request. Passes run one after
- * another; a [start] during a pass asks for one more. A failed step is logged and the next pass tries again.
+ * then each [start] (every app start, each return of the app's screen to the foreground, [startOnEachStart],
+ * and a new UI language, which re-creates the activity) runs a pass: the starter's labels of a chain
+ * language the database has none of, the release sync, which fetches only the files that are due
+ * ([CatalogSyncPlan]), then the live sources that are due ([LiveRefresh]); both fetch outside the lock and
+ * write under it, so a pass with nothing due makes no request. Passes run one after another; a [start]
+ * during a pass asks for one more. A failed step is logged and the next pass tries again.
  * The Catalog tab reads the list through [pages].
  */
 class CatalogStore internal constructor(
@@ -117,6 +121,18 @@ class CatalogStore internal constructor(
         _chain.value = chain
         if (started.compareAndSet(false, true)) scope.launch { work() }
         wake.trySend(Unit)
+    }
+
+    /**
+     * [start] each time [lifecycle] starts: the app's screen opening, and each return of it to the
+     * foreground, so a process that lives for weeks (a TV keeps it for the notification listener) still
+     * checks what fell due meanwhile. Cheap on the main thread: [start] only wakes the work, and a pass with
+     * nothing due makes no request. [chain] is read at each start.
+     */
+    fun startOnEachStart(lifecycle: Lifecycle, chain: () -> List<String>) {
+        lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = start(chain())
+        })
     }
 
     /** Runs [block] under the write lock: writes to the catalog never overlap. */

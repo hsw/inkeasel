@@ -415,9 +415,10 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         Images.install(this)
-        // the catalog database fills and syncs in the background, process-wide; a new UI language re-creates
-        // the activity and so reaches the store here too
-        CatalogStore.get(this).start(CatalogStore.chainOf(resources.configuration))
+        // the catalog database fills and syncs in the background, process-wide: a pass at each start of the
+        // activity (the app's start and each return to the foreground); a new UI language re-creates the
+        // activity and so reaches the store too
+        CatalogStore.get(this).startOnEachStart(lifecycle) { CatalogStore.chainOf(resources.configuration) }
         readBle()
         // a fresh start asks for nothing by itself: without the permission it shows the first-run panel (until
         // answered once), with it and no frame chosen the frame settings ([BleAsk.atStart]); a share comes after

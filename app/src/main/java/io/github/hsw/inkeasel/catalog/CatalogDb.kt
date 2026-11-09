@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
@@ -234,12 +235,32 @@ private const val COLLECTION =
     "(SELECT l.label FROM label l WHERE l.entityId = (SELECT c.entityId FROM picture_entity c " +
         "WHERE c.pictureId = p.id AND c.kind = '${EntityKind.COLLECTION}' ORDER BY c.pos LIMIT 1) " +
         "AND l.label IS NOT NULL $LABEL_ORDER)"
-private const val ROW =
-    "SELECT p.id, p.source, p.rank, p.wikidataId, p.commonsFile, p.museumRef, p.fame, p.width, p.height, " +
+private const val COLUMNS =
+    "p.id, p.source, p.rank, p.wikidataId, p.commonsFile, p.museumRef, p.fame, p.width, p.height, " +
         "p.licence, p.licenceUrl, p.attr, p.attribution, p.inception, " +
         "COALESCE($TITLE, p.title) AS title, COALESCE($ARTISTS, p.artists) AS artists, " +
-        "COALESCE($COLLECTION, p.collection) AS collection, p.date, p.pageUrl, p.thumbUrl, p.fullUrl " +
-        "FROM picture p"
+        "COALESCE($COLLECTION, p.collection) AS collection, p.date, p.pageUrl, p.thumbUrl, p.fullUrl"
+private const val ROW = "SELECT $COLUMNS FROM picture p"
+
+/*
+ * A row with its place in the list and the list's size ([PlacedRow]), all in one statement: SQLite reads a
+ * statement, subqueries included, from one state of the database, so an import or a live refresh that commits
+ * meanwhile cannot give a place or a size of another list than the row's.
+ */
+private const val PLACED_ROW =
+    "SELECT $COLUMNS, (SELECT COUNT(*) FROM picture q WHERE q.hidden = 0 AND q.rank < p.rank) AS position, " +
+        "(SELECT COUNT(*) FROM picture q WHERE q.hidden = 0) AS count FROM picture p"
+
+/** The rank of the shown picture `:id` as stored now; `:rank` (the one read with it) if gone or hidden. */
+private const val FROM_RANK =
+    "COALESCE((SELECT f.rank FROM picture f WHERE f.id = :id AND f.hidden = 0), :rank)"
+
+/** A shown [row] with its 0-based [position] in the list and the list's size ([count]), read at once. */
+data class PlacedRow(
+    @Embedded val row: CatalogRow,
+    val position: Int,
+    val count: Int,
+)
 
 @Dao
 abstract class CatalogDao {
@@ -251,17 +272,20 @@ abstract class CatalogDao {
     @Query("SELECT COUNT(*) FROM picture WHERE hidden = 0")
     abstract suspend fun count(): Int
 
-    /** The 0-based place in the list of the picture at [rank]. */
-    @Query("SELECT COUNT(*) FROM picture WHERE hidden = 0 AND rank < :rank")
-    abstract suspend fun position(rank: Long): Int
+    /**
+     * The shown picture after the picture [id] in the list, with its place and the list's size, in one
+     * statement: from the rank [id] has now, or from [rank] (the one read with it) if it is gone or hidden.
+     */
+    @Query("$PLACED_ROW WHERE p.hidden = 0 AND p.rank > $FROM_RANK ORDER BY p.rank LIMIT 1")
+    abstract suspend fun next(id: String, rank: Long, chain: String): PlacedRow?
 
-    /** The shown picture after [rank] in the list. */
-    @Query("$ROW WHERE p.hidden = 0 AND p.rank > :rank ORDER BY p.rank LIMIT 1")
-    abstract suspend fun next(rank: Long, chain: String): CatalogRow?
+    /** The shown picture before the picture [id] in the list, as [next] reads the one after it. */
+    @Query("$PLACED_ROW WHERE p.hidden = 0 AND p.rank < $FROM_RANK ORDER BY p.rank DESC LIMIT 1")
+    abstract suspend fun previous(id: String, rank: Long, chain: String): PlacedRow?
 
-    /** The shown picture before [rank] in the list. */
-    @Query("$ROW WHERE p.hidden = 0 AND p.rank < :rank ORDER BY p.rank DESC LIMIT 1")
-    abstract suspend fun previous(rank: Long, chain: String): CatalogRow?
+    /** A picture by id if the list shows it (a hidden one is not found), with its place and the list size. */
+    @Query("$PLACED_ROW WHERE p.id = :id AND p.hidden = 0")
+    abstract suspend fun placed(id: String, chain: String): PlacedRow?
 
     /** A picture by id if the list shows it (a hidden one is not found). */
     @Query("$ROW WHERE p.id = :id AND p.hidden = 0")

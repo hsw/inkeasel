@@ -193,15 +193,29 @@ class CatalogDaoTest {
         val rows = everything()
         assertEquals(13, rows.size)
         rows.forEachIndexed { i, row ->
-            assertEquals(i, dao.position(row.rank))
-            assertEquals(rows.getOrNull(i + 1)?.id, dao.next(row.rank, ru)?.id)
-            assertEquals(rows.getOrNull(i - 1)?.id, dao.previous(row.rank, ru)?.id)
+            assertEquals(PlacedRow(row, i, 13), dao.placed(row.id, ru))
+            assertEquals(rows.getOrNull(i + 1)?.let { PlacedRow(it, i + 1, 13) }, dao.next(row.id, row.rank, ru))
+            assertEquals(rows.getOrNull(i - 1)?.let { PlacedRow(it, i - 1, 13) }, dao.previous(row.id, row.rank, ru))
         }
-        // from a hidden row's rank (past the end) there is nothing after, and the last shown row before
+        // from a hidden row (past the end) there is nothing after, and the last shown row before
         val hidden = dao.picture("commons:0")!!
         assertTrue(hidden.hidden)
-        assertNull(dao.next(hidden.rank, ru))
-        assertEquals(rows.last().id, dao.previous(hidden.rank, ru)?.id)
+        assertNull(dao.placed(hidden.id, ru))
+        assertNull(dao.next(hidden.id, hidden.rank, ru))
+        assertEquals(PlacedRow(rows.last(), 12, 13), dao.previous(hidden.id, hidden.rank, ru))
+    }
+
+    @Test
+    fun aNeighbourIsReadFromWhereThePictureIsNowOrFromTheRankReadWithIt() = runTest {
+        dao.insertPictures((0 until 5).map { wd(it) })
+        dao.rerank()
+        val rows = everything()
+        // a stale rank of a picture still shown: its rank as stored now counts
+        assertEquals(rows[3].id, dao.next(rows[2].id, rows[0].rank, ru)?.row?.id)
+        assertEquals(rows[1].id, dao.previous(rows[2].id, rows[4].rank, ru)?.row?.id)
+        // a picture gone since: the rank it was read with
+        assertEquals(PlacedRow(rows[2], 2, 5), dao.next("wd:gone", rows[1].rank, ru))
+        assertEquals(PlacedRow(rows[0], 0, 5), dao.previous("wd:gone", rows[1].rank, ru))
     }
 
     @Test
@@ -229,10 +243,10 @@ class CatalogDaoTest {
         dao.rerank()
         assertEquals(0, dao.count())
         assertEquals(emptyList<CatalogRow>(), everything())
-        assertNull(dao.next(-1, ru))
-        assertNull(dao.previous(Long.MAX_VALUE, ru))
+        assertNull(dao.next("wd:Q1", -1, ru))
+        assertNull(dao.previous("wd:Q1", Long.MAX_VALUE, ru))
         assertNull(dao.row("wd:Q1", ru))
-        assertEquals(0, dao.position(1000))
+        assertNull(dao.placed("wd:Q1", ru))
     }
 
     @Test

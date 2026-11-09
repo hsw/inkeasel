@@ -22,6 +22,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -299,6 +300,57 @@ class RetryInterceptorTest {
         val waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start)
         assertTrue("waited $waited ms", waited >= 1_000)
         assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun aThumbnailRetryIsNotSentWithinAPauseAskedForWhileItWaited() {
+        val c = client()
+        server.enqueue(answer(429, "1")) // the thumbnail: retried after 1 s
+        server.enqueue(answer(429, "30")) // a request a user asked for, meanwhile: the host pauses for 30 s
+        server.enqueue(answer(200, body = "picture"))
+
+        val thumb = Executors.newSingleThreadExecutor()
+        try {
+            val retried = thumb.submit<Pair<Int, String?>> {
+                get(c, holdable = true).use { it.code to it.header("Retry-After") }
+            }
+            assertEquals("/a", server.takeRequest(promptly, TimeUnit.MILLISECONDS)!!.path)
+            get(c, "/full").use { assertEquals(429, it.code) }
+
+            // the retry is answered here with what is left of the new pause, not sent
+            val (code, retryAfter) = retried.get(promptly, TimeUnit.MILLISECONDS)
+            assertEquals(429, code)
+            assertTrue("Retry-After $retryAfter", retryAfter!!.toLong() in 25..30)
+            assertEquals(2, server.requestCount)
+        } finally {
+            thumb.shutdownNow()
+        }
+    }
+
+    @Test
+    fun aHoldMadeLongerWhileAThumbnailWaitsIsWaitedOutToo() {
+        val c = client()
+        // a POST is never retried, so each of its answers only holds the host
+        fun post() = c.newCall(Request.Builder().url(server.url("/p")).post("x".toRequestBody()).build()).execute()
+        server.enqueue(answer(429, "1"))
+        server.enqueue(answer(429, "3"))
+        server.enqueue(answer(200, body = "picture"))
+        post().use { assertEquals(429, it.code) } // held 1 s
+
+        val thumb = Executors.newSingleThreadExecutor()
+        try {
+            val sent = thumb.submit<String> { get(c, holdable = true).use { it.body!!.string() } }
+            Thread.sleep(300) // the thumbnail waits out the 1 s hold
+            val longer = System.nanoTime()
+            post().use { assertEquals(429, it.code) } // held 3 s from now
+
+            assertEquals("picture", sent.get(promptly + 3_000, TimeUnit.MILLISECONDS))
+            val waited = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - longer)
+            assertTrue("sent $waited ms after the longer hold began", waited >= 2_900)
+            assertEquals(3, server.requestCount)
+        } finally {
+            thumb.shutdownNow()
+        }
     }
 
     @Test

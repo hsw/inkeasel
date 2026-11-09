@@ -30,25 +30,24 @@ sent to the developer.**
   device you own; nothing goes through the internet on the way.
 - **Downloads from public addresses:** the catalog's images come from
   [Wikimedia Commons](https://commons.wikimedia.org/) and the Cleveland Museum of Art. Each time the app's
-  screen opens (when the app starts, and when its language changes), it asks the
-  [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and Wikimedia Commons
-  for their lists of landscapes, each at most once a week (again at the next start when a request failed or
-  its answer was empty or cut short). The catalog's files come from the app's public GitHub release
-  (`github.com`, which redirects to `release-assets.githubusercontent.com`): at those same moments it asks
-  for each file at most once a week (again at the next start when a request failed, and a day later when a
-  downloaded file could not be stored), sending the label (ETag) of the copy it already has so that an
-  unchanged file is not sent again; the file of a language the app has just started to need is asked for at
-  once. The names of the files it asks for include the codes of the label languages it needs: the app's
-  language (the device's, unless you chose another one for the app), for some languages also its region or
-  script (for example `en-us`, `pt-br`, `es-419` or `zh-hant`), then English and `mul` (Wikidata's
+  screen opens (when the app starts or comes back to the foreground, and when its language changes), it asks
+  the [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and Wikimedia
+  Commons for their lists of landscapes, each at most once a week (again the next time the screen opens when a
+  request failed or its answer was empty or cut short). The catalog's files come from the app's public GitHub
+  release (`github.com`, which redirects to `release-assets.githubusercontent.com`): at those same moments it
+  asks for each file at most once a week (again the next time the screen opens when a request failed, and a
+  day later when a downloaded file could not be stored), sending the label (ETag) of the copy it already has
+  so that an unchanged file is not sent again; the file of a language the app has just started to need is
+  asked for at once. The names of the files it asks for include the codes of the label languages it needs: the
+  app's language (the device's, unless you chose another one for the app), for some languages also its region
+  or script (for example `en-us`, `pt-br`, `es-419` or `zh-hant`), then English and `mul` (Wikidata's
   language-independent labels). So GitHub can tell that language, and for those languages its region or
-  script, from them. A poster whose artwork the playing app gives as a web
-  link is downloaded from that link. All of these go over https: the app refuses unencrypted connections,
-  also when a server redirects to one. These are ordinary downloads: the server that answers sees your
-  device's IP address and the request, as with any web page, under its own privacy policy. Besides the
-  address it asks for, each request names the app and its version in its User-Agent header (for example
-  `InkEasel/0.1 (+https://github.com/hsw/inkeasel)`, as Wikimedia asks of every client); it carries no
-  identifier, account or personal data.
+  script, from them. A poster whose artwork the playing app gives as a web link is downloaded from that link.
+  All of these go over https: the app refuses unencrypted connections, also when a server redirects to one.
+  These are ordinary downloads: the server that answers sees your device's IP address and the request, as with
+  any web page, under its own privacy policy. Besides the address it asks for, each request names the app and
+  its version in its User-Agent header (for example `InkEasel/0.1 (+https://github.com/hsw/inkeasel)`, as
+  Wikimedia asks of every client); it carries no identifier, account or personal data.
 
 Nothing else is sent: no titles, no pictures, no device or usage data, to the developer or to anyone else.
 

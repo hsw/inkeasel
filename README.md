@@ -118,8 +118,8 @@ tablet).
   with the poster switched off, which only stops the uploads) and used only to pick and time the poster; it
   is not sent anywhere. A release build writes no title and no artwork address to the system log (logcat);
   a debug build does, for development (`MediaLog`).
-- Network traffic is limited to the picture sources: the catalog's lists (at app start or a change of the
-  app's language, each at most once a week) and images from the
+- Network traffic is limited to the picture sources: the catalog's lists (when the app starts or comes
+  back to the foreground, or its language changes, each at most once a week) and images from the
   [Cleveland Museum of Art Open Access API](https://openaccess-api.clevelandart.org/) and
   [Wikimedia Commons](https://commons.wikimedia.org/), the painting catalog's files from the project's
   GitHub release (`github.com`, redirected to `release-assets.githubusercontent.com`; at the same moments,
@@ -267,10 +267,10 @@ pictures yet and that it downloads when the device is online.
 The live sources' lists are rows of the same database: every 10th card is one of them, Cleveland and
 Commons in turn, and they follow the last Wikidata row once those run out; one that is a Wikidata row (the
 same Commons file, or the Cleveland accession number the release has as P11110) is hidden. A source is asked
-in the background at app start, after the release sync, a week after its last whole list: its request runs
-outside the store's write lock (a list request gives up after 60 s; Commons reads at most 3 pages within
-120 s) and its answer replaces the source's rows in one transaction. A failure, an empty answer or a list cut
-short that is smaller than the stored one keeps the rows, and the next start asks again; there is no note
+in the background at app start (and on each return to the foreground), after the release sync, a week
+after its last whole list: its request runs outside the store's write lock (a list request gives up after
+60 s; Commons reads at most 3 pages within 120 s) and its answer replaces the source's rows in one transaction. A failure, an empty answer or a list cut
+short that is smaller than the stored one keeps the rows, and the next pass asks again; there is no note
 and no **Retry** in the Catalog, which always has the starter set. The list cache of older versions
 (`files/catalog/`) is deleted at start.
 
@@ -287,10 +287,12 @@ taken, the file's page (its short `curid` link), the licence with its link and t
 picture in "My pictures" only its name and pixel size.
 
 The painting catalog (the Catalog tab) lives in a Room database, `catalog.db`, owned by one process-wide
-`CatalogStore` that the app's start (`MainActivity`, also re-created by a change of the app's language)
-wakes. On the first start the APK's starter set (the top 1,000) goes into the empty database with the labels
-of the app language's chain, English and `mul`, read from those languages' own files only. Then, at every
-start, the store checks the files of the GitHub release `catalog` that are due:
+`CatalogStore` that the app's screen wakes each time it starts (`MainActivity`'s `onStart`: the app's start,
+each return to the foreground, and a change of the app's language, which re-creates it), so a process that a
+TV keeps for weeks still checks what fell due. On the first start the APK's starter set (the top 1,000) goes
+into the empty database with the labels of the app language's chain, English and `mul`, read from those
+languages' own files only. Then, at every such start (a pass), the store checks the files of the GitHub
+release `catalog` that are due:
 `core.jsonl.gz` and `labels-<lang>.jsonl.gz` for each language of the chain, English and `mul`, each one a
 week after its own last check (a file of a language that just joined the chain at once; a 404 again a week
 later). A check asks `https://github.com/hsw/inkeasel/releases/download/catalog/<file>` with the ETag of the
@@ -300,8 +302,8 @@ files are first streamed into staging tables (one batch in memory at a time), th
 transaction that replaces the release rows (a row already there keeps its place), removes those the new
 `core` no longer has, computes the stored order and the hidden duplicates again and stores the files' ETag
 and hash, so a failed import (or no network) leaves the list as it was. A failed request is asked again at the
-next start; a download that could not be imported (a broken upload, a full disk) a day later, so it is not
-downloaded again at every start. The downloads run outside the store's write lock, each within 10 minutes;
+next pass; a download that could not be imported (a broken upload, a full disk) a day later, so it is not
+downloaded again at every pass. The downloads run outside the store's write lock, each within 10 minutes;
 only the import and the files' state are written under it. A labels file whose every line is bad is refused
 (an empty one empties its language). In short: starter set at the first start → staged release import in
 the background → a check of each file a week later.
@@ -317,8 +319,9 @@ thread never waits (`RetryPolicy.kt`). A host that answered 429 or 503 gets no c
 the pause it asked for is over (at most a minute): a thumbnail asked for in the meantime is answered 429 by
 the app itself, so a fast scroll past hundreds of cards does not send hundreds of thumbnail requests to
 `upload.wikimedia.org` when it asks for a pause (it answers `Retry-After: 11`), and a card whose thumbnail
-was refused so asks again once the pause is over, up to three times while it is on screen. Only the cards'
-thumbnails are held (Coil passes their `Holdable` tag to OkHttp): what a user asked for (the picture sent to
+was refused so asks again once the pause is over, up to three times while it is on screen. A thumbnail
+that waits out a pause or a retry reads the hold again before it is sent, so a longer pause asked for
+meanwhile counts too. Only the cards' thumbnails are held (Coil passes their `Holdable` tag to OkHttp): what a user asked for (the picture sent to
 the frame, the viewer's image) and the lists and release files are always sent, and get the server's own
 answer. Coil keeps up to 150 MB of images in `cacheDir/image_cache`.
 

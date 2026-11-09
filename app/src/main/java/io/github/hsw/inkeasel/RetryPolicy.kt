@@ -119,8 +119,10 @@ object Holdable
  * (the main thread) the answer is returned as it is. The answer that is not used is closed.
  *
  * A host (with its port) that answered 429 or 503 is held ([RetryPolicy.holdMs]): a [Holdable] request to it
- * before the hold ends waits for it where it may wait no longer than [RetryPolicy.MAX_WAIT_MS], and is
- * otherwise answered here, without being sent, with a 429 whose `Retry-After` is what is left of the hold. So a
+ * before the hold ends, its retries included, waits for it where it may wait no longer than
+ * [RetryPolicy.MAX_WAIT_MS], and is otherwise answered here, without being sent, with a 429 whose
+ * `Retry-After` is what is left of the hold; the hold is read again after each wait (another answer may have
+ * made it longer meanwhile), so no thumbnail goes out within a pause asked for while it waited. So a
  * fast scroll past hundreds of cards sends one request to a host that asked for a pause, not hundreds. Any
  * answer holds its host, whatever the request; the hold is kept for the host the request was sent to (a
  * redirect's target is not checked before sending).
@@ -136,20 +138,38 @@ class RetryInterceptor(
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val host = "${request.url.host}:${request.url.port}"
-        val left = (holds[host] ?: 0L) - now()
-        if (left > 0 && request.tag(Holdable::class.java) != null) {
-            if (!mayWait() || left > RetryPolicy.MAX_WAIT_MS) return held(request, left)
-            pause(chain.call(), left)
-        }
+        val holdable = request.tag(Holdable::class.java) != null
+        if (holdable) awaitHold(chain.call(), request, host, Long.MIN_VALUE)?.let { return it }
         var response = send(chain, request, host)
         var retry = 1
         while (true) {
             val wait = RetryPolicy.waitMs(request.method, response.code, response.header("Retry-After"), retry, now())
             if (wait == null || !mayWait()) return response
             response.close()
+            val waitedUntil = now() + wait
             pause(chain.call(), wait)
+            // another answer may have held the host longer while this one waited
+            if (holdable) awaitHold(chain.call(), request, host, waitedUntil)?.let { return it }
             response = send(chain, request, host)
             retry++
+        }
+    }
+
+    /**
+     * Waits out the hold of [host] before a [Holdable] request is sent, beyond [waitedUntil] (a time of
+     * [now]) already waited for: `null` once it is over, or the [held] answer where it may not wait or what
+     * is left is longer than [RetryPolicy.MAX_WAIT_MS]. The hold is read again after each wait, since another
+     * answer may have made it longer meanwhile; an end already waited for is not waited for again.
+     */
+    private fun awaitHold(call: Call, request: Request, host: String, waitedUntil: Long): Response? {
+        var waited = waitedUntil
+        while (true) {
+            val until = holds[host] ?: return null
+            val left = until - now()
+            if (until <= waited || left <= 0) return null
+            if (!mayWait() || left > RetryPolicy.MAX_WAIT_MS) return held(request, left)
+            pause(call, left)
+            waited = until
         }
     }
 
