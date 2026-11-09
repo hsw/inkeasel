@@ -78,7 +78,7 @@ level that "depicts" or the genre sets (an absent list entry cannot be told from
 never be less strict than any source), writing P180 into the row for the app to decide (more data in every
 row and two places to keep the concept ids).
 
-## 2026-11-09 — Explicit paintings never show; the starter set leaves them out
+## 2026-11-09 — Explicit paintings are hidden at once; the starter set leaves them out
 The Catalog showed Courbet's "L'Origine du monde" twelfth by fame, on the first screen of a TV that a family
 shares. No source gives an age rating, and Wikidata's genre (P136 nude, Q40446) and "depicts" (P180) mark
 nudity unevenly and do not tell a classic nude from a work with genitals in focus or sex shown. So the
@@ -446,7 +446,7 @@ labels in the UI languages plus `mul`, 1.1 MB gzipped; one labels file per langu
 starter set is one labels file per language") is cut from the published release files by
 `tools/catalog-export.py --starter-from`, through the same writer as a full export and with no Wikimedia
 request, so its rows are byte for byte lines of the release `core` (the first ones, minus the paintings listed
-as explicit since "Explicit paintings never show; the starter set leaves them out") and the release import
+as explicit since "Explicit paintings are hidden at once; the starter set leaves them out") and the release import
 replaces them in place. It is committed and cut again after each release upload; the build stays offline. All 75
 default languages fit well under the 1.5 MB budget, so the default (`--starter-langs`: the Android UI locales
 that Wikidata covers, plus `mul`) stays. AGP's asset merge decompresses `.gz` assets: the APK holds

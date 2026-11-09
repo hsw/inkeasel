@@ -30,7 +30,10 @@ enum class NudityFilter(val nudityBelow: Int) {
     companion object {
         val DEFAULT = HIDE_EXPLICIT
 
-        /** The filter in force: [HIDE_NUDES] while the device locks it (parental controls), else [choice]. */
+        /**
+         * The filter in force: [HIDE_NUDES] while the device locks it (parental controls, a restricted
+         * profile), else [choice].
+         */
         fun effective(choice: NudityFilter, locked: Boolean): NudityFilter = if (locked) HIDE_NUDES else choice
     }
 }

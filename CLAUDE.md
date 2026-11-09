@@ -35,8 +35,13 @@ or deviation made in a change gets its entry in the same commit.
   release, so the first start reads only its languages' files. AGP's asset merge decompresses `.gz` assets,
   so the APK holds `catalog/core.jsonl` and `catalog/labels-<lang>.jsonl` (deflated, about the same size):
   open those names (`CatalogStore.labelsAsset`).
-  `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the starter cut); it
-  is not in CI, so run it after changing the tool. A full export takes 20+ minutes of Wikidata load: test a
+  The starter never carries an explicit painting (listed in `tools/catalog-nsfw.txt`, or `"nsfw":
+  "explicit"` in the release): the cut leaves it out and reads on in fame order to 1,000 rows.
+  `tools/catalog-nsfw.txt` (`--nsfw-list`; `<Q-id> <explicit|nude>  # <title>`) is kept by hand; the app
+  builds the same ids in (`Nudity.EXPLICIT`, `Nudity.NUDE`) and `NudityTest` checks they equal the file, so an
+  edit changes both.
+  `python3 tools/catalog-export.py --self-test` checks the tool offline (row building, the nudity list, the
+  starter cut); it is not in CI, so run it after changing the tool. A full export takes 20+ minutes of Wikidata load: test a
   change with `--fame-file` on a handful of ids instead.
 - Emulator AVDs: `inkeasel-tablet` (Pixel Tablet, Android 15, Play), `inkeasel-tablet36` (Pixel Tablet,
   Android 16 / API 36, Play image: the target SDK's behaviour changes) and `inkeasel-tv` (Android TV 14).
@@ -148,7 +153,7 @@ or deviation made in a change gets its entry in the same commit.
   import streams into the `_stage` tables, then swaps in one transaction that also writes the files' ETag and
   SHA-256 (`CatalogImport.release`'s `commit`); a failure before it changes nothing. `rank` (unique) and `hidden`
   are stored, recomputed by `CatalogDao.rerank` (rules in the pure `CatalogRank`) inside the write transaction,
-  never in the paging query (`WHERE hidden = 0 ORDER BY rank`). Catalog files come only from
+  never in the paging query (`WHERE hidden = 0 AND nudity < :nudityBelow ORDER BY rank`). Catalog files come only from
   `releases/download/catalog/<file>` (`CatalogSync.RELEASE`), never `releases/latest` (the APK). The Pager keeps
   a bounded window (`maxSize = MAX_ROWS`); no DAO returns the whole list. Every id keeps its `<source>:` prefix
   (`wd:`, `cma:`, `commons:`). The paged grid keys its items by index, not by row id (an id key replaces a
@@ -157,6 +162,13 @@ or deviation made in a change gets its entry in the same commit.
   state as `live-<source>` rows in `catalog_file`; no release file may take that prefix. The database holds only
   re-downloadable data: a schema change bumps the version (destructive fallback both ways) and its export in
   `app/schemas/` is committed.
+- Catalog nudity: each row stores `nudity` (`NudityLevel` ordinal) = `Nudity.levelOf`, the strictest of the
+  release's `nsfw`, the built-in list and the nude genre (a source never lowers it; live rows 0), and each
+  process start raises stored rows to the list (`CatalogDao.markListed`). Every query the grid and the viewer
+  read takes `nudityBelow` (`pages`, `count`, `PLACED_ROW`, `FROM_RANK`), so "n / N" counts what the grid
+  shows; the order is computed over all levels, so a filter change writes nothing; only `checkEmpty` counts
+  unfiltered. In force is `NudityFilter.effective(choice, lock)`; the lock (`CatalogFilterStore.readLock`) is
+  read at every `onStart` and when the settings open, never stored, and `PRIVACY.md` says what it reads.
 
 ## Public-repo hygiene
 This repository will become public. Committed text must contain no IP addresses, MAC addresses of real

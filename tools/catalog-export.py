@@ -470,7 +470,7 @@ def write_release(d, core, labels, langs):
 
 
 def read_nsfw(path):
-    """The nudity list ({id: level}) from `path` (format: see "Nudity list" above). Raises ValueError on a
+    """The nudity list ({id: level}) from `path` (format: see "Nudity" above). Raises ValueError on a
     malformed line, an unknown level or an id listed twice."""
     levels = {}
     with open(path, encoding="utf-8") as f:
