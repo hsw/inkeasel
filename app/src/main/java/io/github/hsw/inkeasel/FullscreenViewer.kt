@@ -6,7 +6,6 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,16 +14,19 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -56,40 +58,40 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.tv.material3.Button
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Scale
-import kotlinx.coroutines.delay
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min
 
 private const val TAG = "FullscreenViewer"
 
-/** Keys that stay the system's: they neither show the overlay nor are taken from it (Back closes the viewer). */
+/** Keys that stay the system's: the viewer neither acts on them nor takes them (Back is the viewer's own). */
 private val SYSTEM_KEYS = setOf(Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Key.Home, Key.Power)
 
 /**
  * A picture full screen ([ViewerState]), opened by a press on its card or by "View full screen" in the details
  * panel: letterboxed on black and fitted to the screen, no crop, in a rendition sized to the window
  * ([ViewerRules.rendition]) and decoded to the window's size; the card's thumbnail stands in while it loads.
+ * Opening it sends nothing. It opens clean, the picture alone ("as in a museum": no caption, counter or hint).
  * Left/Right (a swipe on a touch screen) go to the previous and next picture of the same list ([onStep]; the
- * catalog's from the database, [ViewerSteps]); any other key, or a tap, shows the action row: "Send to frame"
- * ([onSend], the card's own send path) with a frame chosen, otherwise a note that none is. The credit line
- * (title, artist, source, licence) shows on open ([start]: the action row too when [ViewerOverlay.onOpen] says
- * so), on every picture change and with the action row, and hides after [ViewerOverlay.SHOWN_MS]. A CENTER
- * press it handles itself (the one that shows the row, or one still held when it opens) never also presses the
- * row's button ([HeldCenter]). Back closes ([onClose]) in one press, also while the row's button has the focus.
- * The screen is not kept on: a still picture lets the screen saver start as usual.
+ * catalog's from the database, [ViewerSteps]). Down or CENTER (a tap) shows the picture's card over its lower
+ * part ([ViewerOverlay]): its details ([PictureRows]: artist, date, source, licence, image credit, …) and
+ * "Send to frame" ([onSend], the card's own send path), focused first, with a frame chosen, otherwise a note
+ * that none is. Up or Back (a tap) hides it; Left/Right go on stepping under it. A CENTER press the viewer
+ * handles itself (the one that shows the card, or one still held when the viewer opens) never also presses the
+ * card's button ([HeldCenter]). Back without the card closes ([onClose]) in one press. The screen is not kept
+ * on: a still picture lets the screen saver start as usual.
  */
 @Composable
 fun FullscreenViewer(
     state: ViewerState,
     selected: SelectedFrame?,
-    start: ViewerOverlay,
     onStep: (Int) -> Unit,
     onSend: (Picture) -> Unit,
     onClose: () -> Unit,
@@ -101,27 +103,15 @@ fun FullscreenViewer(
         EdgeToEdgeDialogWindow()
         ImmersiveDialogWindow()
         val p = state.picture
-        var overlay by remember { mutableStateOf(start) }
-        var shown by remember { mutableIntStateOf(0) } // bumped by every key, tap or step: restarts the hide timer
+        var overlay by remember { mutableStateOf(ViewerOverlay.HIDDEN) }
         val held = remember { HeldCenter() }
-        val step = { delta: Int ->
-            onStep(delta) // nothing past either end of the list
-            overlay = overlay.onStep()
-            shown++
-        }
-        val currentStep by rememberUpdatedState(step)
+        val currentStep by rememberUpdatedState(onStep) // nothing past either end of the list
         val root = remember { FocusRequester() }
         val send = remember { FocusRequester() }
-        LaunchedEffect(overlay == ViewerOverlay.ACTIONS, selected != null) {
+        LaunchedEffect(overlay, selected != null) {
             withFrameNanos {}
-            // the action row's button takes the focus while it is shown; the picture itself the rest of the time
-            runCatching { if (overlay == ViewerOverlay.ACTIONS && selected != null) send.requestFocus() else root.requestFocus() }
-        }
-        LaunchedEffect(overlay, shown) {
-            if (overlay != ViewerOverlay.HIDDEN) {
-                delay(ViewerOverlay.SHOWN_MS)
-                overlay = ViewerOverlay.HIDDEN
-            }
+            // the card's button takes the focus while it is shown; the picture itself the rest of the time
+            runCatching { if (overlay == ViewerOverlay.CARD && selected != null) send.requestFocus() else root.requestFocus() }
         }
         val swipeMin = with(LocalDensity.current) { 64.dp.toPx() }
         BoxWithConstraints(
@@ -132,34 +122,39 @@ fun FullscreenViewer(
                     val down = e.type == KeyEventType.KeyDown
                     when {
                         e.key == Key.DirectionLeft || e.key == Key.DirectionRight -> {
-                            if (down) step(if (e.key == Key.DirectionRight) 1 else -1)
+                            if (down) onStep(if (e.key == Key.DirectionRight) 1 else -1)
                             true
                         }
-                        // Back closes at once, also while the row's button has the focus (Compose would take that
-                        // Back to move the focus out of the button to the picture, so leaving took two presses)
+                        // Back hides the card, or closes; taken here also while the card's button has the focus
+                        // (Compose would take that Back to move the focus out of the button first)
                         e.key == Key.Back || e.key == Key.Escape -> {
-                            if (e.type == KeyEventType.KeyUp) onClose()
+                            if (e.type == KeyEventType.KeyUp) overlay.onBack()?.let { overlay = it } ?: onClose()
                             true
                         }
                         e.key in SYSTEM_KEYS -> false
                         e.key in CENTER_KEYS && (down || e.type == KeyEventType.KeyUp) &&
                             held.swallow(down, e.nativeKeyEvent.repeatCount) -> true
-                        down && overlay != ViewerOverlay.ACTIONS -> {
-                            overlay = overlay.onKey()
-                            shown++
-                            // CENTER only shows the row; its repeats and release must not press the button it brings
-                            if (e.key in CENTER_KEYS) held.arm()
-                            e.key in CENTER_KEYS
+                        overlay == ViewerOverlay.HIDDEN && (e.key == Key.DirectionDown || e.key in CENTER_KEYS) -> {
+                            if (down) {
+                                overlay = overlay.onShow()
+                                // CENTER only shows the card: its repeats and release must not press its button
+                                if (e.key in CENTER_KEYS) held.arm()
+                            }
+                            true
                         }
-                        else -> {
-                            if (down) shown++
-                            false
+                        // the card has one row of buttons: Up from it hides the card
+                        overlay == ViewerOverlay.CARD && e.key == Key.DirectionUp -> {
+                            if (down) overlay = overlay.onHide()
+                            true
                         }
+                        // nothing above or below to move the focus to
+                        e.key == Key.DirectionUp || e.key == Key.DirectionDown -> true
+                        else -> false
                     }
                 }
                 .focusRequester(root)
                 .focusable()
-                .pointerInput(Unit) { detectTapGestures(onTap = { overlay = overlay.onTap(); shown++ }) }
+                .pointerInput(Unit) { detectTapGestures(onTap = { overlay = overlay.onTap() }) }
                 .pointerInput(Unit) {
                     var dx = 0f
                     detectHorizontalDragGestures(
@@ -176,7 +171,7 @@ fun FullscreenViewer(
             val h = constraints.maxHeight
             var failure by remember(p.id) { mutableStateOf<Txt?>(null) }
             key(p.id) { FittedPicture(p, w, h) { failure = it } }
-            Overlay(p, state, selected, overlay, failure, send, onSend)
+            if (overlay == ViewerOverlay.CARD) PictureCardOverlay(p, state, selected, failure, send, onSend)
         }
     }
 }
@@ -223,63 +218,57 @@ fun FittedPicture(p: Picture, w: Int, h: Int, alignment: Alignment = Alignment.C
     )
 }
 
-/** The credit line (and why the full picture did not load), with the action row under it when [overlay] says so. */
+/**
+ * The picture's card over the lower part of the viewer, like a museum label beside the work: the title (and
+ * its place in the list), the details ([PictureRows], scrolling when they are long; the credit the licences
+ * ask for is among them), why the full picture did not load, and the action row.
+ */
 @Composable
-private fun Overlay(
+private fun PictureCardOverlay(
     p: Picture,
     state: ViewerState,
     selected: SelectedFrame?,
-    overlay: ViewerOverlay,
     failure: Txt?,
     send: FocusRequester,
     onSend: (Picture) -> Unit,
 ) {
-    if (overlay == ViewerOverlay.HIDDEN) return
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val rowsMax = maxHeight * 0.4f
+        val scrim = Color.Black.copy(alpha = 0.9f)
         BoxWithConstraints(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))))
+                .background(Brush.verticalGradient(0f to Color.Transparent, 0.25f to scrim, 1f to scrim))
                 .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
             val layout = CatalogLayout.forWidth(maxWidth.value.toInt())
-            Column(Modifier.padding(start = layout.sidePadding.dp, end = layout.sidePadding.dp, top = 48.dp, bottom = layout.verticalPadding.dp)) {
-                val dim = Color.White.copy(alpha = 0.8f)
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(
-                        p.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (state.showsPosition) {
-                        Spacer(Modifier.width(16.dp))
+            val dim = Color.White.copy(alpha = 0.8f)
+            CompositionLocalProvider(LocalContentColor provides Color.White) {
+                Column(Modifier.padding(start = layout.sidePadding.dp, end = layout.sidePadding.dp, top = 64.dp, bottom = layout.verticalPadding.dp)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            stringResource(R.string.viewer_position, state.index + 1, state.count),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = dim,
-                            maxLines = 1,
+                            p.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
+                        if (state.showsPosition) {
+                            Spacer(Modifier.width(16.dp))
+                            Text(
+                                stringResource(R.string.viewer_position, state.index + 1, state.count),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = dim,
+                                maxLines = 1,
+                            )
+                        }
                     }
-                }
-                val credit = ViewerRules.credit(p)
-                if (credit.isNotEmpty()) {
-                    val sep = stringResource(R.string.list_separator)
-                    Text(
-                        credit.map { (it as? Txt)?.text() ?: it.toString() }.joinToString(sep),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = dim,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (failure != null) {
-                    Text(failure.text(), style = MaterialTheme.typography.bodyMedium, color = dim, maxLines = 2)
-                }
-                if (overlay == ViewerOverlay.ACTIONS) {
+                    Spacer(Modifier.height(8.dp))
+                    Column(Modifier.heightIn(max = rowsMax).verticalScroll(rememberScrollState())) { PictureRows(p) }
+                    if (failure != null) {
+                        Text(failure.text(), style = MaterialTheme.typography.bodyMedium, color = dim, maxLines = 2)
+                    }
                     Spacer(Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (selected != null) {
@@ -288,7 +277,7 @@ private fun Overlay(
                                 Text(stringResource(R.string.details_send), maxLines = 1)
                             }
                         } else {
-                            Text(stringResource(R.string.viewer_no_frame), style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                            Text(stringResource(R.string.viewer_no_frame), style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

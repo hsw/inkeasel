@@ -41,7 +41,6 @@
     <!-- полноэкранный просмотр (FullscreenViewer), открывается из панели сведений -->
     <string name="viewer_no_frame">Рамка не выбрана: выберите её в настройках, чтобы отправить эту картинку.</string>
     <string name="viewer_failed">Не удалось загрузить картинку: %1$s</string>
-    <string name="viewer_attribution">изображение: %1$s</string>
 
     <!-- settings: frame -->
     <string name="settings_title">Настройки</string>

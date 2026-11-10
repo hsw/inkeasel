@@ -405,7 +405,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * The viewer on [p] ([byPress]: opened by a press on its card): in the Catalog it steps through the
      * database by rank ([CatalogSteps], each row made a picture by [catalogPicture], as the grid makes it) and
      * shows [p] alone until its place is read; in My pictures through its loaded list ([ListSteps]). It opens
-     * once [p] passes the gate ([allowed]), and only then [then] runs (a press's send path). Whether it is a
+     * once [p] passes the gate ([allowed]), and only then [then] runs. Whether it is a
      * Catalog viewer comes from [p] itself, and its list is taken at the call, before the gate: a tab switched
      * while the gate reads drops the open anyway ([whenAllowed]).
      */
@@ -667,8 +667,6 @@ class MainActivity : ComponentActivity() {
                 ble = BleAccess(permitted, blocked, ::requestPermissions),
                 onFrameSelected = ::sendPendingShare,
                 onSend = ::send,
-                // after the viewer's open passed the gate ([MainViewModel.openViewer]): not read again
-                onPress = { p -> sendAllowed(p, byPress = true) },
                 onPanelConfirm = { askPermissions.launch(BlePermissions.all) },
                 onPanelDismiss = ::dismissPanel,
             )
@@ -676,23 +674,21 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * The send path of a picture ([BleAsk.onSend]): sent, the Bluetooth panel (which replaces any open
-     * viewer), or a toast why not. A press on a card ([byPress]) has the viewer open on the picture, whose
-     * action row says that no frame is chosen ([ViewerOverlay.onOpen]), so that case has no toast. Only a
-     * picture that passes the gate ([MainViewModel.whenAllowed]) takes it: "Send to frame" here, a press
-     * through the viewer it opens ([MainViewModel.openViewer]), so a press reads the level once.
+     * The send path of a picture ([BleAsk.onSend]), "Send to frame" in the viewer's card or the details panel:
+     * sent, the Bluetooth panel (which replaces any open viewer), or a toast why not. Only a picture that
+     * passes the gate ([MainViewModel.whenAllowed]) takes it. A press on a card sends nothing.
      */
     private fun send(p: Picture) {
-        vm.whenAllowed(p) { sendAllowed(p, byPress = false) }
+        vm.whenAllowed(p) { sendAllowed(p) }
     }
 
-    private fun sendAllowed(p: Picture, byPress: Boolean) {
+    private fun sendAllowed(p: Picture) {
         readBle()
         when (BleAsk.onSend(permitted, vm.selected != null, blocked)) {
             BleAsk.Send.SEND -> upload(p)
             BleAsk.Send.NO_FRAME -> {
                 Log.i(TAG, "no frame selected: upload of ${p.title} refused")
-                if (!byPress) Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, R.string.upload_no_frame, Toast.LENGTH_SHORT).show()
             }
             BleAsk.Send.PANEL -> showPanel(p)
             BleAsk.Send.BLOCKED -> {
@@ -780,7 +776,6 @@ fun App(
     ble: BleAccess,
     onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
-    onPress: (Picture) -> Unit,
     onPanelConfirm: () -> Unit,
     onPanelDismiss: () -> Unit,
 ) {
@@ -818,11 +813,11 @@ fun App(
                 val catalogPicture = remember(names, columnPx, aspect) {
                     { row: CatalogRow -> CatalogPicture.of(row, names, CatalogPicture.thumbWidth(columnPx, aspect, row.width, row.height)) }
                 }
-                // a press on a card: the viewer on it, then the send path (whose Bluetooth panel replaces the viewer);
-                // both once the picture passes the gate (nothing for one the filter in force hides)
+                // a press on a card: the viewer on it, clean, sending nothing ("Send to frame" is in its card),
+                // once the picture passes the gate (nothing for one the filter in force hides)
                 val press = { p: Picture ->
                     Log.i(TAG, "press on ${p.id}")
-                    vm.openViewer(p, catalogPicture, byPress = true) { onPress(p) }
+                    vm.openViewer(p, catalogPicture, byPress = true)
                 }
                 Column(Modifier.padding(horizontal = layout.sidePadding.dp, vertical = layout.verticalPadding.dp)) {
                     Header(vm, layout.splitHeader, tabFocus)
@@ -843,7 +838,7 @@ fun App(
                         if (back.scrollToTop) scope.launch { shownGrid.scrollToItem(0) }
                     }
                     // Back while a press or "Send to frame" waits for the gate drops it, as Back would close
-                    // the viewer it opens; registered after the grid's, so it comes first
+                    // the viewer a press opens; registered after the grid's, so it comes first
                     BackHandler(enabled = vm.gatePending && !vm.settingsOpen) { vm.dropPending() }
                     Box(Modifier.onFocusChanged { contentFocused = it.hasFocus }) {
                         if (catalog) {
@@ -894,12 +889,9 @@ fun App(
                     if (panel != null) {
                         BlePanel(BleAsk.panel(panel.stage, vm.selected != null, Build.VERSION.SDK_INT), onPanelConfirm, onPanelDismiss)
                     } else if (viewer != null) {
-                        // "Send to frame" keeps the viewer open (a toast), unless the Bluetooth panel replaces it
-                        FullscreenViewer(
-                            viewer, vm.selected,
-                            start = ViewerOverlay.onOpen(vm.viewerByPress, vm.selected != null),
-                            onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer,
-                        )
+                        // "Send to frame" in its card keeps the viewer open (a toast), unless the Bluetooth panel
+                        // replaces it
+                        FullscreenViewer(viewer, vm.selected, onStep = vm::stepViewer, onSend = onSend, onClose = vm::closeViewer)
                     } else if (details != null) {
                         // "Send to frame" closes the panel and takes the card's send path without the viewer (a toast,
                         // or the Bluetooth panel); "View full screen" replaces it with the viewer, and Back from there

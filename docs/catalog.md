@@ -261,8 +261,8 @@ when scrolled back to). A change of the label chain or of the nudity filter star
   when the starter step left the database empty (`CatalogStore.empty`, counted without the filter:
   `checkEmpty`); and, when the filter leaves no picture of a catalog that has some, that the nudity filter
   leaves none and where to change it (Settings, Catalog → Nudity).
-- A press on a card (CENTER, or a tap) sends the picture and opens it full screen; a long press opens its
-  details ([architecture.md](architecture.md)). Both go through the nudity gate first
+- A press on a card (CENTER, or a tap) opens the picture full screen and sends nothing (Down there brings
+  **Send to frame**); a long press opens its details ([architecture.md](architecture.md)). Both go through the nudity gate first
   ([The gate](#the-gate)).
 - The full-screen viewer steps through the Catalog by rank from the database (`CatalogSteps`:
   `CatalogDao.next`, `CatalogDao.previous`), so it does not matter how far the grid has loaded; "n / N" is the

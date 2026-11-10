@@ -58,16 +58,17 @@ To build it yourself, see [docs/building.md](docs/building.md).
 
 1. On the first start the app explains why it needs Bluetooth. Press **Find my frame** and allow it.
 2. The frame settings open and list every frame nearby. Select yours.
-3. Press any picture: it goes to the frame and opens full screen.
+3. Press any picture: it opens full screen. Press Down (or OK) for its card and choose **Send to frame**.
 
 You can change the frame later with the button at the top of the screen ("Frame: …").
 
 ## Using InkEasel
 
 **Catalog.** About 9,600 famous paintings, plus landscapes from the Cleveland Museum of Art and Wikimedia
-Commons. A press on a picture sends it to the frame and shows it full screen; Left and Right go to the
-previous and next picture. A long press shows its details (artist, date, museum, licence) with **Send to
-frame** and **View full screen**. The catalog comes with the app and updates itself at most once a week when
+Commons. A press on a picture shows it full screen, alone on black; Left and Right go to the previous and
+next picture. Down (or OK) opens its card: the details (artist, date, museum, licence) and **Send to frame**;
+Up or Back hides it, and Back again returns to the list. On a touch screen a tap shows and hides the card. A
+long press on a picture in the list shows its details with **Send to frame** and **View full screen**. The catalog comes with the app and updates itself at most once a week when
 the device is online. Titles and artists follow the device language.
 
 **Nudity filter.** By default the catalog hides explicit works. **Settings → Catalog → Nudity** switches

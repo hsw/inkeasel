@@ -4,7 +4,7 @@ package io.github.hsw.inkeasel
  * The rest of a CENTER press that is already handled: its repeats while it is held and its release. A long
  * press on a card fires while CENTER is still down (tv-material `Card.onLongClick` acts on the first repeat)
  * and opens the details panel, whose focused button would get the repeats and the release and act on them;
- * the viewer's own CENTER shows its action row and must not also press the button the row brings. A dialog
+ * the viewer's own CENTER shows its card and must not also press the button the card brings. A dialog
  * starts [armed] (whatever opened it, the press may still be down) and swallows those events until the
  * release or a fresh press, which goes through as usual. With no key held (a touch, or a press already
  * released) nothing is swallowed: the next CENTER event is a fresh press. Pure.

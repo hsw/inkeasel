@@ -45,28 +45,6 @@ class ViewerRulesTest {
         assertEquals("/x/a.jpg", ViewerRules.rendition(p, 3840, 2160))
     }
 
-    @Test
-    fun credit_artistSourceLicence_onlyWhatIsKnown() {
-        val p = commons(4000, 2000).copy(artist = "Someone", licence = "CC BY-SA 4.0")
-        assertEquals(listOf("Someone", Txt(R.string.details_source_commons), "CC BY-SA 4.0"), ViewerRules.credit(p))
-        assertEquals(listOf(Txt(R.string.details_source_commons)), ViewerRules.credit(commons(4000, 2000).copy(artist = " ")))
-        val local = Picture("local:a.jpg", "a", "", "/x/a.jpg", "/x/a.jpg", local = true)
-        assertEquals(listOf(Txt(R.string.tab_local)), ViewerRules.credit(local))
-    }
-
-    @Test
-    fun credit_imageCreditAfterTheArtist_whereTheLicenceAsks() {
-        val p = wd("Guernica.jpg", 4520, 2060).copy(artist = "Pablo Picasso", licence = "CC BY-SA 4.0", attribution = "A photographer")
-        assertEquals(
-            listOf(
-                "Pablo Picasso", Txt(R.string.viewer_attribution, "A photographer"),
-                Txt(R.string.details_source_wikidata), "CC BY-SA 4.0",
-            ),
-            ViewerRules.credit(p),
-        )
-        assertEquals(listOf(Txt(R.string.details_source_wikidata)), ViewerRules.credit(wd("Guernica.jpg", 4520, 2060).copy(attribution = "")))
-    }
-
     private val wdThumb = "https://upload.wikimedia.org/wikipedia/commons/thumb"
 
     private fun wd(file: String, w: Int?, h: Int?) =
@@ -162,22 +140,18 @@ class ViewerRulesTest {
     }
 
     @Test
-    fun overlay_creditOnStep_actionsOnKeyOrTap() {
-        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.HIDDEN.onStep())
-        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.ACTIONS.onStep())
-        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.CREDIT.onKey())
-        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.HIDDEN.onTap())
-        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.CREDIT.onTap())
-        assertEquals(ViewerOverlay.HIDDEN, ViewerOverlay.ACTIONS.onTap())
+    fun overlay_opensClean_downShowsTheCard_upOrBackHidesIt() {
+        // nothing over the picture until Down or CENTER
+        assertEquals(ViewerOverlay.CARD, ViewerOverlay.HIDDEN.onShow())
+        assertEquals(ViewerOverlay.HIDDEN, ViewerOverlay.CARD.onHide())
+        // Back hides the card first, and only then closes the viewer
+        assertEquals(ViewerOverlay.HIDDEN, ViewerOverlay.CARD.onBack())
+        assertNull(ViewerOverlay.HIDDEN.onBack())
     }
 
     @Test
-    fun overlay_onOpen_aPressWithoutAFrameShowsTheRow() {
-        // the press sent nothing: the row's "no frame" note is its answer
-        assertEquals(ViewerOverlay.ACTIONS, ViewerOverlay.onOpen(byPress = true, frameChosen = false))
-        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = true, frameChosen = true))
-        // from the details panel, as before
-        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = false, frameChosen = false))
-        assertEquals(ViewerOverlay.CREDIT, ViewerOverlay.onOpen(byPress = false, frameChosen = true))
+    fun overlay_aTapTogglesTheCard() {
+        assertEquals(ViewerOverlay.CARD, ViewerOverlay.HIDDEN.onTap())
+        assertEquals(ViewerOverlay.HIDDEN, ViewerOverlay.CARD.onTap())
     }
 }

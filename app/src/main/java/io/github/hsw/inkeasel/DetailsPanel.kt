@@ -87,7 +87,7 @@ fun DetailsPanel(
                             Title(p)
                             Spacer(Modifier.height(16.dp))
                             // the actions stay in view; the lines scroll if a large font pushes them down
-                            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { Rows(p) }
+                            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) { PictureRows(p) }
                             Spacer(Modifier.height(20.dp))
                             actions()
                         }
@@ -104,7 +104,7 @@ fun DetailsPanel(
                         Spacer(Modifier.height(20.dp))
                         Large(p, Modifier.fillMaxWidth().aspectRatio(own ?: FrameFormats.DEFAULT.aspect))
                         Spacer(Modifier.height(20.dp))
-                        Rows(p)
+                        PictureRows(p)
                     }
                 }
             }
@@ -125,9 +125,12 @@ private fun Title(p: Picture) {
     Text(p.title, style = MaterialTheme.typography.headlineSmall, maxLines = 3, overflow = TextOverflow.Ellipsis)
 }
 
-/** The lines of [PictureDetails.rows]: the label in a column of its own, the value wrapping beside it. */
+/**
+ * The lines of [PictureDetails.rows]: the label in a column of its own, the value wrapping beside it (in the
+ * content colour around it). Here and in the viewer's card.
+ */
 @Composable
-private fun Rows(p: Picture) {
+fun PictureRows(p: Picture) {
     for (r in PictureDetails.rows(p)) {
         Row(Modifier.padding(vertical = 3.dp)) {
             Text(

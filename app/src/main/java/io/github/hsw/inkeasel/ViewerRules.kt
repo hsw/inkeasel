@@ -105,38 +105,29 @@ class ViewerNav(
     }
 }
 
-/** What the viewer shows over the picture. */
+/**
+ * Whether the viewer shows the picture's card over the picture: the viewer opens clean, the picture alone on
+ * black ("as in a museum"); Down or CENTER brings the card (the details and "Send to frame"), Up or Back takes
+ * it away; Left/Right step to another picture and leave it as it is; a tap toggles it. Pure.
+ */
 enum class ViewerOverlay {
-    /** The picture alone. */
+    /** The picture alone: no caption, counter or hint. */
     HIDDEN,
 
-    /** The credit line (title, artist, source, licence): on open and after Left/Right. */
-    CREDIT,
+    /** The card: the picture's details and the action row, its first button focused. */
+    CARD;
 
-    /** The credit line and the action row: after any other key, or a tap. */
-    ACTIONS;
+    /** Down or CENTER: the card shows (with the card shown, the keys are its own). */
+    fun onShow(): ViewerOverlay = CARD
 
-    /** Left/Right, or a swipe, moved to another picture: its credit shows; an open action row stays. */
-    fun onStep(): ViewerOverlay = if (this == ACTIONS) ACTIONS else CREDIT
+    /** Up from the card's top row: it hides. */
+    fun onHide(): ViewerOverlay = HIDDEN
 
-    /** Any key but Left/Right and Back (CENTER, Up, Down, …) shows the action row. */
-    fun onKey(): ViewerOverlay = ACTIONS
+    /** Back: hides the card, or closes the viewer (`null`) when none is shown. */
+    fun onBack(): ViewerOverlay? = if (this == CARD) HIDDEN else null
 
-    /** A tap toggles the action row (with the credit line): it shows it, also over the credit alone, or hides both. */
-    fun onTap(): ViewerOverlay = if (this == ACTIONS) HIDDEN else ACTIONS
-
-    companion object {
-        /** How long the overlay stays after the last key, tap or step before it hides. */
-        const val SHOWN_MS = 5_000L
-
-        /**
-         * What shows when the viewer opens: the credit line; with the action row too when a press on a card
-         * opened it ([byPress]) and no frame is chosen ([frameChosen] false), since the row's note is then the
-         * press's only answer (it sends nothing, and no toast repeats it).
-         */
-        fun onOpen(byPress: Boolean, frameChosen: Boolean): ViewerOverlay =
-            if (byPress && !frameChosen) ACTIONS else CREDIT
-    }
+    /** A tap toggles the card. */
+    fun onTap(): ViewerOverlay = if (this == CARD) HIDDEN else CARD
 }
 
 /**
@@ -183,19 +174,6 @@ object ViewerRules {
         p.source == ClevelandPaintings.id -> if (min(w, h) > CLEVELAND_WEB_UP_TO) p.fullUrl else p.thumbUrl
         else -> p.fullUrl
     }
-
-    /**
-     * The second line of the credit under the title: artist, the image's credit where its licence asks for one
-     * ([Picture.attribution], as "image: …"), source, licence, each only when known; joined with
-     * `list_separator` where shown. The licences of the sources (CC BY and BY-SA on Commons) ask for it
-     * whenever the picture is shown.
-     */
-    fun credit(p: Picture): List<Any> = listOfNotNull(
-        p.artist?.takeIf { it.isNotBlank() },
-        p.attribution?.takeIf { it.isNotBlank() }?.let { Txt(R.string.viewer_attribution, it) },
-        PictureDetails.sourceName(p.source),
-        p.licence?.takeIf { it.isNotBlank() },
-    )
 
     /**
      * Why the rendition did not load (the thumbnail stays): a download failure as the catalog says it

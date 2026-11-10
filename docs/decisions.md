@@ -3,6 +3,26 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — A press on a card only opens the viewer; it opens clean, and Down brings the card with Send
+
+Supersedes "A press on a card sends and opens the viewer" (2026-11-09), and the viewer entry's credit line on
+open. The user's decision after using it on the TV: you want to look before you send, and an upload on every
+press costs a frame refresh of tens of seconds (a second press waits for the first). A press on a card (CENTER
+or a tap) now opens the full-screen viewer and sends nothing. The viewer opens clean, "as in a museum": the
+picture alone on black, no caption, counter, action row or hint, and nothing appears on Left/Right. Down or
+CENTER (a tap) brings the picture's card over its lower part: the title and "n / N", the details panel's lines
+and **Send to frame**, focused, so OK, OK sends; Up, Back or a tap hides it, and Back without it closes the
+viewer. Left/Right keep stepping with the card shown, which then shows the new picture (it has one row of
+buttons, so Left/Right have nothing in it to move to). The "No frame selected" toast is back for every send:
+the press no longer has the viewer's note as its answer, and the card shows that note in place of its button.
+Attribution: the Commons licences (CC BY, BY-SA) ask for credit "reasonable to the medium"; with the viewer
+clean, the credit (artist, source, licence, image credit) is in the card one press away, like a museum label
+beside the work, and in the details panel, so the credit line and its 5 s timer are gone.
+The long press keeps opening the details panel for now; whether Down in the viewer makes it redundant is left
+for the filters from a picture, which go into the same card.
+Rejected: CENTER sending at once in the viewer (a press would again send without a look at the details);
+hiding the card on Left/Right (browsing with the labels open is the point of keeping it).
+
 ## 2026-11-09 — The README is a user guide; the technical text lives in docs/ by subsystem
 
 The README had grown to 720 lines that served three readers at once: a user (install, permissions), someone

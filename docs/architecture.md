@@ -27,11 +27,12 @@ App and screens:
 - `LocalLoad.kt`: what "My pictures" shows (`LocalState`), one load of it (`readLocal`) and when it reloads (pure)
 - `DetailsPanel.kt`: the details panel of a long-pressed card, the picture large beside its lines;
   `PictureDetails.kt`: its lines and source names (pure)
-- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel, and
+- `FullscreenViewer.kt`: the full-screen view opened by a press on a card or from the details panel, with its
+  card (details and "Send to frame") on Down, and
   `FittedPicture`, a picture whole in an area (thumbnail, then a rendition for the area), which the details
   panel shares
-- `ViewerRules.kt`: which rendition the viewer loads for the window, its credit line, its list position, overlay
-  and swipe rules, and its moves through the list (`ViewerNav`: a step pressed during a read is dropped, a late
+- `ViewerRules.kt`: which rendition the viewer loads for the window, its list position, when its card shows
+  (`ViewerOverlay`) and swipe rules, and its moves through the list (`ViewerNav`: a step pressed during a read is dropped, a late
   result is ignored; `ListSteps` for "My pictures") (pure)
 - `HeldCenter.kt`: the rest of a CENTER press already handled (the long press that opened the details panel,
   the viewer's own CENTER) kept from the dialog's buttons (pure)
@@ -193,23 +194,24 @@ scale 1.0 and 1.3: one header row, 4 columns and the overscan margins stay.
 
 ### Press and long press
 
-A press on a card (CENTER, or a tap) opens the picture full screen (below) and sends it, so you see what was
-sent (`MainViewModel.openViewer`, then the send path `BleAsk.onSend`). Without the Bluetooth permission the
-Bluetooth panel opens instead of the full-screen view (it replaces the viewer). With no frame chosen nothing is
-sent and the full-screen view stays open with its note that no frame is chosen (no toast). Once the system no
-longer shows the permission dialog, the press toasts that Bluetooth is denied.
+A press on a card (CENTER, or a tap) opens the picture full screen (below) and sends nothing
+(`MainViewModel.openViewer`); sending is **Send to frame** in the viewer's card or in the details panel, which
+take the send path (`BleAsk.onSend`): sent; without the Bluetooth permission the Bluetooth panel (it replaces
+the viewer); with no frame chosen a toast "No frame selected"; once the system no longer shows the permission
+dialog, a toast that Bluetooth is denied.
 
 A long press (CENTER held, or a long touch) opens the card's details panel instead. A tv-material `Card` fires
 `onLongClick` on the first key repeat, while CENTER is still down; `HeldCenter` swallows that press's further
 repeats and its release, so they do not reach the panel's focused button: releasing the held CENTER leaves the
-panel open and sends nothing. The viewer's own CENTER is kept from the button its action row brings the same way.
+panel open and sends nothing. The viewer's own CENTER is kept from the button its card brings the same way, and
+so is a press still held when the viewer opens.
 A dialog starts armed; a fresh press goes through as usual, and with no key held (a touch) nothing is swallowed.
 
 ### Details panel
 
 Google's "content details" layout: the title, every field the source gave (artist, date, collection, source,
 licence and its link, the image credit where the licence asks for one, original size, web page; links as text,
-since a TV opens no browser), **Send to frame** (focused; it closes the panel and sends as a press does, without
+since a TV opens no browser), **Send to frame** (focused; it closes the panel and takes the send path, without
 the full-screen view; with no frame chosen it toasts "No frame selected"), **View full screen** and, on the right,
 the picture whole and as large as that side allows (a portrait takes its full height; the card's thumbnail first,
 then an image sized to that area, the same one the full-screen view loads, via `FittedPicture`). Back closes it. A
@@ -222,10 +224,14 @@ Opened by a press on a card or by **View full screen**. It shows the picture on 
 never cropped, with the system bars hidden; no frame is needed. Left and Right (or a swipe) go to the previous and
 next picture of the same tab and stop at its ends (in the Catalog the next one is read from the database, so it
 does not matter how far the grid has loaded; "n / N" is the place in the whole list as the nudity filter leaves
-it, see [catalog.md](catalog.md)); any other key (or a tap) shows **Send to frame**, or a note that no frame is
-chosen; a tap hides it again. The credit line (title; artist, source and licence, and the image credit where the
-licence asks for one) shows for 5 s on open, on each new picture and with the button. Back returns to the grid
-when a press opened the view (`viewerByPress`), to the details panel of the picture on screen when the panel did.
+it, see [catalog.md](catalog.md)). It opens clean, "as in a museum": the picture alone, no caption, counter or
+hint. Down or CENTER (a tap on a touch screen) shows the picture's card over its lower part (`ViewerOverlay`):
+the title and "n / N", the details panel's lines (`PictureRows`: artist, date, collection, source, licence, the
+image credit where the licence asks for one, …; they scroll when long), why the full image did not load, and
+**Send to frame**, focused (with no frame chosen, a note that none is, instead). Up, Back or a tap hides the
+card; Left and Right go on stepping with it shown, and it shows the new picture. Back without the card returns
+to the grid when a press opened the view (`viewerByPress`), to the details panel of the picture on screen when
+the panel did.
 
 The image is loaded in a size that fits the screen: for a Commons file (the release paintings and the Commons
 landscapes) a standard width (960, 1280, 1920 or 3840 px), or the original when a JPEG, PNG or WebP is narrower
@@ -236,7 +242,7 @@ shows while it loads. The screen is not kept on, so the screen saver starts as u
 ### The gate
 
 Every open and send of a Catalog picture goes through one gate, `MainViewModel.whenAllowed`: a press (the
-viewer, and the send after it), a long press (the details panel), **View full screen**, each Left/Right of the
+viewer), a long press (the details panel), **View full screen**, each Left/Right of the
 viewer (`ViewerNav`), **Send to frame**, and the Bluetooth panel's later send once the permission is granted. It
 runs the action only once `allowed` has read the nudity level stored for the picture at that moment and checked it
 against the filter in force; a hidden picture opens and sends nothing. One action waits at a time; it is dropped by

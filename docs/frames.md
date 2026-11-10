@@ -165,9 +165,9 @@ and how a waiting request is replaced: [architecture.md](architecture.md); timin
 
 The catalog browses normally, but nothing is uploaded:
 
-- a press on a card opens the full-screen view with its note "No frame selected: choose one in the settings
-  to send this picture." and sends nothing; **Send to frame** (details panel, full-screen view) toasts "No
-  frame selected: choose one in the settings" and starts nothing. Without the Bluetooth permission either
+- the full-screen view's card says "No frame selected: choose one in the settings to send this picture." in
+  place of its button; **Send to frame** in the details panel toasts "No frame selected: choose one in the
+  settings" and starts nothing. Without the Bluetooth permission either
   opens the Bluetooth panel instead, since a frame can only be found with it;
 - a shared picture is only saved, and the share says so (see [architecture.md](architecture.md));
 - `UploadService` refuses a manual request (adb, debug build) before touching Bluetooth and toasts the same;
