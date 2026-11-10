@@ -332,6 +332,11 @@ class FrameFormatTest {
         assertEquals(0, FrameFormat(4, 1, FrameFormats.E4, Crumbs2).paper)
         assertEquals(0, FrameFormat(16, 1, FrameFormats.BWR, BitPlanes(2)).paper)
         assertEquals(1, FrameFormat(16, 1, FrameFormats.BP, BitPlanes(1)).paper) // no white: pink is the lightest
+        // OpenDisplay: mono and four greys start with black, BWR and BWY with white
+        assertEquals(1, FrameFormat(16, 1, FrameFormats.OD_BW, RowPlanes(1)).paper)
+        assertEquals(3, FrameFormat(16, 1, FrameFormats.OD_G4, RowPlanes(2)).paper)
+        assertEquals(0, FrameFormat(16, 1, FrameFormats.OD_BWR, RowPlanes(2)).paper)
+        assertEquals(0, FrameFormat(16, 1, FrameFormats.OD_BWY, RowPlanes(2)).paper)
     }
 
     @Test
@@ -373,28 +378,148 @@ class FrameFormatTest {
     }
 
     /**
-     * E6 output must not change: a fixed 24×8 image dithered and packed, bytes taken from the implementation
-     * before the formats were generalised.
+     * E6 output must not change by accident: a fixed 24×8 image dithered and packed, bytes taken from the
+     * Burkes implementation (checked against the reference library by DitherGoldenTest).
      */
     @Test
     fun e6_regression_bytesUnchanged() {
         val w = 24
         val h = 8
-        val px = IntArray(w * h) { i ->
-            val x = i % w
-            val y = i / w
-            val r = (x * 11 + y * 3) and 0xFF
-            val g = (y * 37 + x * 2) and 0xFF
-            val b = (x * y * 13 + 40) and 0xFF
-            (0xFF shl 24) or (r shl 16) or (g shl 8) or b
-        }
         val f = FrameFormat(w, h, FrameFormats.E6, Nibbles4())
         val before = unhex(
-            "000003030333333333333333060505555555555553332336050555555333353551533225665555066555532313132235" +
-                "665556655562516231522215665566556251625122112255665665565565162163353350055055553653353353353550",
+            "000003033333333333333333005505555555555553333336605055555333335355123235665555035555513555323215" +
+                "666556665566512221122225266566152611261562152251221222122122222223333350055055550050553353333355",
         )
-        assertArrayEquals(before, f.pack(f.dither(px)))
+        assertArrayEquals(before, f.pack(f.dither(pattern(w, h))))
     }
+
+    private fun pattern(w: Int, h: Int) = IntArray(w * h) { i ->
+        val x = i % w
+        val y = i / w
+        val r = (x * 11 + y * 3) and 0xFF
+        val g = (y * 37 + x * 2) and 0xFF
+        val b = (x * y * 13 + 40) and 0xFF
+        (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+    }
+
+    /**
+     * The reference loop as written there (`error_diffusion_dither_impl`, BURKES, serpentine): the whole
+     * picture as one buffer of doubles, targets outside it skipped. The app keeps two rows only.
+     */
+    private fun fullBufferDither(px: IntArray, w: Int, h: Int, palette: Palette): ByteArray {
+        val kernel = listOf(
+            Triple(1, 0, 8.0 / 32.0), Triple(2, 0, 4.0 / 32.0), Triple(-2, 1, 2.0 / 32.0), Triple(-1, 1, 4.0 / 32.0),
+            Triple(0, 1, 8.0 / 32.0), Triple(1, 1, 4.0 / 32.0), Triple(2, 1, 2.0 / 32.0),
+        )
+        val matcher = InkMatcher(palette)
+        val buf = DoubleArray(w * h * 3) { i ->
+            val p = px[i / 3]
+            ((p shr (16 - 8 * (i % 3))) and 0xFF).toDouble()
+        }
+        val out = ByteArray(w * h)
+        for (y in 0 until h) {
+            val reverse = y % 2 == 1
+            for (xi in 0 until w) {
+                val x = if (reverse) w - 1 - xi else xi
+                val idx = (y * w + x) * 3
+                val c = DoubleArray(3) { buf[idx + it].coerceIn(0.0, 255.0) }
+                val best = matcher.nearest(Math.round(c[0]).toInt(), Math.round(c[1]).toInt(), Math.round(c[2]).toInt())
+                out[y * w + x] = best.toByte()
+                val ink = palette.inks[best]
+                val err = doubleArrayOf(c[0] - ink.r, c[1] - ink.g, c[2] - ink.b)
+                for ((dx, dy, weight) in kernel) {
+                    val nx = x + if (reverse) -dx else dx
+                    val ny = y + dy
+                    if (nx in 0 until w && ny in 0 until h) {
+                        val ni = (ny * w + nx) * 3
+                        for (ch in 0..2) buf[ni + ch] += err[ch] * weight
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    @Test
+    fun dither_twoRowBuffer_equalsTheWholePictureBuffer() {
+        val rnd = java.util.Random(7)
+        for (palette in listOf(FrameFormats.E6, FrameFormats.E4, FrameFormats.BWR, FrameFormats.E7, FrameFormats.BP)) {
+            for ((w, h) in listOf(1 to 1, 1 to 5, 2 to 3, 5 to 1, 7 to 4, 24 to 8, 33 to 17)) {
+                val px = IntArray(w * h) { rnd.nextInt() or (0xFF shl 24) } // opaque: see-through pixels are laid on white first
+                val f = FrameFormat(w * 2, h * 2, palette, RowPlanes(4))
+                assertArrayEquals("${palette.name} $w×$h", fullBufferDither(px, w, h, palette), f.dither(px, f.centred(w, h)).let { all ->
+                    val at = f.centred(w, h)
+                    ByteArray(w * h) { all[(at.top + it / w) * f.width + at.left + it % w] }
+                })
+                val whole = FrameFormat(w, h, palette, RowPlanes(4))
+                assertArrayEquals(fullBufferDither(px, w, h, palette), whole.dither(px))
+            }
+        }
+        assertArrayEquals(fullBufferDither(pattern(24, 8), 24, 8, FrameFormats.E6), FrameFormat(24, 8, FrameFormats.E6, Nibbles4()).dither(pattern(24, 8)))
+    }
+
+    @Test
+    fun dither_serpentine_oddRowsCarryTheErrorLeft() {
+        // BW: 0 white, 1 black. Each picture holds black and white, so the auto levels leave it as it is; black and
+        // white pixels are exact inks and spread no error. 160 goes white (error −95, a quarter of it to the next
+        // pixel along the scan); 105 alone goes white too, but 105 − 23.75 goes black.
+        val f = FrameFormat(4, 2, FrameFormats.BW, BitPlanes(1))
+        val w = grey(255)
+        val k = grey(0)
+        assertArrayEquals(byteArrayOf(0, 0, 0, 1, 1, 0, 0, 0), f.dither(intArrayOf(w, w, w, k, k, w, grey(105), w)))
+        // row 0 runs left to right: the error of 160 at x = 0 reaches x = 1
+        val even = FrameFormat(4, 1, FrameFormats.BW, BitPlanes(1)).dither(intArrayOf(grey(160), grey(105), w, k))
+        assertArrayEquals(byteArrayOf(0, 1, 0, 1), even)
+        // row 1 runs right to left: the error of 160 at x = 3 reaches x = 2 (a raster scan would leave it white)
+        val odd = f.dither(intArrayOf(w, w, w, k, k, w, grey(105), grey(160)))
+        assertArrayEquals(byteArrayOf(0, 0, 0, 1, 1, 0, 1, 0), odd)
+    }
+
+    @Test
+    fun dither_uniformMidGreyOnBw_isAboutHalfBlack() {
+        val f = FrameFormat(64, 64, FrameFormats.BW, BitPlanes(1))
+        assertTrue(f.greys)
+        // one luminance: auto levels leave it as it is; the error is in sRGB, so 128 is about half of each ink
+        val idx = f.dither(IntArray(64 * 64) { grey(128) })
+        val black = idx.count { it.toInt() == 1 } / idx.size.toDouble()
+        assertTrue("black share $black", black in 0.47..0.53)
+    }
+
+    /**
+     * A neutral grey on a panel with one or two colour inks is black and white only: matched by RGB distance, not
+     * OKLab, where BWR and E4 put 1–4 % red into uniform greys (docs/decisions.md). The reference's OKLab path,
+     * kept for E6, is checked by DitherGoldenTest.
+     */
+    @Test
+    fun dither_uniformGreysOnOneOrTwoColourInks_getNoColour() {
+        val panels = listOf(
+            FrameFormat(64, 64, FrameFormats.BWR, BitPlanes(2)),
+            FrameFormat(64, 64, FrameFormats.OD_BWR, RowPlanes(2)),
+            FrameFormat(64, 64, FrameFormats.E4, Crumbs2),
+            FrameFormat(64, 64, FrameFormats.BWY, BitPlanes(2)),
+        )
+        for (f in panels) for (v in listOf(40, 80, 105, 128, 160, 200, 230)) {
+            val idx = f.dither(IntArray(64 * 64) { grey(v) })
+            val colour = idx.count { f.palette.inks[it.toInt()].let { ink -> ink.r != ink.g || ink.g != ink.b } }
+            assertEquals("${f.palette.name} grey $v", 0, colour)
+            if (v in 80..200) assertTrue("${f.palette.name} grey $v mixes black and white", idx.toSet().size == 2)
+        }
+    }
+
+    @Test
+    fun dither_transparentPixels_areLaidOnWhite() {
+        val f = FrameFormat(4, 1, FrameFormats.BW, BitPlanes(1)) // 0 white, 1 black
+        // fully transparent black is paper; half-transparent black is a mid grey; opaque black stays black
+        val idx = f.dither(intArrayOf(0x00000000, 0x00000000, 0x80000000.toInt(), 0xFF000000.toInt()))
+        assertEquals(0, idx[0].toInt())
+        assertEquals(0, idx[1].toInt())
+        assertEquals(1, idx[3].toInt())
+        // on a colour panel too: transparent red is white
+        val e6 = FrameFormat(2, 1, FrameFormats.E6, Nibbles4())
+        assertArrayEquals(byteArrayOf(1, 1), e6.dither(intArrayOf(0x00FF0000, 0x00FF0000)))
+    }
+
+    private fun grey(v: Int) = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
 
     @Test
     fun startFrame_carriesTheMarker() {

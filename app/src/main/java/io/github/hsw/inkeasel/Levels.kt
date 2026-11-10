@@ -16,7 +16,7 @@ object Levels {
 
     /**
      * The darkest luminance in [px] and the one above which no more than [LIGHT_CUT] of it lies; `null` for a
-     * picture of one luminance (nothing to stretch).
+     * picture of one luminance apart from at most [LIGHT_CUT] of it (nothing to stretch, and nothing is clipped).
      */
     fun range(px: IntArray): Pair<Int, Int>? {
         if (px.isEmpty()) return null

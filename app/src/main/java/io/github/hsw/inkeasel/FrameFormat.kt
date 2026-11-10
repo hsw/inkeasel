@@ -181,6 +181,9 @@ data class RowPlanes(val planes: Int) : Packing {
  */
 data class Placement(val left: Int, val top: Int, val width: Int, val height: Int)
 
+/** Cells of padding on each side of a dither row: Burkes reaches two pixels sideways. */
+private const val PAD = 2
+
 /**
  * Everything the renderer and the uploader need for one frame: its size, its inks, how pixels are packed,
  * the content marker (MK) of the start frame, and whether this exact layout was seen working on a real
@@ -210,21 +213,15 @@ data class FrameFormat(
     val greys: Boolean get() = palette.inks.all { it.r == it.g && it.g == it.b }
     val aspect: Float get() = width.toFloat() / height
 
-    /**
-     * The ink index of the paper around a fitted picture ([fit]): the ink nearest to white (the first wins a
-     * tie), so the bars are the panel's own white, or its lightest ink where it has no white (BP: pink).
-     */
-    val paper: Int get() = nearest(255, 255, 255)
+    /** The dithering's ink matcher, one per format: the inks are converted once. */
+    private val matcher = InkMatcher(palette)
 
-    private fun nearest(r: Int, g: Int, b: Int): Int {
-        var best = 0
-        var bestD = Int.MAX_VALUE
-        for ((i, c) in palette.inks.withIndex()) {
-            val d = (r - c.r) * (r - c.r) + (g - c.g) * (g - c.g) + (b - c.b) * (b - c.b)
-            if (d < bestD) { bestD = d; best = i }
-        }
-        return best
-    }
+    /**
+     * The ink index of the paper around a fitted picture ([fit]): the ink nearest to white by the dithering's
+     * own [InkMatcher] (the first wins a tie), so the bars are the panel's own white, or its lightest ink where
+     * it has no white (BP: pink).
+     */
+    val paper: Int = matcher.nearest(255, 255, 255)
 
     /**
      * A [w] × [h] px picture scaled to fit inside the panel, whole (no crop), up or down, and centred: bars of
@@ -259,64 +256,103 @@ data class FrameFormat(
         return sample
     }
 
-    /** Floyd–Steinberg of [px] (ARGB, the whole panel, row-major): [dither] with the picture filling the panel. */
+    /** The dithering of [px] (ARGB, the whole panel, row-major): [dither] with the picture filling the panel. */
     fun dither(px: IntArray): ByteArray = dither(px, Placement(0, 0, width, height))
 
     /**
-     * Floyd–Steinberg of [px] (ARGB, [at]'s width × height, row-major) onto [palette], always the panel's own
-     * (docs/protocol.md#dithering: the vendor app dithers every type with the E6 inks, which breaks the
-     * others): plain raster order, nearest ink by squared RGB distance (the first wins a tie), the pixel plus
-     * its error clamped to 0..255. The picture sits at [at] on the panel and the rest is [paper], plain: no
-     * error reaches the bars, so they stay clean. One ink index per pixel of the whole panel. On a panel of
-     * [greys] the picture first becomes greys with auto levels ([Levels.stretched], measured on the picture
-     * alone, not the bars).
+     * Error diffusion of [px] (ARGB, [at]'s width × height, row-major) onto [palette], always the
+     * panel's own (docs/protocol.md#dithering: the vendor app dithers every type with the E6 inks, which breaks
+     * the others). The OpenDisplay `epaper-dithering` recipe (MIT), ported with its order of operations: Burkes
+     * kernel (/32), serpentine rows (odd rows right to left, the kernel mirrored), the pixel plus its error
+     * clamped to 0..255 and rounded, matched by [InkMatcher] (in OKLab, or by RGB distance on a palette with one or
+     * two colour inks: a deviation from the reference), and the error, as doubles in sRGB, is that clamped value
+     * minus the ink; error falling outside the picture is dropped. A see-through pixel is first laid on white, as
+     * the reference does ([onWhite]).
+     *
+     * The picture sits at [at] on the panel and the rest is [paper], plain: it is dithered as an image of its
+     * own, so no error reaches the bars and they stay clean. One ink index per pixel of the whole panel. On a
+     * panel of [greys] the picture first becomes greys with auto levels ([Levels.stretched], measured on the
+     * picture alone, not the bars).
      */
     fun dither(px: IntArray, at: Placement): ByteArray {
         val w = at.width
         val h = at.height
         require(px.size == w * h)
-        @Suppress("NAME_SHADOWING") val px = if (greys) Levels.stretched(px) else px
+        @Suppress("NAME_SHADOWING") val px = onWhite(px).let { if (greys) Levels.stretched(it) else it }
         require(at.left >= 0 && at.top >= 0 && at.left + w <= width && at.top + h <= height)
         val inks = palette.inks
-        val pr = IntArray(inks.size) { inks[it].r }
-        val pg = IntArray(inks.size) { inks[it].g }
-        val pb = IntArray(inks.size) { inks[it].b }
-        // error buffers for the current and next row, 3 channels each, with one pixel of padding on both sides
-        var cur = IntArray((w + 2) * 3)
-        var nxt = IntArray((w + 2) * 3)
+        // Two rows of the reference's working buffer (pixel value plus the error received so far, 3 channels),
+        // not the whole picture (a TV has little memory): the kernel reaches one row down only. A row is loaded
+        // with its pixels before any error arrives, so every cell sums in the same order as the full buffer.
+        // Two cells of padding on both sides take the error that falls outside the picture; they are never read.
+        val stride = (w + 2 * PAD) * 3
+        var cur = DoubleArray(stride)
+        var nxt = DoubleArray(stride)
+        fun load(row: DoubleArray, y: Int) {
+            row.fill(0.0)
+            if (y >= h) return
+            for (x in 0 until w) {
+                val p = px[y * w + x]
+                val e = (x + PAD) * 3
+                row[e] = ((p shr 16) and 0xFF).toDouble()
+                row[e + 1] = ((p shr 8) and 0xFF).toDouble()
+                row[e + 2] = (p and 0xFF).toDouble()
+            }
+        }
+        load(cur, 0)
+        load(nxt, 1)
         val out = ByteArray(width * height)
         if (w != width || h != height) out.fill(paper.toByte())
         for (y in 0 until h) {
             val row = (at.top + y) * width + at.left
-            for (x in 0 until w) {
-                val p = px[y * w + x]
-                val e = (x + 1) * 3
-                val r = (((p shr 16) and 0xFF) + cur[e] / 16).coerceIn(0, 255)
-                val g = (((p shr 8) and 0xFF) + cur[e + 1] / 16).coerceIn(0, 255)
-                val b = ((p and 0xFF) + cur[e + 2] / 16).coerceIn(0, 255)
-                var best = 0
-                var bestD = Int.MAX_VALUE
-                for (i in pr.indices) {
-                    val dr = r - pr[i]
-                    val dg = g - pg[i]
-                    val db = b - pb[i]
-                    val d = dr * dr + dg * dg + db * db
-                    if (d < bestD) { bestD = d; best = i }
-                }
+            val reverse = y % 2 == 1
+            val s = if (reverse) -3 else 3 // one pixel along the scan, in cells
+            for (xi in 0 until w) {
+                val x = if (reverse) w - 1 - xi else xi
+                val e = (x + PAD) * 3
+                val rs = cur[e].coerceIn(0.0, 255.0)
+                val gs = cur[e + 1].coerceIn(0.0, 255.0)
+                val bs = cur[e + 2].coerceIn(0.0, 255.0)
+                // Math.round is half up, as Rust's half away from zero for these non-negative values
+                val best = matcher.nearest(Math.round(rs).toInt(), Math.round(gs).toInt(), Math.round(bs).toInt())
                 out[row + x] = best.toByte()
-                val er = r - pr[best]
-                val eg = g - pg[best]
-                val eb = b - pb[best]
-                // weights 7/16 right, 3/16 down-left, 5/16 down, 1/16 down-right (stored ×16)
-                cur[e + 3] += er * 7; cur[e + 4] += eg * 7; cur[e + 5] += eb * 7
-                nxt[e - 3] += er * 3; nxt[e - 2] += eg * 3; nxt[e - 1] += eb * 3
-                nxt[e] += er * 5; nxt[e + 1] += eg * 5; nxt[e + 2] += eb * 5
-                nxt[e + 3] += er; nxt[e + 4] += eg; nxt[e + 5] += eb
+                val ink = inks[best]
+                val er = rs - ink.r
+                val eg = gs - ink.g
+                val eb = bs - ink.b
+                // Burkes, in the reference's order: (1,0) 8, (2,0) 4, (−2,1) 2, (−1,1) 4, (0,1) 8, (1,1) 4, (2,1) 2
+                spread(cur, e + s, er, eg, eb, 8.0 / 32.0)
+                spread(cur, e + 2 * s, er, eg, eb, 4.0 / 32.0)
+                spread(nxt, e - 2 * s, er, eg, eb, 2.0 / 32.0)
+                spread(nxt, e - s, er, eg, eb, 4.0 / 32.0)
+                spread(nxt, e, er, eg, eb, 8.0 / 32.0)
+                spread(nxt, e + s, er, eg, eb, 4.0 / 32.0)
+                spread(nxt, e + 2 * s, er, eg, eb, 2.0 / 32.0)
             }
             val t = cur; cur = nxt; nxt = t
-            nxt.fill(0)
+            load(nxt, y + 2)
         }
         return out
+    }
+
+    /**
+     * [px] with every pixel that is not opaque laid on white (`c·α + 255·(1 − α)`, rounded), as the reference's
+     * `composite_rgba_on_white`, so a transparent area is paper, not black; [px] itself when all are opaque.
+     */
+    private fun onWhite(px: IntArray): IntArray {
+        if (px.all { it ushr 24 == 0xFF }) return px
+        return IntArray(px.size) { i ->
+            val p = px[i]
+            val a = (p ushr 24) / 255.0
+            fun ch(shift: Int) = Math.round(((p shr shift) and 0xFF) * a + 255.0 * (1.0 - a)).toInt()
+            (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+        }
+    }
+
+    private fun spread(buf: DoubleArray, e: Int, er: Double, eg: Double, eb: Double, weight: Double) {
+        buf[e] += er * weight
+        buf[e + 1] += eg * weight
+        buf[e + 2] += eb * weight
     }
 
     /** The payload ([payloadSize] bytes) for [indices] from [dither]. */

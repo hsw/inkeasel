@@ -3,6 +3,43 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — Dithering follows OpenDisplay's `epaper-dithering`: Burkes, serpentine, OKLab
+
+The app's Floyd–Steinberg in raster order with the nearest ink by RGB distance sent vivid colours toward
+black or grey on colour panels (E6) and left diagonal "worm" artefacts. OpenDisplay's own library
+(`epaper-dithering`, MIT), whose recipe is already proven on the E1001, does better, so its plain path is
+ported to Kotlin with the same constants and order of operations: Burkes error diffusion (/32) in serpentine
+rows; the pixel plus its error clamped to 0..255 and rounded, then matched in OKLab with the chroma weighted
+1.5, the first ink winning a tie; the error kept per channel in sRGB as doubles. It applies to every panel of
+both protocols (one `FrameFormat.dither`); the auto levels of grey panels stay in front of it, and the bar ink
+(`paper`) goes through the same matcher. The error buffer is two rows of doubles rather than the whole
+picture (a TV has little memory; the additions into each cell happen in the same order, and a test checks the
+two against each other). `DitherGoldenTest` compares the port index for index with the library (6.1.1): all
+3,072 indices of an E6 and a four-grey picture match, so `Math.cbrt` against Rust's `cbrt` makes no difference
+there. Cost: about 55 ms for a 1024×600 E6 picture and 28 ms for an 800×480 four-grey one (JVM on a desktop,
+warm). On the E1001 the dithered pictures also compress better (with the JZlib change below: "Night Watch"
+47,181 → 39,855 bytes, "Starry Night" 58,845 → 55,466, "Mona Lisa" 27,532 → 25,877 *(observed)*).
+Rejected: keeping Floyd–Steinberg (the artefacts and the colour shift above); error diffusion in linear light
+(the library, tested on these panels, diffuses in sRGB; a port that differs cannot be checked against it);
+porting its tone compression, gamut mapping, measured palettes and DBS now (they need measured inks for each
+panel, which we do not have; each can come later on top of the same loop); a colour distance of our own (no
+golden reference to test against, and OKLab with the chroma weight is what fixes the vivid colours).
+
+Deviation from the library, decided after the port: panels with one or two colour inks (BWR, BWY, E4) match by
+squared RGB distance, not OKLab, keeping the Burkes serpentine loop. The OKLab matching was asked for colour panels
+such as E6; on BWR and E4 it put red specks into neutral greys, since red (L 0.63) is the nearest ink to greys of
+about 80..135 once the chroma is weighted and no other colour ink cancels it. On a uniform 64×64 grey: 4.2 % red
+pixels at grey 40 and 80, 2.9 % at 105, 1.3 % at 128, 1.5 % at 160, 1.1 % at 200, 0.8 % at 230 on both BWR and E4
+(E4's yellow is never used), against none by RGB distance; BWY gets no yellow either way. E4 has two colour inks
+but red and yellow are both warm and do not mix to a neutral, so it falls under the same rule as BWR. The line is
+three colour inks: below that RGB distance, from there (E6, E7) the library's OKLab. Panels of greys only keep
+OKLab too: there it orders the greys by lightness (sRGB 105 goes to white on a black-and-white panel, by RGB
+distance black), as the four-grey golden test checks. A see-through pixel is laid on white before dithering, as the
+library does (before, a transparent area came out black). Rejected: OKLab with the library's matching on every
+panel (the red specks; a three-colour panel shows mostly black-and-white content); a lower chroma weight for those
+panels (worse: at weight 1 red is picked for 9–84 % of a uniform grey, since red then matches mid greys by
+lightness); RGB distance on panels of greys (it changes the verified four-grey output and breaks the golden test).
+
 ## 2026-11-10 — OpenDisplay uploads use JZlib with a true 512-byte window
 
 Supersedes "OpenDisplay uploads are zlib-compressed with `Deflater` reset every 512 bytes" below. Resetting

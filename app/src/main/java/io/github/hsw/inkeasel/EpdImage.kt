@@ -34,7 +34,7 @@ object EpdImage {
     }
 
     /**
-     * Floyd–Steinberg of the fitted [img] onto the inks of [fmt], centred on the panel with paper around it
+     * Error diffusion of the fitted [img] onto the inks of [fmt], centred on the panel with paper around it
      * ([FrameFormat.dither]); one ink index per pixel of the panel, row-major.
      */
     fun dither(img: Bitmap, fmt: FrameFormat): ByteArray {

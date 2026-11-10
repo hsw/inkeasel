@@ -13,6 +13,8 @@ options turned down).
 - **Android SDK** with platform 36 and build-tools (`apksigner`, `zipalign`); for emulators also the
   emulator and system images. Its path goes into `local.properties` (`sdk.dir=…`), which is git-ignored and
   never committed.
+- **uv** only to regenerate `DitherGoldenTest` with `tools/dither-golden.py` (it pins `epaper-dithering`
+  6.1.1); not needed to build.
 - Versions: compileSdk and targetSdk 36 (Android 16), minSdk 26 (Android 8.0); Android Gradle plugin 8.9.1
   (the oldest that supports API 36), Gradle 8.11.1 (wrapper), Kotlin 2.0.21, KSP `2.0.21-1.0.28`, Compose BOM
   2024.12.01.
@@ -38,6 +40,7 @@ Besides the AndroidX, Compose, Kotlin, OkHttp and Coil libraries, the app bundle
 | What | Licence | How it is used |
 |---|---|---|
 | JZlib (`com.jcraft:jzlib:1.1.3`), a pure-Java port of zlib | BSD-3-Clause | binary dependency: compresses OpenDisplay uploads with a 512-byte window ([protocol.md](protocol.md#opendisplay-upload)) |
+| OpenDisplay `epaper-dithering` | MIT | algorithm ported to Kotlin (Burkes, serpentine, OKLab ink matching), constants taken over, no code copied ([protocol.md](protocol.md#dithering)) |
 
 The app has no licences screen; this table is where the credit is kept.
 
@@ -102,6 +105,11 @@ Tests that guard project rules:
 - `StarterAssetsTest`, `NudityTest`: the catalog's starter set and nudity list
   ([catalog.md](catalog.md)). `python3 tools/catalog-export.py --self-test` checks the export tool offline; it
   is not in CI.
+- `DitherGoldenTest`: the dithering matches OpenDisplay's `epaper-dithering` index for index on two small
+  synthetic pictures ([protocol.md](protocol.md#dithering)). Its expected indices come from
+  `uv run tools/dither-golden.py` (needs network: it installs the pinned library from PyPI; not in CI), which
+  prints them as Kotlin literals to paste into the test. The pattern formulas live in both files; change them
+  together, and regenerate after a change to the palettes or the dithering.
 
 ## Emulators and devices
 

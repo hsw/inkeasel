@@ -76,6 +76,9 @@ Frames ([frames.md](frames.md)):
 - `FrameCaps.kt`: protocol-neutral `FrameCaps` and `FrameKind`
 - `FrameFormat.kt`: render formats and `FrameFormats`, the one place that maps an advertisement to a format or
   to the reason it is not supported (pure)
+- `Oklab.kt`: the dithering's colour math and `InkMatcher`, the nearest ink (OKLab, or RGB distance on a panel
+  with one or two colour inks; pure); `Levels.kt`: auto
+  levels for a panel of greys (pure)
 - `EpdImage.kt`: decode, fit, dither and pack a picture for the frame
 - `FrameStore.kt`: the chosen frame (`SelectedFrame`) in prefs `frame`, and `SeenFrame` (one scan result)
 

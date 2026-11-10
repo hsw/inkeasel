@@ -100,10 +100,14 @@ one), dithered onto the panel's inks.
 - Auto levels on a panel of greys only (four greys, mono; `FrameFormat.greys`, `Levels.kt`): the picture
   becomes greys by luminance (BT.601) and its range is stretched to black..white, so a dark painting uses the
   whole scale. The lightest 0.5 % of the pixels is clipped to white; the dark end is not clipped (it merges the
-  darkest areas into one black blot). Measured on the picture alone, not the bars. A picture of one grey is
-  left as it is. Colour panels get no tone step.
-- Dithering: Floyd–Steinberg onto the panel's own inks, never the E6 inks for every type as the vendor app
-  does ([protocol.md](protocol.md#dithering)).
+  darkest areas into one black blot). Measured on the picture alone, not the bars. A picture of one grey
+  (apart from at most 0.5 % of lighter pixels) is left as it is. Colour panels get no tone step.
+- Dithering (`FrameFormat.dither`, `Oklab.kt`): Burkes error diffusion in serpentine rows, each pixel matched
+  to the nearest ink in OKLab with the chroma weighted 1.5 (a port of OpenDisplay's `epaper-dithering`), or by
+  RGB distance on a panel with one or two colour inks (BWR, BWY, E4: no red specks in greys), onto the panel's
+  own inks, never the E6 inks for every type as the vendor app does ([protocol.md](protocol.md#dithering)). A
+  see-through pixel is laid on white first. A 1024×600 E6 picture dithers in about 55 ms, an 800×480 four-grey
+  one in about 28 ms (JVM on a desktop, warm).
 - Packings: `Nibbles4` (4 bpp, optionally split), `Crumbs2` (2 bpp), `BitPlanes` (1-bpp planes, padded,
   optionally split) and, for OpenDisplay, `RowPlanes` (1-bpp planes with each row padded to a byte). `FrameFormat.kt` is free of Android types and runs as JVM unit tests.
 - The size and inks come from the frame's advertisement (OpenDisplay: its display record); there is no rotation step (only rotation 0° is
@@ -225,9 +229,12 @@ The catalog browses normally, but nothing is uploaded:
 ## Code
 
 - `FrameFormat.kt`: render formats (size, inks with their device codes, packing, start-frame marker,
-  verified flag; Floyd–Steinberg onto the panel's own inks and the packings `Nibbles4`, `Crumbs2` and
-  `BitPlanes`, free of Android types) and `FrameFormats`, the one place that maps an advertisement to a
+  verified flag; the dithering onto the panel's own inks and the packings `Nibbles4`, `Crumbs2`, `BitPlanes`
+  and `RowPlanes`, free of Android types) and `FrameFormats`, the one place that maps an advertisement to a
   format or to the reason it is not supported
+- `Oklab.kt`: the dithering's colour math (sRGB to linear light, OKLab) and `InkMatcher`, the nearest ink in
+  OKLab, or by RGB distance on a panel with one or two colour inks; free of Android types
+- `Levels.kt`: auto levels for a panel of greys; free of Android types
 - `FrameCaps.kt`: protocol-neutral `FrameCaps` (size, colour scheme, rotation), the input of `FrameFormats`,
   and `FrameKind` (the frame's protocol, saved with the chosen frame)
 - `FrameAdvert.kt`: parser of the frame's manufacturer data (colour/panel type, resolution, rotation, safe

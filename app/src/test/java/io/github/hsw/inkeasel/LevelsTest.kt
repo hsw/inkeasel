@@ -41,6 +41,23 @@ class LevelsTest {
     }
 
     @Test
+    fun lightCut_isInclusive() {
+        // 1000 pixels: the cut is 5. Exactly 5 highlights are clipped, 6 hold the range.
+        fun withHighlights(n: Int) = IntArray(1000) { if (it < n) grey(250) else grey(10 + it % 51) }
+        assertEquals(10 to 60, Levels.range(withHighlights(5)))
+        assertEquals(10 to 250, Levels.range(withHighlights(6)))
+    }
+
+    @Test
+    fun flatPicturePlusAFewHighlights_isLeftAlone() {
+        // the highlights fall under the cut, and what is left has one luminance: nothing to stretch, and nothing is
+        // clipped either
+        val px = IntArray(1000) { if (it < 4) grey(250) else grey(100) }
+        assertNull(Levels.range(px))
+        assertArrayEquals(px, Levels.stretched(px))
+    }
+
+    @Test
     fun onePixelDarker_keepsTheDarkEnd() {
         val px = IntArray(1000) { if (it == 0) grey(5) else grey(100 + it % 100) }
         assertEquals(5, Levels.range(px)!!.first)
@@ -68,5 +85,16 @@ class LevelsTest {
         val idx = f.dither(IntArray(8) { grey(30 + it * 5) })
         assertEquals(0, idx.first().toInt()) // black
         assertEquals(3, idx.last().toInt()) // white
+    }
+
+    @Test
+    fun placedPicture_levelsComeFromThePictureAlone_barsStayPlain() {
+        // four greys 30…60 stretch to 0, 85, 170, 255: exactly the inks, so no error is spread; had the white bars
+        // been measured too, the range would reach 255 and the picture would stay dark
+        val f = FrameFormat(8, 1, FrameFormats.OD_G4, RowPlanes(2))
+        val at = Placement(2, 0, 4, 1)
+        val idx = f.dither(intArrayOf(grey(30), grey(40), grey(50), grey(60)), at)
+        assertEquals(3, f.paper) // white
+        assertArrayEquals(byteArrayOf(3, 3, 0, 1, 2, 3, 3, 3), idx)
     }
 }

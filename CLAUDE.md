@@ -46,6 +46,10 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
     `Nudity.EXPLICIT`/`Nudity.NUDE` change together (`NudityTest`). Run `python3 tools/catalog-export.py
     --self-test` after changing the tool.
   - `lintDebug` has no errors; a new one is a regression.
+  - `FrameFormat.dither` and `Oklab.kt` are a port of `epaper-dithering` 6.1.1 checked by `DitherGoldenTest`:
+    never paste our own output into it; after changing the palettes, the patterns (mirrored in both files) or
+    the dithering, regenerate it with `uv run tools/dither-golden.py`. BWR, BWY and E4 deliberately match by
+    RGB distance (docs/decisions.md); their own tests pin that.
   - OpenDisplay uploads keep a DEFLATE window of at most 512 bytes (header `18 D3`): compress only through
     `Od.zlib` (JZlib, windowBits 9), never `java.util.zip.Deflater`; `OdProtocolTest` checks it with
     `TinyInflate`.

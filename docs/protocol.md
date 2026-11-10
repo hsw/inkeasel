@@ -338,14 +338,36 @@ Raw payload in bytes, with `P(n)` = n rounded up to a multiple of 512:
 ### Dithering
 
 The frame takes device codes, so dithering is up to the client. This app dithers each type onto its own
-inks: Floyd–Steinberg (7/16 right, 3/16 down-left, 5/16 down, 1/16 down-right) in plain raster order, not
-serpentine; the nearest ink by squared RGB distance, the first one winning a tie; the pixel plus its
-accumulated error clamped to 0..255. There is no contrast, saturation or gamma step on a colour panel; a
-panel of greys first gets auto levels ([frames.md](frames.md#rendering)).
+inks with the recipe of OpenDisplay's `epaper-dithering` library (MIT), ported to Kotlin (`FrameFormat.dither`,
+`Oklab.kt`) with its constants and order of operations; no code is copied beyond the constants:
+- Burkes error diffusion, /32: 8 right, 4 two right; on the next row 2, 4, 8, 4, 2 from two left to two
+  right;
+- serpentine rows: even rows left to right, odd rows right to left with the kernel mirrored;
+- a see-through pixel is first laid on white (`c·α + 255·(1 − α)`, rounded), as the library does;
+- per pixel: the value plus its accumulated error clamped to 0..255 and rounded, turned into linear light
+  (IEC 61966-2-1) and then OKLab (Björn Ottosson's matrices);
+- the ink: the nearest in OKLab by `dL² + 1.5² · (da² + db²)`, the first one winning a tie (the chroma weight
+  sends a vivid colour to a colour ink rather than to a black or grey of similar lightness);
+- the error: the clamped value minus the ink, per channel in sRGB, as doubles; error falling outside the
+  picture is dropped.
 
-The vendor app dithers the same way, but always onto the measured E6 inks, whatever the colour type, and
-then maps pixels to codes by exact RGB match. On other types most E6 inks match nothing and become black or
-white, so it draws correctly only on E6 frames.
+One deviation from the library: on a panel with one or two colour inks (BWR, BWY, E4; `InkMatcher.rgb`) the
+ink is the nearest by squared RGB distance instead, the first one winning a tie. No mix of so few colour inks
+is neutral, so in OKLab a grey near a colour ink's lightness (red has L 0.63) takes that ink now and then and
+nothing cancels it. On a uniform 64×64 grey the library's matching puts red into BWR and E4 pictures (grey 40:
+4.2 % of the pixels, 80: 4.2 %, 105: 2.9 %, 128: 1.3 %, 160: 1.5 %, 200: 1.1 %, 230: 0.8 %; yellow never), RGB
+distance none; BWY gets no yellow either way. Panels of greys only and those with three colour inks or more
+(E6, E7, where the colour inks mix to a neutral) keep the library's OKLab matching.
+
+There is no contrast, saturation or gamma step on a colour panel; a panel of greys first gets auto levels
+([frames.md](frames.md#rendering)). The library's other steps (exposure, saturation, tone compression, gamut
+mapping, measured palettes, pinning exact inks, DBS) are not ported. `DitherGoldenTest` checks the port index
+for index against the library (version 6.1.1) on an E6 and a four-grey picture; `tools/dither-golden.py`
+regenerates its expected indices ([building.md](building.md#tests)).
+
+The vendor app dithers with Floyd–Steinberg in raster order and the nearest ink by RGB distance, always onto
+the measured E6 inks, whatever the colour type, and then maps pixels to codes by exact RGB match. On other
+types most E6 inks match nothing and become black or white, so it draws correctly only on E6 frames.
 
 ### LZO compression
 
@@ -439,9 +461,17 @@ cannot be given a window, so the app compresses with JZlib (a pure-Java port of 
 window: one stream, header `18 D3` (deflate, 512-byte window), no match further back than the window.
 
 The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
-greys from a phone *(observed)*: uncompressed, 96,000 bytes take about 19 s (one answer per 230 bytes);
-compressed, a full-frame painting (59 KB) about 13 s and a portrait with white bars (28 KB) about 7 s; the
-refresh about 4 s.
+greys at 800×480 from a phone, debug build *(observed)*: uncompressed, the 96,000 bytes take about 19 s (one
+answer per 230 bytes); compressed, the data takes:
+
+| Picture | Compressed | Data | Before |
+|---|---|---|---|
+| "Night Watch" (Rembrandt), full frame | 39,855 bytes | 9.3 s | 47,181 bytes, 10.7 s |
+| "Starry Night", full frame | 55,466 bytes | 12.6 s | 58,845 bytes, 13.1 s |
+| "Mona Lisa", white bars at the sides | 25,877 bytes | 6.5 s | 27,532 bytes, 6.8 s |
+
+"Before" is Floyd–Steinberg dithering with `Deflater` reset every 512 bytes; the new figures come from the
+Burkes/OKLab dithering and JZlib together. The refresh adds about 4 s.
 
 Not used: the sliding-window pipe (`00 80`), partial writes (`00 76`, 1-bit panels only) and fast refresh.
 
