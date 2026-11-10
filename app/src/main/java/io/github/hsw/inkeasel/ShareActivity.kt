@@ -130,15 +130,20 @@ class PendingShare(context: Context) {
     }
 
     /**
-     * The pending path to send now, cleared from the prefs; `null` (and cleared) if there is none or it is
-     * stale or its file is gone.
+     * Hands the pending path to [start] and clears it once [start] has returned; returns that path. `null` if
+     * there is none, or (cleared without [start]) it is stale or its file is gone. If [start] throws (the system
+     * refusing the upload service's start), the share stays pending and the exception goes to the caller.
      */
-    fun take(nowMs: Long): String? {
+    fun send(nowMs: Long, start: (path: String) -> Unit): String? {
         val path = prefs.getString(PATH, null) ?: return null
-        val savedAt = prefs.getLong(SAVED_AT, 0L)
+        if (!ShareRules.sendPending(prefs.getLong(SAVED_AT, 0L), nowMs, File(path).isFile)) {
+            Log.i(TAG, "dropped (stale or gone): ${File(path).name}")
+            prefs.edit().clear().apply()
+            return null
+        }
+        start(path)
         prefs.edit().clear().apply()
-        return path.takeIf { ShareRules.sendPending(savedAt, nowMs, File(it).isFile) }
-            .also { if (it == null) Log.i(TAG, "dropped (stale or gone): ${File(path).name}") }
+        return path
     }
 
     private companion object {

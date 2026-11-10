@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -61,6 +62,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.paging.LoadState
 import androidx.paging.PagingData
@@ -499,23 +503,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Choose [f] as the frame: saved with its advertisement (OpenDisplay: the display it reports once
-     * connected, read first) and the time it was seen; closes the settings and calls [onSelected]. An
+     * connected, read first) and the time it was seen, and closes the settings; [MainActivity] sees the new
+     * [selected] and sends a pending share while it is started (a read can end with the app in the background). An
      * OpenDisplay frame that cannot be reached or reports a panel this app cannot draw on is not chosen, and a
      * toast says why. The newest press wins: it cancels a read still running for another frame (pressing the
      * frame being read again changes nothing), and so does closing the settings.
      */
-    fun select(f: SeenFrame, onSelected: () -> Unit) {
+    fun select(f: SeenFrame) {
         when (f.kind) {
-            FrameKind.NOWMEAN -> {
-                choose(SelectedFrame(f.name, f.address, f.advert, System.currentTimeMillis(), f.kind))
-                onSelected()
-            }
-            FrameKind.OPENDISPLAY -> readAndChoose(f, onSelected)
+            FrameKind.NOWMEAN -> choose(SelectedFrame(f.name, f.address, f.advert, System.currentTimeMillis(), f.kind))
+            FrameKind.OPENDISPLAY -> readAndChoose(f)
         }
     }
 
     /** The OpenDisplay half of [select]: reads [f]'s display, then [readDone] or [readFailed] if still current. */
-    private fun readAndChoose(f: SeenFrame, onSelected: () -> Unit) {
+    private fun readAndChoose(f: SeenFrame) {
         if (probing == f.name) return
         cancelProbe()
         probing = f.name
@@ -525,7 +527,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val d = readDisplay(f.name)
                 ensureActive()
-                if (probe === me) readDone(f, d, onSelected)
+                if (probe === me) readDone(f, d)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -540,7 +542,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** The current read of [f] got [d]: chooses [f] if this app can draw on that panel, else toasts why not. */
-    private fun readDone(f: SeenFrame, d: OdDisplay, onSelected: () -> Unit) {
+    private fun readDone(f: SeenFrame, d: OdDisplay) {
         Log.i(TAG, "frame ${f.name} reports $d")
         when (val l = OdDisplay.lookup(d)) {
             is FormatLookup.Unsupported -> toast(Txt(R.string.frame_toast_unsupported, f.name, l.reason))
@@ -548,7 +550,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 if (!l.format.verified) toast(Txt(R.string.frame_toast_reason, f.name, Txt(R.string.frame_unverified)))
                 clearProbe() // this read is done: choose() must not cancel it
                 choose(SelectedFrame(f.name, f.address, null, System.currentTimeMillis(), f.kind, d))
-                onSelected()
             }
         }
     }
@@ -757,11 +758,18 @@ class MainActivity : ComponentActivity() {
             }
             handleShareIntent(intent)
         }
+        // a frame chosen sends the pending share; one chosen while the activity was stopped (an OpenDisplay
+        // read ends after a minute or two) waits for its next start, as Android 12+ refuses a background
+        // start of the upload service. Tied to this activity's lifecycle, so it never outlives it.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                snapshotFlow { vm.selected }.collect { sendPendingShare() }
+            }
+        }
         setContent {
             App(
                 vm,
                 ble = BleAccess(permitted, blocked, ::requestPermissions),
-                onFrameSelected = ::sendPendingShare,
                 onSend = ::send,
                 onPanelConfirm = { askPermissions.launch(BlePermissions.all) },
                 onPanelDismiss = ::dismissPanel,
@@ -810,14 +818,20 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Send the picture shared while the permissions were missing, once they are granted and a frame is
-     * chosen (a manual upload); a stale one or one whose file is gone is dropped ([PendingShare.take]).
-     * Called after the permission request, on resume and when a frame is selected.
+     * chosen (a manual upload); a stale one or one whose file is gone is dropped ([PendingShare.send]).
+     * Called after the permission request, on resume and when a frame is selected, and only while this
+     * activity is started: Android 12+ refuses to start the upload service from the background. If the
+     * system refuses it anyway, the share stays pending for the next resume.
      */
     private fun sendPendingShare() {
-        if (!permitted || vm.selected == null) return
-        val path = pendingShare.take(System.currentTimeMillis()) ?: return
-        Log.i(TAG, "sending the pending share: ${File(path).name}")
-        UploadService.startManual(this, Art.File(path))
+        if (!permitted || vm.selected == null || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
+        val path = try {
+            pendingShare.send(System.currentTimeMillis()) { UploadService.startManual(this, Art.File(it)) }
+        } catch (e: IllegalStateException) { // ForegroundServiceStartNotAllowedException is one
+            Log.w(TAG, "pending share not sent, kept for the next resume", e)
+            null
+        } ?: return
+        Log.i(TAG, "sent the pending share: ${File(path).name}")
         Toast.makeText(this, R.string.upload_sending, Toast.LENGTH_SHORT).show()
     }
 
@@ -870,7 +884,6 @@ class MainActivity : ComponentActivity() {
 fun App(
     vm: MainViewModel,
     ble: BleAccess,
-    onFrameSelected: () -> Unit,
     onSend: (Picture) -> Unit,
     onPanelConfirm: () -> Unit,
     onPanelDismiss: () -> Unit,
@@ -976,7 +989,7 @@ fun App(
                         onPoster = vm::pressPoster,
                         onDisclosureConfirmed = vm::confirmDisclosure,
                         probing = vm.probing,
-                        onSelect = { f -> vm.select(f, onFrameSelected) },
+                        onSelect = { f -> vm.select(f) },
                         onCancel = vm::closeSettings,
                     )
                 } else {

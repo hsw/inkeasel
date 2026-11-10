@@ -356,9 +356,13 @@ Android 9+).
 Without the Bluetooth permission the picture is still copied and waits (`PendingShare`): the app opens with the
 Bluetooth panel (or, once the system no longer asks, with its settings, which name the path in App info;
 `BleAsk.onShare`); once it is granted and a frame is chosen, `MainActivity` sends the picture (after the
-permission request, on resume and when a frame is selected). One share waits at a time (the newest), for at most
-an hour (`ShareRules.PENDING_MAX_AGE_MS`, prefs `share`; a clock set back counts as stale); after that, or if the
-file is gone, it is dropped, and the picture stays in "My pictures" either way.
+permission request, on resume and when a frame is selected), only while it is started: Android 12+ refuses to
+start the upload service from the background, and an OpenDisplay frame's read can end with the app away, so a
+frame chosen then sends the share at the next start (`MainActivity` watches the chosen frame through its own
+lifecycle; the view model holds no callback into the activity). The share is cleared only once the service has
+started (`PendingShare.send`); a refused start keeps it for the next resume. One share waits at a time (the
+newest), for at most an hour (`ShareRules.PENDING_MAX_AGE_MS`, prefs `share`; a clock set back counts as stale);
+after that, or if the file is gone, it is dropped, and the picture stays in "My pictures" either way.
 
 `ShareActivity` stays exported as the share target, so a share uploads the shared picture without asking again
 (see [decisions.md](decisions.md)); `UploadService` itself is not exported (see [Uploads](#uploads)).

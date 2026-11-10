@@ -11,6 +11,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -39,7 +40,6 @@ class MainViewModelOdTest {
     /** The display [other] reports. */
     private val reportedByOther = CompletableDeferred<OdDisplay>()
     private var reads = 0
-    private var selectedCalls = 0
     private val toasts = mutableListOf<Txt>()
 
     /** A display record of [scheme] at 800×480 (5: four greys, verified; 6: sixteen greys, refused). */
@@ -70,7 +70,7 @@ class MainViewModelOdTest {
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
-    private fun select(f: SeenFrame = frame) = vm.select(f) { selectedCalls++ }
+    private fun select(f: SeenFrame = frame) = vm.select(f)
 
     @Test
     fun aSupportedDisplay_isChosen() {
@@ -80,7 +80,7 @@ class MainViewModelOdTest {
         reported.complete(display(5))
         idle()
         assertNull(vm.probing)
-        assertEquals(1, selectedCalls)
+        assertEquals(frame.name, vm.selected!!.name)
         assertEquals(display(5), vm.selected!!.display)
         assertEquals(FrameKind.OPENDISPLAY, vm.selected!!.kind)
         assertEquals(display(5), FrameStore(app).selected()!!.display)
@@ -97,7 +97,7 @@ class MainViewModelOdTest {
         assertEquals(1, reads)
         reported.complete(display(5))
         idle()
-        assertEquals(1, selectedCalls)
+        assertEquals(frame.name, vm.selected!!.name)
     }
 
     @Test
@@ -107,7 +107,6 @@ class MainViewModelOdTest {
         idle()
         assertNull(vm.probing)
         assertNull(vm.selected)
-        assertEquals(0, selectedCalls)
         assertTrue(vm.settingsOpen)
         assertEquals(listOf(Txt(R.string.frame_toast_unsupported, frame.name, Txt(R.string.reason_colour_scheme, 6))), toasts)
     }
@@ -119,7 +118,6 @@ class MainViewModelOdTest {
         idle()
         assertNull(vm.probing)
         assertNull(vm.selected)
-        assertEquals(0, selectedCalls)
         assertEquals(listOf(Txt(R.string.frame_toast_reason, frame.name, Txt(R.string.frame_err_encrypted))), toasts)
         // the next press reads again
         reported = CompletableDeferred()
@@ -136,7 +134,6 @@ class MainViewModelOdTest {
         idle()
         assertNull(vm.probing)
         assertNull(vm.selected)
-        assertEquals(0, selectedCalls)
         assertEquals(emptyList<Txt>(), toasts)
         reported.complete(display(5)) // too late: nothing happens
         idle()
@@ -150,14 +147,13 @@ class MainViewModelOdTest {
         select(nowMean)
         idle()
         assertNull(vm.probing)
-        assertEquals(1, selectedCalls)
-        assertEquals(nowMean.name, vm.selected!!.name)
+        val chosen = vm.selected!!
+        assertEquals(nowMean.name, chosen.name)
         reported.complete(display(5)) // the cancelled read finishes anyway: it chooses nothing
         idle()
-        assertEquals(nowMean.name, vm.selected!!.name)
+        assertSame(chosen, vm.selected) // not chosen a second time
         assertEquals(FrameKind.NOWMEAN, vm.selected!!.kind)
         assertEquals(nowMean.name, FrameStore(app).selected()!!.name)
-        assertEquals(1, selectedCalls)
         assertEquals(emptyList<Txt>(), toasts)
     }
 
@@ -177,7 +173,6 @@ class MainViewModelOdTest {
         assertNull(vm.probing)
         assertEquals(other.name, vm.selected!!.name)
         assertEquals(other.name, FrameStore(app).selected()!!.name)
-        assertEquals(1, selectedCalls)
         assertEquals(emptyList<Txt>(), toasts)
     }
 
@@ -214,7 +209,6 @@ class MainViewModelOdTest {
         reported.complete(display(5))
         idle()
         assertEquals(frame.name, vm.selected!!.name)
-        assertEquals(1, selectedCalls)
     }
 
     @Test
@@ -227,6 +221,5 @@ class MainViewModelOdTest {
         reported.complete(display(5))
         idle()
         assertNull(vm.selected)
-        assertEquals(0, selectedCalls)
     }
 }

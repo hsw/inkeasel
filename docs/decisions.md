@@ -15,6 +15,18 @@ queue never fills. Rejected: the same change in the NowMean `GattSession` here (
 write statuses, but checks the end write's and has no per-chunk answer to wait for; it is the hardware-verified
 path and goes with the shared GATT link).
 
+## 2026-11-10 — A pending share is sent only while the app is in front, and kept until the upload starts
+
+Choosing an OpenDisplay frame reads its panel first, which can take a minute or two; the view model then ran the
+activity's after-choice callback, which took the pending share and started the upload service. With the app sent
+to the background meanwhile, Android 12+ refuses that start, the read swallowed the exception, and the share was
+lost; the callback also kept the activity that passed it alive across the read. Now the view model only records
+the choice, and `MainActivity` sends the pending share when it sees a chosen frame while it is started
+(`repeatOnLifecycle(STARTED)`), on resume and after the permission request; `PendingShare.send` clears the share
+only once the service has started, so a refused start keeps it for the next resume. Rejected: a callback that
+checks the lifecycle (it would still hold an activity that may be destroyed); catching the refusal in the view
+model (the share was already taken).
+
 ## 2026-11-10 — OpenDisplay: one connection at a time, a bounded panel size, a whole write, no answer data in the log
 
 A panel reading in the settings and an upload could wait for the same advertisement and connect to the frame
