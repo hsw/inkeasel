@@ -36,6 +36,8 @@ class OdProtocolTest {
         assertTrue(Od.Reply.parse(bytes(0xFE, 0x40))!!.authRequired)
         assertFalse(Od.Reply.parse(bytes(0x00, 0x40, 0xFE))!!.ok)
         assertNull(Od.Reply.parse(bytes(0x00)))
+        // the log gets no answer's data: a config answer holds the Wi-Fi password and the key
+        assertEquals("00 40 (3 B)", Od.Reply.parse(bytes(0x00, 0x40, 0xDE, 0xAD, 0xBF)).toString())
     }
 
     @Test
@@ -96,6 +98,21 @@ class OdProtocolTest {
         assertEquals(Txt(R.string.reason_colours_size, ColourScheme.E6.name, 801, 480), OdDisplay.lookup(OdDisplay(display(w = 801, scheme = 4))).reasonOrNull)
         assertEquals(Txt(R.string.reason_no_caps), OdDisplay.lookup(null).reasonOrNull)
         assertTrue(OdDisplay.lookup(OdDisplay(display(rotation = 1))).reasonOrNull!!.id == R.string.reason_rotation)
+    }
+
+    @Test
+    fun oversizedDisplay_isRefused_beforeAnySizeIsComputed() {
+        fun lookup(w: Int, h: Int, scheme: Int = 5) = OdDisplay.lookup(OdDisplay(display(w = w, h = h, scheme = scheme)))
+        for ((w, h) in listOf(65534 to 65534, 4097 to 480, 800 to 4097, 4096 to 4096, 65535 to 1)) {
+            assertEquals("$w×$h", Txt(R.string.reason_too_large, w, h), lookup(w, h).reasonOrNull)
+        }
+        // the largest panel the firmware drives, and the bound itself, in every scheme drawn
+        for (scheme in listOf(0, 1, 2, 4, 5)) {
+            for ((w, h) in listOf(1872 to 1404, OdDisplay.MAX_SIDE to OdDisplay.MAX_PIXELS / OdDisplay.MAX_SIDE)) {
+                val f = lookup(w, h, scheme).formatOrNull
+                assertTrue("$scheme $w×$h", f != null && f.payloadSize > 0)
+            }
+        }
     }
 
     @Test

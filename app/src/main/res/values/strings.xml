@@ -168,6 +168,8 @@
     <string name="reason_colour_scheme">colour scheme %1$d is not supported yet</string>
     <!-- %1$d the panel type number an OpenDisplay frame of four greys reports -->
     <string name="reason_greys_panel">four greys on panel %1$d are not supported yet</string>
+    <!-- %1$d×%2$d the width and height an OpenDisplay frame reports -->
+    <string name="reason_too_large">a %1$d×%2$d panel is too large</string>
 
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">this device has no Bluetooth</string>
@@ -209,6 +211,8 @@
     <!-- %1$s the step, as in frame_err_busy; %2$d the wait in milliseconds -->
     <string name="frame_err_timeout">%1$s: no answer within %2$d ms</string>
     <string name="frame_err_lost">connection lost (status %1$d)</string>
+    <!-- %1$s the step (frame_err_step_*), %2$d the status the Bluetooth stack reported for it -->
+    <string name="frame_err_gatt_status">%1$s: Bluetooth error (status %2$d)</string>
     <string name="frame_err_no_od_service">the device has no OpenDisplay service</string>
     <string name="frame_err_config">could not read the frame\'s settings</string>
     <string name="frame_err_encrypted">the frame has encryption on: not supported yet</string>
@@ -217,6 +221,8 @@
     <!-- %1$s the step (frame_err_step_*), %2$02x the opcode the frame answered with -->
     <string name="frame_err_unexpected">%1$s: unexpected answer 0x%2$02x from the frame</string>
     <string name="frame_err_refresh">the frame could not refresh its screen</string>
+    <!-- %1$d bytes of the picture sent when the frame ended the write, %2$d all of them -->
+    <string name="frame_err_ended_early">the frame ended the write after %1$d of %2$d bytes</string>
     <!-- the steps of an OpenDisplay upload, nested in frame_err_busy, frame_err_timeout, frame_err_refused and frame_err_unexpected -->
     <string name="frame_err_step_mtu">raising the MTU</string>
     <string name="frame_err_step_services">reading the frame\'s services</string>

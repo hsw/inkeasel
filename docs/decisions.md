@@ -3,6 +3,33 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — OpenDisplay: a failed GATT operation ends the session at once
+
+`OdSession` ignored the status Android reports for a characteristic or descriptor write, so a write the stack
+failed was followed by a wait for the frame's answer that could not come: up to 90 s for a data chunk, holding
+`OdClient.SESSIONS` and hiding the real error behind a timeout. Every GATT operation of an OpenDisplay session
+(MTU, discovery, the notification switch, each write) now fails at once unless its status is `GATT_SUCCESS`,
+with the step and the status in the message (`OdStep.failed`). A write without response is checked too: its
+callback reports whether it was queued, and each OpenDisplay chunk waits for the frame's answer anyway, so the
+queue never fills. Rejected: the same change in the NowMean `GattSession` here (it ignores the CCCD and data
+write statuses, but checks the end write's and has no per-chunk answer to wait for; it is the hardware-verified
+path and goes with the shared GATT link).
+
+## 2026-11-10 — OpenDisplay: one connection at a time, a bounded panel size, a whole write, no answer data in the log
+
+A panel reading in the settings and an upload could wait for the same advertisement and connect to the frame
+together; Android hands every notification to each client of the device, so their answers would interleave.
+All OpenDisplay connections now take one process-wide lock (`OdClient.SESSIONS`) from the search to the
+disconnect; it is the last lock taken (the upload engine's may be held around it), so it cannot deadlock with
+them. Rejected: a lock per `OdClient` (the settings and `FrameClient` each make their own); cancelling the
+upload for the reading (a picture in flight would be lost). The display record holds any 16-bit size, and
+rendering for a nonsense one overflows the payload size or runs out of memory, so a display over 4096 pixels
+a side or 4096 × 2048 pixels in all is refused (the largest panel the firmware drives is 1872×1404); NowMean
+sizes come from a fixed table and are unchanged. An uncompressed write counts as ended by the frame only when
+its `00 72` answers the last chunk; an earlier one is an error rather than a success with the picture cut
+short. `Od.Reply.toString` gives status, opcode and length only, so no answer's data (a stray config answer
+holds the Wi-Fi password and the key) can reach the log on any path.
+
 ## 2026-11-10 — Choosing a frame: the newest press wins over a running OpenDisplay read
 
 Choosing an OpenDisplay frame reads its panel first, which can take a minute or two (scan until it wakes,

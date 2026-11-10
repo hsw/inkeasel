@@ -6,9 +6,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 /**
  * The OpenDisplay request and answer sequences this app uses (docs/protocol.md#opendisplay-config,
  * docs/protocol.md#opendisplay-upload), over any link: [send] writes one request (`data`: a [Od.WRITE_DATA]
- * chunk, which may go without response), [replies] carries the frame's answers as they arrive (closed with the
- * cause when the link drops), and [lost] says why the link is gone, if it is. Free of Android types, so tests
- * drive it with a scripted frame; `OdSession` is the GATT link.
+ * chunk, which may go without response; it throws if the link fails the write, which ends the sequence at
+ * once), [replies] carries the frame's answers as they arrive (closed with the cause when the link drops), and
+ * [lost] says why the link is gone, if it is. Free of Android types, so tests drive it with a scripted frame;
+ * `OdSession` is the GATT link.
  */
 internal class OdExchange(
     private val replies: ReceiveChannel<ByteArray>,
@@ -45,14 +46,17 @@ internal class OdExchange(
      */
     suspend fun write(payload: ByteArray, zlib: ByteArray?) {
         val t0 = System.nanoTime()
-        val ended = if (zlib != null && startCompressed(payload.size, zlib)) {
-            chunks(zlib.copyOfRange(minOf(zlib.size, Od.START_DATA), zlib.size), canEnd = false)
+        // the bytes that go to the frame: [zlib] once the frame takes the compressed start, else [payload]
+        val packed = zlib?.takeIf { startCompressed(payload.size, it) }
+        val ended = if (packed != null) {
+            chunks(packed.copyOfRange(minOf(packed.size, Od.START_DATA), packed.size), canEnd = false)
         } else {
             request(Od.start())
             reply(Od.WRITE_START, OdStep.START, 10_000).also { if (!it.ok) throw refused(OdStep.START, it) }
             chunks(payload, canEnd = true)
         }
-        log("data: ${payload.size} B as ${zlib?.size ?: payload.size} B in ${ms(t0)} ms, ended by the frame: $ended")
+        val sent = if (packed != null) "${packed.size} B zlib" else "${payload.size} B uncompressed"
+        log("data: ${payload.size} B sent as $sent in ${ms(t0)} ms, ended by the frame: $ended")
         if (!ended) {
             request(Od.end())
             reply(Od.WRITE_END, OdStep.END, END_MS).also { if (!it.ok) throw refused(OdStep.END, it) }
@@ -81,7 +85,8 @@ internal class OdExchange(
 
     /**
      * Sends [data] in [Od.WRITE_DATA] chunks, each answered within [DATA_MS]. True if the frame answered the
-     * last one with the end ([canEnd]: an uncompressed write ends by itself once the frame has every byte).
+     * last one with the end ([canEnd]: an uncompressed write ends by itself once the frame has every byte; an end
+     * answer to an earlier chunk is an error, as is any end answer to a compressed write).
      */
     private suspend fun chunks(data: ByteArray, canEnd: Boolean): Boolean {
         var at = 0
@@ -91,7 +96,11 @@ internal class OdExchange(
             at += chunk.size
             val r = reply(null, OdStep.DATA, DATA_MS)
             if (!r.ok) throw refused(OdStep.DATA, r)
-            if (canEnd && r.op == Od.WRITE_END) return true
+            if (canEnd && r.op == Od.WRITE_END) {
+                // the frame ends an uncompressed write on its last byte: an end before that drops the rest
+                if (at < data.size) throw TxtException(Txt(R.string.frame_err_ended_early, at, data.size))
+                return true
+            }
             if (r.op != Od.WRITE_DATA) throw unexpected(OdStep.DATA, r)
         }
         return false
@@ -159,4 +168,7 @@ internal enum class OdStep(private val id: Int) {
     REFRESH(R.string.frame_err_step_refresh);
 
     val txt: Txt get() = Txt(id)
+
+    /** The error of this GATT operation when the stack reports it done with [status], not `GATT_SUCCESS`. */
+    fun failed(status: Int) = TxtException(Txt(R.string.frame_err_gatt_status, txt, status))
 }

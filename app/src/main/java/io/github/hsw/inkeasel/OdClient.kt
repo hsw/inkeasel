@@ -16,6 +16,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
@@ -29,6 +31,9 @@ private const val TAG = "OdClient"
  *
  * Such a frame sleeps most of the time and wakes about once a minute to advertise; a connection must start
  * right after an advertisement, so both scan for the frame's name (up to [FIND_MS]) and connect at once.
+ * One at a time in the whole app ([SESSIONS]): the settings' read and an upload would otherwise wait for the same
+ * advertisement and connect together, and Android hands each notification to every client of the device, so
+ * each would take the other's answers.
  */
 @SuppressLint("MissingPermission") // permissions are requested by MainActivity before any upload or scan
 class OdClient(private val ctx: Context) {
@@ -40,12 +45,12 @@ class OdClient(private val ctx: Context) {
      * Waits for the frame [name] to advertise, connects at once and reads the display it reports. Fails if it
      * is not heard, reports none, or has encryption on.
      */
-    suspend fun interrogate(name: String): OdDisplay {
+    suspend fun interrogate(name: String): OdDisplay = SESSIONS.withLock {
         usable()
         val s = OdSession(ctx, find(name))
         try {
             s.open()
-            return s.exchange.display(name)
+            s.exchange.display(name)
         } finally {
             s.close()
         }
@@ -56,7 +61,7 @@ class OdClient(private val ctx: Context) {
      * check that it still reports the display [format] was made for, write the picture and wait until the
      * frame says its panel is refreshed. One attempt; a failure is reported to the caller.
      */
-    suspend fun upload(sel: SelectedFrame, format: FrameFormat, payload: ByteArray) {
+    suspend fun upload(sel: SelectedFrame, format: FrameFormat, payload: ByteArray) = SESSIONS.withLock {
         require(payload.size == format.payloadSize) { "payload ${payload.size} B, the format needs ${format.payloadSize} B" }
         usable()
         Log.i(TAG, "searching for ${sel.name}")
@@ -89,9 +94,15 @@ class OdClient(private val ctx: Context) {
         return usable().getRemoteDevice(seen.address)
     }
 
-    private companion object {
+    internal companion object {
         /** Longer than the frame's wake period (about a minute without deep sleep). */
         const val FIND_MS = 75_000L
+
+        /**
+         * Held for the whole of [interrogate] and [upload], from the search to the disconnect. Nothing else is
+         * locked while it is held, so it is always the last lock taken (the upload engine's may be held around it).
+         */
+        val SESSIONS = Mutex()
     }
 }
 
@@ -122,9 +133,7 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
         withTimeoutOrNull(CONNECT_MS) { connected.await() } ?: throw TxtException(Txt(R.string.frame_err_no_answer))
         op(OdStep.MTU, 5_000) { g.requestMtu(MTU) }
         if (mtu < Od.CHUNK + 2 + 3) throw TxtException(Txt(R.string.frame_err_mtu))
-        if (op(OdStep.SERVICES, 10_000) { g.discoverServices() } != BluetoothGatt.GATT_SUCCESS) {
-            throw TxtException(Txt(R.string.frame_err_discover))
-        }
+        op(OdStep.SERVICES, 10_000) { g.discoverServices() }
         char = g.getService(Od.SERVICE)?.characteristics?.firstOrNull() ?: throw TxtException(Txt(R.string.frame_err_no_od_service))
         noResponse = char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
         g.setCharacteristicNotification(char, true)
@@ -149,9 +158,10 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
 
     /**
      * Runs one GATT operation, named [step] in its errors, and waits for its callback; retries while the stack
-     * reports busy.
+     * reports busy. A status other than `GATT_SUCCESS` fails at once ([OdStep.failed]): after a failed write no
+     * answer can come, and waiting for one would hold [OdClient.SESSIONS] for the whole answer timeout.
      */
-    private suspend fun op(step: OdStep, timeoutMs: Long, start: () -> Boolean): Int {
+    private suspend fun op(step: OdStep, timeoutMs: Long, start: () -> Boolean) {
         val d = CompletableDeferred<Int>()
         pending = d
         var tries = 0
@@ -162,7 +172,8 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
         }
         val status = withTimeoutOrNull(timeoutMs) { d.await() }
         pending = null
-        return status ?: throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, step.txt, timeoutMs.toInt())))
+        if (status == null) throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, step.txt, timeoutMs.toInt())))
+        if (status != BluetoothGatt.GATT_SUCCESS) throw step.failed(status)
     }
 
     fun close() {

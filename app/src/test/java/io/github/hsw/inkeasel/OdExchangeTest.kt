@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel
 
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -20,7 +21,8 @@ class OdExchangeTest {
         val replies = Channel<ByteArray>(Channel.UNLIMITED)
         val sent = mutableListOf<ByteArray>()
         val dataChunks = mutableListOf<Boolean>() // per request: sent as a data chunk
-        val exchange = OdExchange(replies, { null }) { v, data ->
+        val logs = mutableListOf<String>()
+        val exchange = OdExchange(replies, { null }, { logs += it }) { v, data ->
             sent += v
             dataChunks += data
             answer(v).forEach { replies.trySend(it) }
@@ -79,6 +81,7 @@ class OdExchangeTest {
         assertArrayEquals(Od.startCompressed(payload.size, zlib.copyOf(Od.START_DATA)), f.sent[0])
         assertArrayEquals(zlib.copyOfRange(Od.START_DATA, zlib.size), f.data)
         assertArrayEquals(Od.end(), f.sent.last())
+        assertTrue(f.logs.toString(), f.logs.any { "data: 96000 B sent as ${zlib.size} B zlib" in it })
     }
 
     @Test
@@ -104,6 +107,8 @@ class OdExchangeTest {
             assertEquals(listOf(Od.WRITE_START, Od.WRITE_START, Od.WRITE_DATA, Od.WRITE_DATA), f.ops)
             assertArrayEquals(Od.start(), f.sent[1])
             assertArrayEquals(payload, f.data)
+            // the log counts the bytes that went, not the refused zlib stream
+            assertTrue(f.logs.toString(), f.logs.any { "data: 300 B sent as 300 B uncompressed" in it })
         }
     }
 
@@ -139,6 +144,40 @@ class OdExchangeTest {
     }
 
     @Test
+    fun uncompressedEndBeforeTheLastByte_isAnError() = runTest {
+        // the end answer to the first chunk with the refresh behind it: not the frame having every byte
+        val f = Frame { r ->
+            when (op(r)) {
+                Od.WRITE_START -> listOf(b(0x00, 0x70))
+                Od.WRITE_DATA -> listOf(b(0x00, 0x72), b(0x00, 0x73))
+                else -> emptyList()
+            }
+        }
+        val e = runCatching { f.exchange.write(ByteArray(1000), null) }.exceptionOrNull()!!
+        assertEquals(Txt(R.string.frame_err_ended_early, Od.CHUNK, 1000), txtOf(e))
+        assertEquals(listOf(Od.WRITE_START, Od.WRITE_DATA), f.ops)
+    }
+
+    @Test
+    fun answers_reachTheLogWithoutTheirData() = runTest {
+        // a config answer out of phase (a late one, or another client's) holds the Wi-Fi password and the key
+        val secret = "hunter2".toByteArray() + b(0xDE, 0xAD, 0xBE, 0xEF)
+        val config = b(0x00, 0x40) + secret
+        val upload = firmware(10)
+        val f = Frame { r ->
+            when {
+                op(r) != Od.WRITE_START -> upload(r)
+                r.size > 2 -> listOf(config) // the compressed start: taken as a refusal
+                else -> listOf(config) + upload(r) // the plain start: skipped until its own answer
+            }
+        }
+        f.exchange.write(ByteArray(10), ByteArray(5))
+        assertTrue(f.logs.any { "compressed start refused" in it })
+        assertTrue(f.logs.any { "skipping" in it })
+        for (line in f.logs) assertFalse(line, secret.toHex() in line || "hunter2" in line)
+    }
+
+    @Test
     fun refusedChunk_givesTheStatus() = runTest {
         val f = Frame { r -> if (op(r) == Od.WRITE_START) listOf(b(0x00, 0x70)) else listOf(b(0xFF, 0x71)) }
         val e = runCatching { f.exchange.write(ByteArray(10), null) }.exceptionOrNull()!!
@@ -166,6 +205,27 @@ class OdExchangeTest {
         val replies = Channel<ByteArray>(Channel.UNLIMITED)
         val x = OdExchange(replies, { gone }) { _, _ -> replies.close(gone) }
         assertEquals(gone.txt, txtOf(runCatching { x.write(ByteArray(10), null) }.exceptionOrNull()!!))
+    }
+
+    @Test
+    fun failedWrite_endsTheUploadAtOnce() = runTest {
+        // the link reports the second chunk's write failed (GATT status 133): no answer can follow it
+        val failed = OdStep.WRITE.failed(133)
+        var chunks = 0
+        val answer = firmware(1_000)
+        val f = Frame { r -> if (op(r) == Od.WRITE_DATA && ++chunks == 2) throw failed else answer(r) }
+        val e = runCatching { f.exchange.write(ByteArray(1_000), null) }.exceptionOrNull()!!
+        assertEquals(Txt(R.string.frame_err_gatt_status, OdStep.WRITE.txt, 133), txtOf(e))
+        assertEquals(0L, currentTime) // not after a wait for the chunk's answer (DATA_MS)
+        assertEquals(listOf(Od.WRITE_START, Od.WRITE_DATA, Od.WRITE_DATA), f.ops) // nothing after the failed one
+    }
+
+    @Test
+    fun failedRequest_endsTheConfigReadAtOnce() = runTest {
+        val f = Frame { throw OdStep.WRITE.failed(3) }
+        val e = runCatching { f.exchange.display("OD000001") }.exceptionOrNull()!!
+        assertEquals(Txt(R.string.frame_err_gatt_status, OdStep.WRITE.txt, 3), txtOf(e))
+        assertEquals(0L, currentTime)
     }
 
     /** A config with a system packet, then the four-grey display record of an 800×480 panel. */

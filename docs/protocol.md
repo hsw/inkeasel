@@ -418,7 +418,9 @@ after an advertisement is heard.
 
 One service, `0x2446`, with one characteristic for both directions: requests are written to it (data chunks
 without response where the characteristic allows it), answers arrive as notifications on it. MTU 247 is
-asked for; a data request needs 232 bytes.
+asked for; a data request needs 232 bytes. A GATT operation the stack reports as failed (the MTU, service
+discovery, turning on notifications, any write, with or without response) ends the session at once with its
+status ("a request to the frame: Bluetooth error (status 133)"): no answer can follow a failed write.
 
 - Request: `[opcode:2 BE][payload]`. Payload fields are little-endian unless stated otherwise.
 - Answer: `[status][opcode low byte][data]`; status `00` ACK, `FF` NACK, `FE` authentication required
@@ -437,7 +439,11 @@ asked for; a data request needs 232 bytes.
 The display packet: panel model (`panel_ic_type`, 16 bits LE at 2), width (4), height (6), rotation at 14
 (an index 0..3, in some configs degrees), colour scheme at 21 (0 mono, 1 BWR, 2 BWY, 3 BWRY, 4 Spectra 6,
 5 four greys, 6 sixteen greys, 7 seven colours, 8 Spectra 6 split, 9 eight greys), transmission modes at 22.
-The rest of the config (pins, power, Wi-Fi with its password, the encryption key) is not kept.
+The rest of the config (pins, power, Wi-Fi with its password, the encryption key) is not kept, and no answer's
+data is logged (only its status, opcode and length).
+
+Width and height are any 16-bit value; the app refuses a display wider or taller than 4096 pixels or with
+more than 8,388,608 (4096 × 2048) pixels. The largest panel the firmware drives is 1872×1404.
 
 Switching the panel mode (on the E1001: 1 bit with partial refresh, or four greys with full refresh only) is
 a config write and a reboot of the frame, done with the OpenDisplay tools, not by this app.
@@ -453,7 +459,9 @@ The full-frame direct write, compressed where the frame takes it:
 2. `00 71 [≤230 bytes]` per chunk (the rest of the zlib stream, or the image), each answered `00 71`. The app
    waits up to 90 s for each answer, as the reference sender does: the firmware answers after writing the chunk
    to the panel, which on Spectra 6 and other colour panels can take up to about a minute.
-   Uncompressed, once the frame has every byte it answers the last chunk with `00 72` and refreshes by itself.
+   Uncompressed, once the frame has every byte it answers the last chunk with `00 72` and refreshes by itself;
+   the app takes `00 72` as that end only after the last chunk ("the frame ended the write after 230 of 96000
+   bytes" before it), and as an unexpected answer to any chunk of a compressed write.
    A zlib stream that fits in the start whole (a plain white frame is about 120 bytes) has no chunks: the
    frame inflates it on the start and finishes it on the end.
 3. `00 72 00` (end, full refresh), always after a compressed write, and after an uncompressed one only if the

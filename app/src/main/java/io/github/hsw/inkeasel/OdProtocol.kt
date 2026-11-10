@@ -104,7 +104,11 @@ object Od {
         val ok: Boolean get() = status == 0 && !authRequired
         val authRequired: Boolean get() = status == 0xFE || (status == 0 && data.size == 1 && data[0] == 0xFE.toByte())
 
-        override fun toString() = "%02x %02x %s".format(status, op, data.toHex())
+        /**
+         * Status, opcode and data length, never the data: for the log, and a [READ_CONFIG] answer holds the
+         * Wi-Fi password and the key.
+         */
+        override fun toString() = "%02x %02x (%d B)".format(status, op, data.size)
 
         companion object {
             /** `null` for a notification shorter than status and opcode. */
@@ -218,6 +222,8 @@ class OdDisplay(val raw: ByteArray) {
     val rejection: Txt?
         get() = when {
             colours == null -> Txt(R.string.reason_colour_scheme, scheme)
+            // the record holds any 16-bit size: one far past every real panel would not even fit in memory
+            width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_PIXELS -> Txt(R.string.reason_too_large, width, height)
             // these panels keep the two greys the other way round (the reference sender's per-panel table)
             colours == ColourScheme.G4 && panel in GREYS_SWAPPED -> Txt(R.string.reason_greys_panel, panel)
             // the frame pads each row to a whole byte, [Nibbles4] packs one stream: the same only at even widths
@@ -233,6 +239,14 @@ class OdDisplay(val raw: ByteArray) {
 
     companion object {
         private val GREYS_SWAPPED = setOf(0x28, 0x48)
+
+        /**
+         * The largest width or height ([MAX_SIDE]) and pixel count ([MAX_PIXELS]) a frame may report: over
+         * twice the sides of the largest panel the firmware drives (1872×1404) and over three times its pixels,
+         * while the picture rendered for it (4 B a pixel) stays at 32 MB and every size fits an `Int`.
+         */
+        const val MAX_SIDE = 4096
+        const val MAX_PIXELS = 4096 * 2048
 
         fun parseHex(s: String?): OdDisplay? =
             s?.let(::bytesOfHex)?.takeIf { it.size >= 23 }?.let(::OdDisplay)

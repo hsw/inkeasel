@@ -129,6 +129,7 @@
     <string name="reason_vendor_cannot">приложение производителя не умеет отправлять на такие рамки</string>
     <string name="reason_colour_scheme">цветовая схема %1$d пока не поддерживается</string>
     <string name="reason_greys_panel">четыре серых на панели %1$d пока не поддерживаются</string>
+    <string name="reason_too_large">панель %1$d×%2$d слишком большая</string>
 
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">на устройстве нет Bluetooth</string>
@@ -167,12 +168,14 @@
     <string name="frame_err_busy">%1$s: стек Bluetooth занят</string>
     <string name="frame_err_timeout">%1$s: нет ответа за %2$d мс</string>
     <string name="frame_err_lost">соединение разорвано (status %1$d)</string>
+    <string name="frame_err_gatt_status">%1$s: ошибка Bluetooth (status %2$d)</string>
     <string name="frame_err_no_od_service">у устройства нет сервиса OpenDisplay</string>
     <string name="frame_err_config">не удалось прочитать настройки рамки</string>
     <string name="frame_err_encrypted">на рамке включено шифрование: пока не поддерживается</string>
     <string name="frame_err_refused">рамка отклонила %1$s (код 0x%2$02x)</string>
     <string name="frame_err_unexpected">%1$s: неожиданный ответ рамки 0x%2$02x</string>
     <string name="frame_err_refresh">рамка не смогла обновить экран</string>
+    <string name="frame_err_ended_early">рамка завершила запись после %1$d из %2$d байт</string>
     <string name="frame_err_step_mtu">увеличение MTU</string>
     <string name="frame_err_step_services">чтение сервисов рамки</string>
     <string name="frame_err_step_notify">включение ответов рамки</string>

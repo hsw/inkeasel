@@ -471,6 +471,7 @@ other.
   that does not answer at its saved address; an OpenDisplay frame on every upload), filtered to the NowMean
   service or the OpenDisplay manufacturer data (`FrameScanner`; see [frames.md](frames.md)).
 - **OpenDisplay config**: when such a frame is chosen and at each upload, `OdExchange.display` reads the frame's
-  whole config. Only the display record (`Od.display` → `OdDisplay`) is kept and logged; the rest, including
-  the Wi-Fi network and password and the encryption key, is dropped on arrival: never stored (prefs `frame`
-  holds only `selected.display`), logged or sent.
+  whole config. Only the display record (`Od.display` → `OdDisplay`) is kept and logged (an answer reaches the
+  log as its status, opcode and length, `Od.Reply.toString`, never its data); the rest, including the Wi-Fi
+  network and password and the encryption key, is dropped on arrival: never stored (prefs `frame` holds only
+  `selected.display`), logged or sent.
