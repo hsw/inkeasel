@@ -1,7 +1,9 @@
-# NowMean frame BLE protocol
+# Frame BLE protocols
 
 What InkEasel knows about the BLE protocol of NowMean e-paper frames and the image formats they take. It
 comes from studying the vendor's Android app and from tests against a real frame (E6, 1024×600, firmware 21).
+The second protocol, OpenDisplay, is an open one with its own specification; the part this app uses is in
+[OpenDisplay](#opendisplay) at the end.
 
 How to read the marks:
 - No mark: what this app does, in `FrameClient.kt`, `FrameScanner.kt`, `FrameAdvert.kt` and `FrameFormat.kt`.
@@ -363,3 +365,90 @@ boundaries are independent of data frame boundaries. The real frame reported LZO
   sends it; whether a BWY frame takes yellow in the red plane.
 - Whether a frame that advertises 90° or 270° rotates the image.
 - Whether frames other than E6 decompress LZO.
+
+## OpenDisplay
+
+[OpenDisplay](https://opendisplay.org) is an open firmware for e-paper boards (GPL-3) with a published BLE
+protocol: the wire contract is one header, `opendisplay_protocol.h` in
+[opendisplay-protocol](https://github.com/OpenDisplay/opendisplay-protocol), and the reference sender is
+[py-opendisplay](https://github.com/OpenDisplay/py-opendisplay). This section is the part InkEasel uses, in
+`OdProtocol.kt` and `OdClient.kt`; tried on a Seeed reTerminal E1001 (800×480, panel 60 in four greys,
+firmware 2.27).
+
+### OpenDisplay advertising
+
+Manufacturer data company ID `0x2446`. The v1 layout has 14 bytes: 0..10 buttons and sensors (laid out by
+the frame's config), 11 chip temperature as `(t + 40) × 2`, 12 and bit 0 of 13 battery voltage in steps of
+10 mV, the rest of 13 flags and a counter. The app reads only the battery and the temperature. The name
+(for example `OD` and three bytes of the MAC) is the identity, as with NowMean frames.
+
+The advertisement says nothing about the panel: size, colour scheme and rotation come only from the config,
+after connecting.
+
+A frame on battery sleeps between wake-ups and is connectable only for a short time after it advertises
+(about once a minute without deep sleep, `sleep_timeout_ms` 40 s *(observed)*); a connection is started right
+after an advertisement is heard.
+
+### OpenDisplay GATT and framing
+
+One service, `0x2446`, with one characteristic for both directions: requests are written to it (data chunks
+without response where the characteristic allows it), answers arrive as notifications on it. MTU 247 is
+asked for; a data request needs 232 bytes.
+
+- Request: `[opcode:2 BE][payload]`. Payload fields are little-endian unless stated otherwise.
+- Answer: `[status][opcode low byte][data]`; status `00` ACK, `FF` NACK, `FE` authentication required
+  (current firmware also answers `00 <op> FE`). A frame with encryption on (AES-128-CCM sessions) answers
+  every request but the version and authentication with it; the app does not implement sessions and refuses
+  such a frame.
+
+### OpenDisplay config
+
+`00 40` reads it. The answer is one or more notifications `00 40 [chunk:2 LE][data]`, chunk 0 with
+`[total:2 LE]` before its data. The whole config is `[length:2][version:1][packets][crc:2]`; each packet is
+`[number][type][fixed-size data]`, the sizes by type: `01` 22, `02` 22, `04` 30, `20` 46, `21` 22, `23` 30,
+`24` 30, `25` 30, `26` 160, `27` 64, `28`..`2B` 32, `2C` 288. The app walks them to the first display packet
+(`20`) and stops at a type it does not know.
+
+The display packet: panel model (`panel_ic_type`, 16 bits LE at 2), width (4), height (6), rotation at 14
+(an index 0..3, in some configs degrees), colour scheme at 21 (0 mono, 1 BWR, 2 BWY, 3 BWRY, 4 Spectra 6,
+5 four greys, 6 sixteen greys, 7 seven colours, 8 Spectra 6 split, 9 eight greys), transmission modes at 22.
+The rest of the config (pins, power, Wi-Fi with its password, the encryption key) is not kept.
+
+Switching the panel mode (on the E1001: 1 bit with partial refresh, or four greys with full refresh only) is
+a config write and a reboot of the frame, done with the OpenDisplay tools, not by this app.
+
+### OpenDisplay upload
+
+The uncompressed full-frame direct write:
+
+1. `00 70`: start; answered `00 70`.
+2. `00 71 [≤230 bytes]` per chunk, each answered `00 71`. Once the frame has every byte of the frame it
+   answers the last chunk with `00 72` and refreshes by itself.
+3. `00 72 00` (end, full refresh) only if the frame did not end it itself; answered `00 72`.
+4. Then, unsolicited, `00 73` when the panel is refreshed or `00 74` if the refresh timed out.
+
+The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
+greys: 96,000 bytes take about 19 s from a phone (one answer per 230 bytes), the refresh about 4 s
+*(observed)*.
+
+Not used: zlib compression (`00 70 [size:4 LE][zlib…]`; the firmware's inflater takes only a 512-byte
+window, which `java.util.zip.Deflater` cannot be asked for), the sliding-window pipe (`00 80`), partial
+writes (`00 76`, 1-bit panels only) and fast refresh.
+
+### OpenDisplay image formats
+
+The frame takes the panel's native layout and does no conversion; the sender dithers. Each row is padded to a
+whole byte, first pixel in the most significant bit; there is no other padding.
+
+| Scheme | Payload | Ink codes |
+|---|---|---|
+| mono | one 1-bit plane | bit 1 = white |
+| BWR | two 1-bit planes | first plane white or red, second red |
+| BWY | two 1-bit planes | first plane white, second yellow |
+| four greys | two 1-bit planes: bit 0, then bit 1 of a 2-bit code | black 3, dark grey 1, light grey 2, white 0 (panels `0x28` and `0x48` swap the greys) |
+| Spectra 6 | 4 bits per pixel, high nibble first | as NowMean E6: 0 black, 1 white, 2 yellow, 3 red, 5 blue, 6 green |
+
+Four greys at 800×480: 2 × 100 × 480 = 96,000 bytes. The greys are dithered at the even levels 0, 85, 170,
+255, as the reference sender does where it has no measured palette. Verified on hardware: four greys (a scale
+of the four levels came out in order). The others follow the reference sender and are marked "not verified on
+hardware"; BWRY, the sixteen, eight and seven colour schemes and the split Spectra 6 are refused.

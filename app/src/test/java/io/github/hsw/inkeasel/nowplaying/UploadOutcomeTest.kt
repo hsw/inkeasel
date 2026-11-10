@@ -39,8 +39,8 @@ class UploadOutcomeTest {
 
     @Test
     fun manualFailureToastsTheErrorAndDoesNotRemember() {
-        val o = UploadOutcome.of(auto = false, ok = false, error = TxtException(Txt(R.string.frame_err_kind, "NM000001")))
-        assertEquals(Txt(R.string.upload_failed, Txt(R.string.frame_err_kind, "NM000001")), o.toast)
+        val o = UploadOutcome.of(auto = false, ok = false, error = TxtException(Txt(R.string.frame_err_send, "NM000001")))
+        assertEquals(Txt(R.string.upload_failed, Txt(R.string.frame_err_send, "NM000001")), o.toast)
         assertFalse(o.report)
         assertFalse(o.remember)
     }

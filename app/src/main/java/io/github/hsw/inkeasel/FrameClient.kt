@@ -22,7 +22,7 @@ import java.util.UUID
 private const val TAG = "FrameClient"
 
 /**
- * BLE client for the NowMean frame.
+ * BLE client for the chosen frame: an OpenDisplay one is handed to [OdClient]; the rest is the NowMean frame.
  * No pairing or auth: connect to the frame chosen in the settings ([FrameStore]), write frames to FFE1,
  * status notifications arrive on FFE2. Without a chosen frame it uploads nothing.
  */
@@ -33,6 +33,7 @@ class FrameClient(private val ctx: Context) {
 
     private val store = FrameStore(ctx)
     private val scanner = FrameScanner(ctx)
+    private val od = OdClient(ctx)
 
     /** Spaces uploads by the panel refresh; the time the last image was handed over is kept in [prefs]. */
     val gate = DrawGate(SystemClock::elapsedRealtime, object : DrawGate.Store {
@@ -59,7 +60,11 @@ class FrameClient(private val ctx: Context) {
      */
     suspend fun upload(format: FrameFormat, payload: ByteArray) {
         val sel = store.selected() ?: throw TxtException(Txt(R.string.upload_err_no_frame))
-        if (sel.kind != FrameKind.NOWMEAN) throw TxtException(Txt(R.string.frame_err_kind, sel.name))
+        when (sel.kind) {
+            FrameKind.NOWMEAN -> Unit
+            // reports the end of its refresh itself, so no DrawGate spacing
+            FrameKind.OPENDISPLAY -> return od.upload(sel, format, payload)
+        }
         if (sel.lookup.formatOrNull != format) throw TxtException(Txt(R.string.frame_err_format_changed, sel.name))
         require(payload.size == format.payloadSize) { "payload ${payload.size} B, the format needs ${format.payloadSize} B" }
         val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
@@ -111,7 +116,7 @@ class FrameClient(private val ctx: Context) {
         val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
         val found = CompletableDeferred<SeenFrame>()
         val stop = scanner.start(
-            onSeen = { if (it.name == name) found.complete(it) },
+            onSeen = { if (it.name == name && it.kind == FrameKind.NOWMEAN) found.complete(it) },
             onFailed = { found.completeExceptionally(TxtException(it)) },
         )
         val seen = try {
@@ -126,6 +131,7 @@ class FrameClient(private val ctx: Context) {
         if (seen.advert != null) when (val l = seen.lookup) {
             is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, name, l.reason))
             is FormatLookup.Supported -> if (l.format != format) throw TxtException(Txt(R.string.frame_err_format_changed, name))
+            null -> Unit
         }
         return bt.getRemoteDevice(seen.address)
     }

@@ -13,9 +13,24 @@ data class SeenFrame(
     val rssi: Int,
     val advert: FrameAdvert?,
     val kind: FrameKind = FrameKind.NOWMEAN,
+    /** An OpenDisplay frame's advertisement ([FrameKind.OPENDISPLAY]; [advert] is a NowMean one's). */
+    val od: OdAdvert? = null,
 ) {
-    /** How to draw on it ([FrameFormats]); a frame without one cannot be chosen. */
-    val lookup: FormatLookup get() = lookup(kind, advert)
+    /**
+     * How to draw on it ([FrameFormats]); a frame without one cannot be chosen. `null`: the frame reports its
+     * panel only once connected (OpenDisplay), so choosing it asks it first.
+     */
+    val lookup: FormatLookup?
+        get() = when (kind) {
+            FrameKind.NOWMEAN -> FrameAdvert.lookup(advert)
+            FrameKind.OPENDISPLAY -> null
+        }
+
+    /** Its advertisement in parts for the frame list, or `null` if it sent none this app reads. */
+    fun describe(): List<Txt>? = when (kind) {
+        FrameKind.NOWMEAN -> advert?.describe()
+        FrameKind.OPENDISPLAY -> od?.describe() ?: listOf(Txt(R.string.od_name))
+    }
 
     companion object {
         /**
@@ -39,19 +54,34 @@ data class SelectedFrame(
     val advert: FrameAdvert?,
     val seenAt: Long,
     val kind: FrameKind = FrameKind.NOWMEAN,
+    /** What an OpenDisplay frame reported about its panel when it was chosen or last connected. */
+    val display: OdDisplay? = null,
 ) {
     /** How to draw on it ([FrameFormats]): uploads render with this format. */
-    val lookup: FormatLookup get() = lookup(kind, advert)
+    val lookup: FormatLookup
+        get() = when (kind) {
+            FrameKind.NOWMEAN -> FrameAdvert.lookup(advert)
+            FrameKind.OPENDISPLAY -> OdDisplay.lookup(display)
+        }
 
     /**
-     * The pref entries of this frame (see [decode]). The raw advertisement is the source of truth; its parsed
-     * properties are written next to it only so the prefs file is readable on its own.
+     * The pref entries of this frame (see [decode]). The raw advertisement (OpenDisplay: the raw display
+     * record) is the source of truth; its parsed properties are written next to it only so the prefs file is
+     * readable on its own.
      */
     fun encode(): Map<String, Any> = buildMap {
         put(KIND, kind.id)
         put(NAME, name)
         put(ADDRESS, address)
         put(SEEN_AT, seenAt)
+        display?.let { d ->
+            put(DISPLAY, d.hex)
+            put(PANEL, d.panel.toString())
+            put(COLOUR, d.colours?.name ?: d.scheme.toString())
+            put(WIDTH, d.width)
+            put(HEIGHT, d.height)
+            d.rotation?.let { put(ROTATION, it) }
+        }
         advert?.let { a ->
             put(ADVERT, a.hex)
             put(COLOUR, a.colour.name)
@@ -76,6 +106,7 @@ data class SelectedFrame(
         const val ADDRESS = P + "address"
         const val SEEN_AT = P + "seenAt"
         const val ADVERT = P + "advert"
+        const val DISPLAY = P + "display"
         const val COLOUR = P + "colour"
         const val PANEL = P + "panel"
         const val WIDTH = P + "width"
@@ -95,14 +126,12 @@ data class SelectedFrame(
             val kind = FrameKind.of(prefs[KIND] as? String ?: return null) ?: return null
             val name = (prefs[NAME] as? String)?.takeIf { it.isNotBlank() } ?: return null
             val address = (prefs[ADDRESS] as? String)?.takeIf { it.isNotBlank() } ?: return null
-            return SelectedFrame(name, address, FrameAdvert.parseHex(prefs[ADVERT] as? String), prefs[SEEN_AT] as? Long ?: 0L, kind)
+            return SelectedFrame(
+                name, address, FrameAdvert.parseHex(prefs[ADVERT] as? String), prefs[SEEN_AT] as? Long ?: 0L, kind,
+                OdDisplay.parseHex(prefs[DISPLAY] as? String),
+            )
         }
     }
-}
-
-/** The render format of a frame of [kind]; a NowMean frame's caps are in its [advert]. */
-private fun lookup(kind: FrameKind, advert: FrameAdvert?): FormatLookup = when (kind) {
-    FrameKind.NOWMEAN -> FrameAdvert.lookup(advert)
 }
 
 /** The [SelectedFrame] in shared preferences `frame` (next to `DrawGate`'s `endedAt` and the `onFrame` key). */
@@ -125,12 +154,12 @@ class FrameStore(context: Context) {
     }
 
     /**
-     * The selected frame [name] was seen again at [address] with [advert] (`null`: keep the stored one). Ignored
-     * if another frame was selected meanwhile.
+     * The selected frame [name] was seen again at [address] with [advert] or [display] (`null`: keep the stored
+     * one). Ignored if another frame was selected meanwhile.
      */
-    fun seen(name: String, address: String, advert: FrameAdvert?, at: Long) {
+    fun seen(name: String, address: String, advert: FrameAdvert?, at: Long, display: OdDisplay? = null) {
         val cur = selected()?.takeIf { it.name == name } ?: return
-        select(cur.copy(address = address, advert = advert ?: cur.advert, seenAt = at))
+        select(cur.copy(address = address, advert = advert ?: cur.advert, seenAt = at, display = display ?: cur.display))
     }
 
     private companion object {

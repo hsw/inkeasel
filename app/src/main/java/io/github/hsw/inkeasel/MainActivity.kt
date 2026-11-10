@@ -466,16 +466,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeSettings() {
+        probe?.cancel()
         settingsOpen = false
     }
 
-    /** Choose [f] as the frame: saved with its advertisement and the time it was seen; closes the settings. */
-    fun select(f: SeenFrame) {
-        val frame = SelectedFrame(f.name, f.address, f.advert, System.currentTimeMillis(), f.kind)
+    /** The OpenDisplay frame whose panel is being read before it is chosen ([select]), or `null`. */
+    var probing by mutableStateOf<String?>(null)
+        private set
+    private var probe: Job? = null
+
+    /**
+     * Choose [f] as the frame: saved with its advertisement (OpenDisplay: the display it reports once
+     * connected, read first) and the time it was seen; closes the settings and calls [onSelected]. An
+     * OpenDisplay frame that cannot be reached or reports a panel this app cannot draw on is not chosen, and a
+     * toast says why.
+     */
+    fun select(f: SeenFrame, onSelected: () -> Unit) {
+        when (f.kind) {
+            FrameKind.NOWMEAN -> {
+                choose(SelectedFrame(f.name, f.address, f.advert, System.currentTimeMillis(), f.kind))
+                onSelected()
+            }
+            FrameKind.OPENDISPLAY -> {
+                if (probing != null) return
+                probing = f.name
+                probe = viewModelScope.launch {
+                    try {
+                        val d = OdClient(getApplication()).interrogate(f.name, f.address)
+                        Log.i(TAG, "frame ${f.name} reports $d")
+                        when (val l = OdDisplay.lookup(d)) {
+                            is FormatLookup.Unsupported -> toast(Txt(R.string.frame_toast_unsupported, f.name, l.reason))
+                            is FormatLookup.Supported -> {
+                                if (!l.format.verified) toast(Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified)))
+                                choose(SelectedFrame(f.name, f.address, null, System.currentTimeMillis(), f.kind, d))
+                                onSelected()
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "reading frame ${f.name} failed", e)
+                        toast(Txt(R.string.od_toast_failed, f.name, e.userText(R.string.upload_err_text)))
+                    } finally {
+                        probing = null
+                    }
+                }
+            }
+        }
+    }
+
+    private fun choose(frame: SelectedFrame) {
         frames.select(frame)
         selected = frame
         settingsOpen = false
-        Log.i(TAG, "frame selected: ${f.kind.id} ${f.name} ${f.address} ${f.advert}")
+        Log.i(TAG, "frame selected: ${frame.kind.id} ${frame.name} ${frame.address} ${frame.advert ?: frame.display}")
+    }
+
+    private fun toast(t: Txt) {
+        val app = getApplication<Application>()
+        Toast.makeText(app, t.resolve(app), Toast.LENGTH_LONG).show()
     }
 
     /** Switch the poster [on] or off: saved, and passed on to the [FrameController] at once. */
@@ -879,7 +928,8 @@ fun App(
                         onNudity = vm::pressNudity,
                         onPoster = vm::pressPoster,
                         onDisclosureConfirmed = vm::confirmDisclosure,
-                        onSelect = { f -> vm.select(f); onFrameSelected() },
+                        probing = vm.probing,
+                        onSelect = { f -> vm.select(f, onFrameSelected) },
                         onCancel = vm::closeSettings,
                     )
                 } else {

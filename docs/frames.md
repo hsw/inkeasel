@@ -6,10 +6,11 @@ stored, and how an upload reaches it. The BLE protocol and the image formats the
 
 ## Supported frames
 
-NowMean e-paper frames (BLE service `0xFFBB`, manufacturer data company ID `0xABC8`). The app reads the
-frame's colour type, panel and resolution from its advertisement and renders each picture for that panel
-(see "Rendering"). Other e-paper protocols are not supported yet; `FrameKind` (the frame's protocol, saved
-with the chosen frame and carried by every scan result, today only `nowmean`) is where a second kind goes.
+NowMean e-paper frames (BLE service `0xFFBB`, manufacturer data company ID `0xABC8`) and frames running the
+OpenDisplay firmware (manufacturer data and service `0x2446`). A NowMean frame's colour type, panel and
+resolution come from its advertisement; an OpenDisplay frame reports its panel only once connected (see
+"Choosing the frame"). Each picture is rendered for that panel (see "Rendering"). `FrameKind` is the frame's
+protocol (`nowmean` or `opendisplay`), saved with the chosen frame and carried by every scan result.
 
 In short:
 
@@ -37,6 +38,25 @@ The advertised size table and the byte layouts: [protocol.md](protocol.md#resolu
 [Packing](protocol.md#packing), [Split layouts](protocol.md#split-layouts),
 [Payload size](protocol.md#payload-size).
 
+### OpenDisplay
+
+Any size the frame reports, rotation 0° only; formats from the reference sender, every type dithered with its
+own inks, sent uncompressed ([protocol.md](protocol.md#opendisplay-image-formats)).
+
+| Colour scheme | Payload | Verified on hardware |
+|---|---|---|
+| four greys | two 1-bit planes, rows padded to a byte (96,000 B at 800×480) | yes (reTerminal E1001, 800×480) |
+| mono | one 1-bit plane | no |
+| BWR, BWY | two 1-bit planes | no |
+| Spectra 6 (even widths) | 4 bpp, the NowMean E6 codes | no |
+
+Refused with the reason: BWRY and the other schemes ("colour scheme 6 is not supported yet"), four greys on
+panels `0x28` and `0x48`, which keep the greys the other way round, and a frame with encryption on (it answers
+"auth required"; the toast says encryption is not supported yet).
+
+A reTerminal E1001 runs either as a 1-bit panel (59, with partial refresh) or as a four-grey one (60, full
+refresh only); both are supported, and the app always sends the whole picture with a full refresh.
+
 ### Not supported
 
 Listed in the frame list with the reason shown, and not selectable:
@@ -56,8 +76,11 @@ packings of BW, BP, E7 and BWY are already described in `FrameFormats` and plug 
 
 The check and the render format (size, inks, packing, marker, verified flag) come from one place,
 `FrameFormats` in `FrameFormat.kt`, which works on protocol-neutral `FrameCaps` (size, colour scheme,
-rotation; taken from the advertisement here, `FrameAdvert.caps`); a new panel type is one more entry there.
-A NowMean frame's own rejections (panel A, an unknown size code) come first (`FrameAdvert.lookup`). The frame
+rotation; from a NowMean frame's advertisement, `FrameAdvert.caps`, or an OpenDisplay frame's display record,
+`OdDisplay.caps`) and the frame's kind (the same inks are packed differently by the two protocols); a new
+panel type is one more entry there. A protocol's own rejections come first: a NowMean frame's panel A or
+unknown size code (`FrameAdvert.lookup`), an OpenDisplay frame's unknown colour scheme or swapped greys
+(`OdDisplay.lookup`). The frame
 list does not let a refused frame be chosen, `FrameClient` refuses a selected frame whose caps no longer qualify, and
 `UploadEngine` renders with the format found there.
 
@@ -75,9 +98,9 @@ one), dithered onto the panel's inks.
   ink nearest to white, `FrameFormat.paper`) and plain: no dithering error reaches them.
 - Dithering: Floyd–Steinberg onto the panel's own inks, never the E6 inks for every type as the vendor app
   does ([protocol.md](protocol.md#dithering)).
-- Packings: `Nibbles4` (4 bpp, optionally split), `Crumbs2` (2 bpp) and `BitPlanes` (1-bpp planes, padded,
-  optionally split). `FrameFormat.kt` is free of Android types and runs as JVM unit tests.
-- The size and inks come from the frame's advertisement; there is no rotation step (only rotation 0° is
+- Packings: `Nibbles4` (4 bpp, optionally split), `Crumbs2` (2 bpp), `BitPlanes` (1-bpp planes, padded,
+  optionally split) and, for OpenDisplay, `RowPlanes` (1-bpp planes with each row padded to a byte). `FrameFormat.kt` is free of Android types and runs as JVM unit tests.
+- The size and inks come from the frame's advertisement (OpenDisplay: its display record); there is no rotation step (only rotation 0° is
   supported).
 
 The catalog cards keep the frame's shape: their aspect is the chosen frame's format, or 1024×600
@@ -105,6 +128,13 @@ chosen), unless the user has already moved onto the list.
   error (<code>)" and "Retry".
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
+- An OpenDisplay frame is listed with "OpenDisplay · battery 4.20 V" (from its advertisement) and is always
+  selectable: what it can show is known only once connected. Selecting it connects (Android waits for the
+  frame's next wake-up, up to about a minute; the screen says "Reading the panel of frame NM000001… It wakes
+  about once a minute.") and reads the display from its config (`OdClient.interrogate`). A supported display
+  saves the frame with it and closes the screen (with the "not verified on hardware" toast where it applies);
+  an unsupported one, or a failure (not reachable, encryption on), toasts why ("Frame NM000001 is not
+  supported: …", "Frame NM000001: …") and leaves the selection as it was. **Close** cancels the reading.
 - Frames the app cannot draw on are listed with the reason ("not supported: …", in the error colour) and
   "unavailable", and cannot be chosen; they stay focusable so the D-pad reaches the reason, and a press only
   toasts it ("Frame NM000001 is not supported: …"). A supported frame whose format was never seen working on
@@ -130,7 +160,9 @@ Stored in prefs `frame` (`FrameStore`, `SelectedFrame`; next to the upload spaci
 `onFrame` key): `selected.kind` (the frame's protocol, `nowmean`), `selected.name`, `selected.address`,
 `selected.advert` (the raw manufacturer data as hex, the source of truth), its parsed properties
 (`selected.colour`, `.panel`, `.width`, `.height`, `.rotation`, `.battery`, `.firmware`, `.safeMode`, for
-reading the file only) and `selected.seenAt` (wall-clock ms when it was last seen). A selection replaces
+reading the file only) and `selected.seenAt` (wall-clock ms when it was last seen). An OpenDisplay frame keeps
+`selected.display` instead of the advertisement: the raw display record of its config, the source of truth,
+with `.panel`, `.colour`, `.width`, `.height` and `.rotation` parsed next to it; nothing else of its config. A selection replaces
 every entry of the previous frame. A frame of a kind this build does not know, or with a blank name or
 address, reads back as none. The `address`/`name` keys of older builds (the first frame a scan found) are
 ignored and removed on the first selection, so an existing install shows the picker once.
@@ -154,7 +186,14 @@ its new address and advertisement, and tries again. It never switches to another
   changed, send again", or "not supported" if it no longer qualifies) and the next one uses the new format.
   A picture is never sent in a layout the frame does not expect.
 
-Uploads are spaced by `DrawGate`: the frame acks an upload at once but draws it for ~27 s after the link
+An OpenDisplay frame (`OdClient.upload`) is found by its name on every upload (it is connectable only just
+after it advertises; the scan waits up to 75 s), then the app connects, reads its config again and fails
+the upload ("the parameters of frame NM000001 have changed, send again", or "not supported") if its display
+no longer gives the format the picture was rendered for, saving the new display so the next upload uses it.
+The picture goes in one attempt, and the upload ends when the frame reports its refresh done
+([protocol.md](protocol.md#opendisplay-upload)); `DrawGate` does not apply.
+
+NowMean uploads are spaced by `DrawGate`: the frame acks an upload at once but draws it for ~27 s after the link
 drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the next
 upload waits until 35 s after the previous one was handed over (`endedAt` in prefs `frame`, so also across
 app restarts; a stored time later than now means a reboot and counts as no upload). The queue, the services
@@ -187,7 +226,11 @@ The catalog browses normally, but nothing is uploaded:
 - `FrameAdvert.kt`: parser of the frame's manufacturer data (colour/panel type, resolution, rotation, safe
   mode, battery, firmware; keeps the raw bytes)
 - `FrameStore.kt`: the chosen frame (`SelectedFrame`) in prefs `frame`, and `SeenFrame` (one scan result)
-- `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
+- `FrameScanner.kt`: BLE scan for service `0xFFBB` and manufacturer data `0x2446`, shared by the settings
+  list, `FrameClient` and `OdClient`
+- `OdProtocol.kt`: OpenDisplay requests and answers, the config reader, `OdDisplay` (the display record, its
+  caps and rejections) and `OdAdvert`; free of Android types
+- `OdClient.kt`: BLE client of an OpenDisplay frame: reads its display, uploads
 - `FrameSettings.kt`: the settings dialog; its "Frame" section is the live frame list
 - `EpdImage.kt`: decode, fit, dither and pack for one `FrameFormat`
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name (protocol:
@@ -197,5 +240,5 @@ The catalog browses normally, but nothing is uploaded:
 ## Testing with a frame
 
 Emulator Bluetooth is virtual: uploads to a real frame need a real device. The frame path logs under
-`adb logcat -s FrameScanner FrameClient UploadEngine UploadService`. In examples and committed text a frame
+`adb logcat -s FrameScanner FrameClient OdClient UploadEngine UploadService`. In examples and committed text a frame
 is named `NM000001`, never after a real one.

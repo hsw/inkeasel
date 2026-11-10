@@ -149,7 +149,6 @@
     <string name="upload_err_decode">не удалось декодировать изображение</string>
 
     <!-- upload over Bluetooth (FrameClient): errors -->
-    <string name="frame_err_kind">рамка %1$s: этот вид рамок пока не поддерживается</string>
     <string name="frame_err_format_changed">параметры рамки %1$s изменились, отправьте снова</string>
     <string name="frame_err_not_acked">рамка не подтвердила приём</string>
     <string name="frame_err_send">не удалось отправить</string>
@@ -174,4 +173,14 @@
     <string name="share_needs_permission">Сохранено в «Мои картинки». Разрешите доступ к Bluetooth (и выберите рамку), чтобы отправить.</string>
     <string name="share_sending">Сохранено в «Мои картинки» и отправляется на рамку. Рамка перерисуется, когда картинка дойдёт.</string>
     <string name="share_no_frame">Сохранено в «Мои картинки». Рамка не выбрана: выберите её в настройках и отправьте картинку оттуда.</string>
+    <string name="od_battery">батарея %1$d,%2$02d В</string>
+    <string name="od_probing">Читаю параметры панели рамки %1$s… Она просыпается примерно раз в минуту.</string>
+    <string name="od_toast_failed">Рамка %1$s: %2$s</string>
+    <string name="reason_od_scheme">цветовая схема %1$d пока не поддерживается</string>
+    <string name="reason_od_panel">четыре серых на панели %1$d пока не поддерживаются</string>
+    <string name="od_err_no_service">у устройства нет сервиса OpenDisplay</string>
+    <string name="od_err_config">не удалось прочитать настройки рамки</string>
+    <string name="od_err_auth">на рамке включено шифрование: пока не поддерживается</string>
+    <string name="od_err_refused">рамка отклонила шаг %1$s (код 0x%2$02x)</string>
+    <string name="od_err_refresh">рамка не смогла обновить экран</string>
 </resources>

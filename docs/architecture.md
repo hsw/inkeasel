@@ -65,9 +65,14 @@ Sharing and uploads:
   [now-playing.md](now-playing.md))
 
 Frames ([frames.md](frames.md)):
-- `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name ([protocol.md](protocol.md))
-- `FrameScanner.kt`: BLE scan for service `0xFFBB`, shared by the settings list and `FrameClient`
-- `FrameAdvert.kt`: parser of the frame's manufacturer data
+- `FrameClient.kt`: BLE connect/upload to the chosen NowMean frame, rescan by its name
+  ([protocol.md](protocol.md)); an OpenDisplay frame is handed to `OdClient`
+- `FrameScanner.kt`: BLE scan for service `0xFFBB` (NowMean) and manufacturer data `0x2446` (OpenDisplay),
+  shared by the settings list, `FrameClient` and `OdClient`
+- `FrameAdvert.kt`: parser of a NowMean frame's manufacturer data
+- `OdProtocol.kt`: the OpenDisplay requests and answers, config and display record (`OdDisplay`), advertisement
+  (`OdAdvert`); pure
+- `OdClient.kt`: BLE client of an OpenDisplay frame: reads its display when it is chosen, uploads
 - `FrameCaps.kt`: protocol-neutral `FrameCaps` and `FrameKind`
 - `FrameFormat.kt`: render formats and `FrameFormats`, the one place that maps an advertisement to a format or
   to the reason it is not supported (pure)

@@ -104,6 +104,7 @@ fun FrameSettingsDialog(
     onNudity: () -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
+    probing: String?,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -127,6 +128,7 @@ fun FrameSettingsDialog(
                     onPoster = onPoster,
                     onDisclosureConfirmed = onDisclosureConfirmed,
                     sidePadding = sidePadding,
+                    probing = probing,
                     onSelect = onSelect,
                     onCancel = onCancel,
                 )
@@ -167,6 +169,7 @@ private fun FrameSettings(
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     sidePadding: Int,
+    probing: String?,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -205,7 +208,8 @@ private fun FrameSettings(
     val cancelFocus = remember { FocusRequester() }
     val targetFocus = remember { FocusRequester() }
     var listTouched by remember { mutableStateOf(false) }
-    val supported = frames.filter { it.lookup is FormatLookup.Supported }
+    // an OpenDisplay frame (lookup null) reports its panel only once chosen: it may be the one
+    val supported = frames.filter { f -> f.lookup.let { it == null || it is FormatLookup.Supported } }
     val target = (supported.firstOrNull { it.name == selected?.name } ?: supported.firstOrNull())?.name
     LaunchedEffect(Unit) {
         withFrameNanos {}
@@ -241,6 +245,9 @@ private fun FrameSettings(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        probing?.let {
+            Text(stringResource(R.string.od_probing, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+        }
         Spacer(Modifier.height(16.dp))
         Box(Modifier.fillMaxWidth()) {
             when {
@@ -278,7 +285,7 @@ private fun FrameSettings(
                                 .onFocusChanged { if (it.isFocused) listTouched = true },
                         ) { reason ->
                             if (reason == null) {
-                                if (f.lookup.formatOrNull?.verified == false) {
+                                if (f.lookup?.formatOrNull?.verified == false) {
                                     val msg = Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified))
                                     Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_LONG).show()
                                 }
@@ -551,7 +558,7 @@ private fun blockedText(): String =
  */
 @Composable
 private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onClick: (Txt?) -> Unit) {
-    val reason = f.lookup.reasonOrNull
+    val reason = f.lookup?.reasonOrNull
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val sep = stringResource(R.string.list_separator)
     ListItem(
@@ -563,7 +570,7 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
             Column {
                 Text(
                     listOf(
-                        f.address, f.advert?.describe()?.map { it.text() }?.joinToString(sep) ?: stringResource(R.string.frame_no_advert),
+                        f.address, f.describe()?.map { it.text() }?.joinToString(sep) ?: stringResource(R.string.frame_no_advert),
                         stringResource(R.string.frame_signal, f.rssi),
                     ).joinToString(sep)
                 )
@@ -571,7 +578,7 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
                     Text(Txt(R.string.frame_unsupported, it).text(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
                 }
                 // a supported format never seen working on a real panel ([FrameFormat.verified])
-                if (f.lookup.formatOrNull?.verified == false) {
+                if (f.lookup?.formatOrNull?.verified == false) {
                     Text(stringResource(R.string.frame_unverified), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
                 }
             }

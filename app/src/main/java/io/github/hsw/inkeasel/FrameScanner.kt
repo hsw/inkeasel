@@ -23,8 +23,9 @@ enum class BtProblem(private val reasonId: Int, private val sentenceId: Int) {
 }
 
 /**
- * BLE scan for NowMean frames ([FrameKind.NOWMEAN]: service 0xFFBB), shared by the settings list (continuous, every frame) and
- * [FrameClient] (until the selected frame shows up). Every advertisement is reported, so signal and battery
+ * BLE scan for frames: NowMean ([FrameKind.NOWMEAN]: service 0xFFBB) and OpenDisplay ([FrameKind.OPENDISPLAY]:
+ * manufacturer data 0x2446), shared by the settings list (continuous, every frame) and [FrameClient] (until
+ * the selected frame shows up). Every advertisement is reported, so signal and battery
  * stay current; nameless ones are skipped, since the name is the frame's identity.
  */
 @SuppressLint("MissingPermission") // callers check the permissions first (MainActivity)
@@ -62,9 +63,12 @@ class FrameScanner(ctx: Context) {
                 onFailed(Txt(R.string.scan_err_code, errorCode))
             }
         }
-        val filter = ScanFilter.Builder().setServiceUuid(ParcelUuid(FrameClient.SVC_ADV)).build()
+        val filters = listOf(
+            ScanFilter.Builder().setServiceUuid(ParcelUuid(FrameClient.SVC_ADV)).build(),
+            ScanFilter.Builder().setManufacturerData(Od.COMPANY_ID, ByteArray(0)).build(),
+        )
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
-        scanner.startScan(listOf(filter), settings, cb)
+        scanner.startScan(filters, settings, cb)
         Log.i(TAG, "scan started")
         return {
             try {
@@ -78,6 +82,8 @@ class FrameScanner(ctx: Context) {
 
     private fun seen(r: ScanResult): SeenFrame? {
         val name = (r.scanRecord?.deviceName ?: r.device.name)?.takeIf { it.isNotBlank() } ?: return null
+        val od = r.scanRecord?.getManufacturerSpecificData(Od.COMPANY_ID)
+        if (od != null) return SeenFrame(name, r.device.address, r.rssi, null, FrameKind.OPENDISPLAY, OdAdvert.parse(od))
         val advert = FrameAdvert.parse(r.scanRecord?.getManufacturerSpecificData(FrameAdvert.COMPANY_ID))
         return SeenFrame(name, r.device.address, r.rssi, advert, FrameKind.NOWMEAN)
     }

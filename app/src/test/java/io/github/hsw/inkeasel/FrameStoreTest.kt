@@ -87,7 +87,7 @@ class FrameStoreTest {
         assertEquals(listOf("NM1", "NM2"), list.map { it.name })
         assertEquals("AA:BB:CC:DD:EE:03", list[1].address)
         assertEquals(-50, list[1].rssi)
-        assertEquals(Txt(R.string.reason_untested_format), list[1].lookup.reasonOrNull)
+        assertEquals(Txt(R.string.reason_untested_format), list[1].lookup?.reasonOrNull)
         assertTrue(list[0].lookup is FormatLookup.Supported)
         assertEquals(FrameKind.NOWMEAN, list[0].kind)
     }

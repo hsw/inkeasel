@@ -25,6 +25,15 @@ NowMean e-paper frames.
 - **BW, BP, E7, BWY** and a few other panel types: listed in the settings with the reason, but cannot be
   chosen yet.
 
+Frames running the [OpenDisplay](https://opendisplay.org) firmware, such as the Seeed reTerminal E1001.
+
+- **Four greys**: tested on a reTerminal E1001 (7.5", 800×480).
+- **Black and white, BWR, BWY and Spectra 6**: supported but not yet tried on a real frame.
+- A frame with encryption switched on cannot be used yet.
+
+An OpenDisplay frame sleeps between short wake-ups, about once a minute: choosing it and sending a picture
+can wait up to a minute for it to wake.
+
 Details per model: [docs/frames.md](docs/frames.md).
 
 ## Install

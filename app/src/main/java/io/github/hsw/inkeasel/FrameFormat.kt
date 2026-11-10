@@ -144,6 +144,38 @@ data class BitPlanes(val planes: Int, val split: Boolean = false) : Packing {
 }
 
 /**
+ * [planes] 1-bit planes, each row padded to a whole byte, sent in plane order with no other padding (the
+ * OpenDisplay layout, docs/protocol.md#opendisplay-image-formats); bit `p` of an ink's code is its pixel in
+ * plane `p`, first pixel of a row in the MSB.
+ */
+data class RowPlanes(val planes: Int) : Packing {
+    init {
+        require(planes in 1..8)
+    }
+
+    private fun stride(w: Int) = (w + 7) / 8
+
+    override fun size(w: Int, h: Int) = planes * stride(w) * h
+
+    override fun pack(indices: ByteArray, palette: Palette, w: Int, h: Int): ByteArray {
+        require(indices.size == w * h)
+        val codes = IntArray(palette.inks.size) { palette.inks[it].code }
+        val out = ByteArray(size(w, h))
+        val stride = stride(w)
+        for (p in 0 until planes) {
+            val base = p * stride * h
+            for (y in 0 until h) for (x in 0 until w) {
+                if ((codes[indices[y * w + x].toInt()] shr p) and 1 != 0) {
+                    val i = base + y * stride + x / 8
+                    out[i] = (out[i].toInt() or (0x80 ushr (x % 8))).toByte()
+                }
+            }
+        }
+        return out
+    }
+}
+
+/**
  * Where a picture lands on a panel: [width] × [height] px with its top-left corner at ([left], [top]); the
  * rest of the panel is paper ([FrameFormat.paper]).
  */
@@ -299,7 +331,8 @@ sealed interface FormatLookup {
  * that decides it: the frame list greys out the rest and does not let them be chosen, [FrameClient] refuses a
  * selected frame whose caps no longer qualify, and `UploadEngine` renders with the format found here. A
  * panel type is one or more [Entry]s (palette, packing, marker, sizes); a protocol's own rejections come first
- * (e.g. [FrameAdvert.lookup]). Formats from docs/protocol.md#image-formats.
+ * (e.g. [FrameAdvert.lookup], [OdDisplay.lookup]). Formats from docs/protocol.md#image-formats and
+ * docs/protocol.md#opendisplay-image-formats.
  */
 object FrameFormats {
     /**
@@ -348,21 +381,36 @@ object FrameFormats {
      */
     val BWY = Palette("BWY", listOf(Ink(255, 255, 255, 0), Ink(0, 0, 0, 1), Ink(255, 255, 0, 2)))
 
+    /**
+     * OpenDisplay inks (docs/protocol.md#opendisplay-image-formats): the reference sender's even levels, codes
+     * as plane bits for [RowPlanes]. Mono: plane bit 1 = white. BWR: first plane white or red, second red. BWY:
+     * first plane white, second yellow. Four greys: the panel's stored 2-bit code, black 3, dark grey 1, light
+     * grey 2, white 0.
+     */
+    val OD_BW = Palette("BW", listOf(Ink(0, 0, 0, 0), Ink(255, 255, 255, 1)))
+    val OD_BWR = Palette("BWR", listOf(Ink(255, 255, 255, 1), Ink(0, 0, 0, 0), Ink(255, 0, 0, 3)))
+    val OD_BWY = Palette("BWY", listOf(Ink(255, 255, 255, 1), Ink(0, 0, 0, 0), Ink(255, 255, 0, 2)))
+    val OD_G4 = Palette(
+        "G4",
+        listOf(Ink(0, 0, 0, 3), Ink(85, 85, 85, 1), Ink(170, 170, 170, 2), Ink(255, 255, 255, 0)),
+    )
+
     /** The frame this app was built and verified with; also the card shape while no frame is chosen. */
     val DEFAULT = FrameFormat(1024, 600, E6, Nibbles4(), marker = 0, verified = true)
 
     /**
-     * One panel type at some [sizes]. [refused]: why such frames cannot be chosen yet (the rest is what they
-     * would use, so enabling them is dropping the reason).
+     * One panel type of frames of [kind] at some [sizes] (`null`: any size). [refused]: why such frames cannot
+     * be chosen yet (the rest is what they would use, so enabling them is dropping the reason).
      */
     private class Entry(
         val colours: ColourScheme,
         val palette: Palette,
         val packing: Packing,
-        val sizes: Set<Pair<Int, Int>>,
+        val sizes: Set<Pair<Int, Int>>?,
         val marker: Int = 0,
         val verified: Boolean = false,
         val refused: Txt? = null,
+        val kind: FrameKind = FrameKind.NOWMEAN,
     )
 
     private val ALL = FrameAdvert.SIZES.values.toSet()
@@ -392,10 +440,18 @@ object FrameFormats {
         Entry(ColourScheme.E7, E7, Nibbles4(split = true), E6_SPLIT, refused = UNTESTED_FORMAT),
         Entry(ColourScheme.BWY, BWY, BitPlanes(2), ALL - BWR_SPLIT, refused = VENDOR_CANNOT),
         Entry(ColourScheme.BWY, BWY, BitPlanes(2, split = true), BWR_SPLIT, refused = VENDOR_CANNOT),
+        // OpenDisplay, any size the frame reports: the reference sender's layouts. Four greys verified on an
+        // 800×480 panel; the rest differ from it only in the inks and plane count, or (Spectra 6) are the
+        // NowMean E6 nibbles, but have not been seen on a panel.
+        Entry(ColourScheme.G4, OD_G4, RowPlanes(2), null, verified = true, kind = FrameKind.OPENDISPLAY),
+        Entry(ColourScheme.BW, OD_BW, RowPlanes(1), null, kind = FrameKind.OPENDISPLAY),
+        Entry(ColourScheme.BWR, OD_BWR, RowPlanes(2), null, kind = FrameKind.OPENDISPLAY),
+        Entry(ColourScheme.BWY, OD_BWY, RowPlanes(2), null, kind = FrameKind.OPENDISPLAY),
+        Entry(ColourScheme.E6, E6, Nibbles4(), null, kind = FrameKind.OPENDISPLAY),
     )
 
-    /** The format for [caps] (`null`: the frame reported none). */
-    fun find(caps: FrameCaps?): FormatLookup {
+    /** The format for [caps] of a frame of [kind] (`null`: the frame reported none). */
+    fun find(caps: FrameCaps?, kind: FrameKind = FrameKind.NOWMEAN): FormatLookup {
         if (caps == null) return FormatLookup.Unsupported(Txt(R.string.reason_no_caps))
         if (caps.rotation != 0) return FormatLookup.Unsupported(
             Txt(R.string.reason_rotation, caps.rotation?.let { Txt(R.string.advert_degrees, it) } ?: Txt(R.string.advert_degrees_unknown))
@@ -403,11 +459,12 @@ object FrameFormats {
         val w = caps.width
         val h = caps.height
         if (w == null || h == null) return FormatLookup.Unsupported(Txt(R.string.reason_unknown_size))
-        val entries = ENTRIES.filter { it.colours == caps.colours }
+        val entries = ENTRIES.filter { it.kind == kind && it.colours == caps.colours }
         if (entries.isEmpty()) return FormatLookup.Unsupported(Txt(R.string.reason_colours, caps.colours.name))
-        val entry = entries.firstOrNull { (w to h) in it.sizes }
+        val entry = entries.firstOrNull { it.sizes == null || (w to h) in it.sizes }
             ?: return FormatLookup.Unsupported(Txt(R.string.reason_colours_size, caps.colours.name, w, h))
         entry.refused?.let { return FormatLookup.Unsupported(it) }
+        if (!entry.packing.fits(w, h)) return FormatLookup.Unsupported(Txt(R.string.reason_colours_size, caps.colours.name, w, h))
         return FormatLookup.Supported(FrameFormat(w, h, entry.palette, entry.packing, entry.marker, entry.verified))
     }
 }

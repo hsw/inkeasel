@@ -183,7 +183,6 @@
     <string name="upload_err_decode">could not decode the picture</string>
 
     <!-- upload over Bluetooth (FrameClient): errors -->
-    <string name="frame_err_kind">frame %1$s: this kind of frame is not supported yet</string>
     <string name="frame_err_format_changed">the parameters of frame %1$s have changed, send again</string>
     <string name="frame_err_not_acked">the frame did not confirm the picture</string>
     <string name="frame_err_send">could not send</string>
@@ -209,4 +208,15 @@
     <!-- no result toast is promised: Android 13+ may hide the service's toast while the gallery is in front -->
     <string name="share_sending">Saved to \"My pictures\" and sending it to the frame. The frame redraws when the picture arrives.</string>
     <string name="share_no_frame">Saved to \"My pictures\". No frame selected: choose one in the settings, then send it from there.</string>
+    <string name="od_name" translatable="false">OpenDisplay</string>
+    <string name="od_battery">battery %1$d.%2$02d V</string>
+    <string name="od_probing">Reading the panel of frame %1$s… It wakes about once a minute.</string>
+    <string name="od_toast_failed">Frame %1$s: %2$s</string>
+    <string name="reason_od_scheme">colour scheme %1$d is not supported yet</string>
+    <string name="reason_od_panel">four greys on panel %1$d are not supported yet</string>
+    <string name="od_err_no_service">the device has no OpenDisplay service</string>
+    <string name="od_err_config">could not read the frame\'s settings</string>
+    <string name="od_err_auth">the frame has encryption on: not supported yet</string>
+    <string name="od_err_refused">the frame refused the %1$s step (code 0x%2$02x)</string>
+    <string name="od_err_refresh">the frame could not refresh its screen</string>
 </resources>

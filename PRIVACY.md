@@ -1,6 +1,6 @@
 # InkEasel privacy policy
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 InkEasel is an open-source Android app that sends pictures to your own e-paper frame over Bluetooth Low
 Energy. It has no account, no analytics, no ads, no crash reporting and no server of its own. **Nothing is
@@ -26,9 +26,13 @@ sent to the developer.**
   that: it is neither stored nor sent. When the filter in force changes, the app writes it, and which of the
   two set it, to the device's system log (logcat).
 - **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them, and during
-  an upload (also of a poster, in the background) when the chosen frame does not answer at its saved address
-  and has to be found again by its name: the search asks Android only for devices that advertise the frame's
-  Bluetooth service, and the app stores only the frame you choose.
+  an upload (also of a poster, in the background) when the chosen frame has to be found by its name (a
+  NowMean frame that does not answer at its saved address; an OpenDisplay frame on every upload): the search
+  asks Android only for devices that advertise a NowMean frame's Bluetooth service or OpenDisplay
+  manufacturer data, and the app stores only the frame you choose.
+- **An OpenDisplay frame's configuration**, over Bluetooth, when you choose the frame and at each upload to
+  it: the app keeps only its display part (panel model, size, rotation, colour scheme). The rest of it, which
+  can include the frame's Wi-Fi network and password, is dropped at once: not stored, not logged, not sent.
 
 ## What leaves the device
 
@@ -59,7 +63,8 @@ Nothing else is sent: no titles, no pictures, no device or usage data, to the de
 
 ## What is stored on the device
 
-- the chosen frame (its name, Bluetooth address and advertised properties);
+- the chosen frame (its name, Bluetooth address and advertised properties; for an OpenDisplay frame, the
+  display part of its configuration instead);
 - the default picture, the switches in the settings, the Catalog's nudity filter as you chose it, and small
   app state such as when the frame last drew a picture, whether you denied the Bluetooth permission or
   answered the app's first question about it, and a shared picture that waits for it;

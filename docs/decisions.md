@@ -3,6 +3,36 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — OpenDisplay frames: a second protocol, written in Kotlin, uncompressed for now
+
+InkEasel also draws on frames running the open OpenDisplay firmware (first a Seeed reTerminal E1001). There
+is no Android or Java client of the protocol, so the part this app needs (read the config, full-frame direct
+write) is written here from the protocol header and the reference Python sender; encryption sessions,
+compression, the sliding-window pipe and partial refresh are left out.
+
+- Such a frame reports its panel only once connected, so choosing it connects and reads the display record
+  first; only a supported display can be chosen. Each upload reads it again, as a NowMean upload compares a
+  rescanned advertisement: a frame switched to another mode (the E1001 runs 1-bit or four greys) is refused
+  once, then sent in its new format.
+- Only the display record is kept. The config also carries the frame's Wi-Fi password and encryption key in
+  plain text; they are dropped on arrival and never logged.
+- Uploads find the frame by name every time instead of connecting to the saved address first: the frame is
+  connectable only just after it advertises (about once a minute), so a connect started right after hearing it
+  is what works.
+- Uncompressed for now: the firmware inflates only a 512-byte window, which `java.util.zip.Deflater` cannot be
+  asked for; with one answer per 230 bytes a four-grey 800×480 picture takes about 19 s from a phone. A small
+  encoder of our own is the next step.
+- Even grey levels (0, 85, 170, 255), as the reference sender uses where it has no measured palette; the
+  measured greys of the E1001 (darker black and white) would need tone mapping to look better, not just
+  other ink values.
+- The same `FrameFormats` table decides for both protocols, with the kind as part of each entry: the inks of
+  a scheme can be the same while the packing differs (NowMean planes are one stream padded to 512 bytes,
+  OpenDisplay planes pad each row).
+
+Rejected: an OpenDisplay web page in the browser (Web Bluetooth is missing in a WebView);
+the Wi-Fi transport (the frame's Wi-Fi is off by default and costs battery); a Rust dithering core through JNI
+(the app's own Floyd–Steinberg already serves both protocols).
+
 ## 2026-11-10 — A press on a card only opens the viewer; it opens clean, and Down brings the card with Send
 
 Supersedes "A press on a card sends and opens the viewer" (2026-11-09), and the viewer entry's credit line on
