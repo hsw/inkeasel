@@ -114,17 +114,7 @@ class FrameClient(private val ctx: Context) {
      */
     private suspend fun find(name: String, format: FrameFormat): BluetoothDevice {
         val bt = adapter ?: throw TxtException(Txt(R.string.bt_missing))
-        val found = CompletableDeferred<SeenFrame>()
-        val stop = scanner.start(
-            onSeen = { if (it.name == name && it.kind == FrameKind.NOWMEAN) found.complete(it) },
-            onFailed = { found.completeExceptionally(TxtException(it)) },
-        )
-        val seen = try {
-            withTimeoutOrNull(15_000) { found.await() }
-        } finally {
-            stop()
-        }
-            ?: throw TxtException(Txt(R.string.frame_err_not_found, name, BlePermissions.scanHint))
+        val seen = scanner.awaitFrame(name, FrameKind.NOWMEAN, 15_000)
         Log.i(TAG, "found $name at ${seen.address}: ${seen.advert}")
         store.seen(name, seen.address, seen.advert, System.currentTimeMillis())
         // its advertisement may have changed (e.g. new firmware): never send a picture rendered for another layout

@@ -4,6 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.zip.Deflater
@@ -223,26 +224,6 @@ class OdProtocolTest {
         assertTrue("distance ${r.maxDistance}", r.maxDistance > Od.WINDOW)
     }
 
-    /** The previous encoder: `Deflater` with its dictionary reset after every [Od.WINDOW] bytes of input. */
-    private fun resetEvery512(data: ByteArray): Int {
-        val d = Deflater(Deflater.BEST_COMPRESSION, true)
-        val buf = ByteArray(data.size + 64 * 1024)
-        var n = 0
-        for (at in data.indices step Od.WINDOW) {
-            d.setInput(data, at, minOf(Od.WINDOW, data.size - at))
-            n += d.deflate(buf, n, buf.size - n, Deflater.FULL_FLUSH)
-        }
-        d.finish()
-        while (!d.finished()) n += d.deflate(buf, n, buf.size - n)
-        d.end()
-        return 2 + n + 4
-    }
-
-    @Test
-    fun zlib_smallerThanResettingTheDictionary() {
-        for (data in listOf(sample(), repeats())) assertTrue(Od.zlib(data).size < resetEvery512(data))
-    }
-
     @Test
     fun startCompressed_sizeLittleEndianThenHead() {
         assertArrayEquals(bytes(0x00, 0x70, 0x00, 0x77, 0x01, 0x00, 0x18, 0xDA), Od.startCompressed(96_000, bytes(0x18, 0xDA)))
@@ -257,5 +238,93 @@ class OdProtocolTest {
         assertTrue(buffered.takesZlib(10_000))
         assertFalse(buffered.takesZlib(60_000))
         assertFalse(OdDisplay(display().also { it[22] = 0x08 }).takesZlib(10))
+        // buffered: under 50 KB compressed
+        assertTrue(buffered.takesZlib(Od.BUFFERED_MAX - 1))
+        assertFalse(buffered.takesZlib(Od.BUFFERED_MAX))
+        assertTrue(streaming.takesAnyZlib)
+        assertTrue(buffered.takesAnyZlib)
+        assertFalse(OdDisplay(display().also { it[22] = 0x08 }).takesAnyZlib)
+    }
+
+    @Test
+    fun zlibFor_onlyWhenTheFrameTakesItAndItIsSmaller() {
+        val streaming = OdDisplay(display())
+        val white = ByteArray(96_000)
+        assertArrayEquals(Od.zlib(white), Od.zlibFor(streaming, white))
+        // no zlib mode: sent uncompressed (and not compressed for nothing)
+        assertNull(Od.zlibFor(OdDisplay(display().also { it[22] = 0x08 }), white))
+        // noise does not get smaller
+        val noise = Random(3).nextBytes(10_000)
+        assertNull(Od.zlibFor(streaming, noise))
+        // buffered inflate only: a stream of 50 KB or more does not fit the frame's buffer
+        val buffered = OdDisplay(display().also { it[22] = 0x02 })
+        val big = Random(5).nextBytes(80_000).also { r -> for (i in r.indices step 3) r[i] = 0 }
+        val z = Od.zlib(big)
+        assertTrue("${z.size} B", z.size >= Od.BUFFERED_MAX && z.size < big.size)
+        assertNull(Od.zlibFor(buffered, big))
+        assertArrayEquals(z, Od.zlibFor(streaming, big))
+    }
+
+    @Test
+    fun everyScheme_hasItsFormatOrReason() {
+        fun lookup(scheme: Int, panel: Int = 60, w: Int = 800) = OdDisplay.lookup(OdDisplay(display(panel = panel, w = w, scheme = scheme)))
+        // scheme → palette, packing, payload at 800×480; only four greys verified on hardware
+        val formats = mapOf(
+            0 to Triple(FrameFormats.OD_BW, RowPlanes(1), 48_000),
+            1 to Triple(FrameFormats.OD_BWR, RowPlanes(2), 96_000),
+            2 to Triple(FrameFormats.OD_BWY, RowPlanes(2), 96_000),
+            4 to Triple(FrameFormats.E6, Nibbles4(), 192_000),
+            5 to Triple(FrameFormats.OD_G4, RowPlanes(2), 96_000),
+        )
+        for ((scheme, want) in formats) {
+            val f = lookup(scheme).formatOrNull!!
+            assertEquals("scheme $scheme", want.first, f.palette)
+            assertEquals("scheme $scheme", want.second, f.packing)
+            assertEquals("scheme $scheme", want.third, f.payloadSize)
+            assertEquals("scheme $scheme", scheme == 5, f.verified)
+        }
+        // BWRY and the rest are refused
+        for (scheme in listOf(3, 6, 7, 8, 9)) assertEquals(Txt(R.string.reason_od_scheme, scheme), lookup(scheme).reasonOrNull)
+        assertEquals(Txt(R.string.reason_od_panel, 0x48), lookup(5, panel = 0x48).reasonOrNull)
+        assertEquals(Txt(R.string.reason_unknown_size), lookup(5, w = 0).reasonOrNull)
+    }
+
+    @Test
+    fun configReader_errors() {
+        assertThrows(IllegalArgumentException::class.java) { Od.ConfigReader().add(bytes(0, 0, 5)) } // chunk 0 short
+        val r = Od.ConfigReader()
+        assertNull(r.add(bytes(0, 0, 5, 0, 1, 2)))
+        assertThrows(IllegalArgumentException::class.java) { r.add(bytes(1, 0)) } // a later chunk with no data
+        // more data than the total: cut to it
+        assertArrayEquals(bytes(1, 2), Od.ConfigReader().add(bytes(0, 0, 2, 0, 1, 2, 3, 4)))
+    }
+
+    @Test
+    fun display_cutMidPacket_isNone() {
+        val c = config(display())
+        // the display packet runs past the end (the CRC is taken off the last two bytes)
+        assertNull(Od.display(c.copyOf(c.size - 10)))
+    }
+
+    @Test
+    fun displayRecord_tooShortOrJunk() {
+        assertThrows(IllegalArgumentException::class.java) { OdDisplay(ByteArray(22)) }
+        assertNull(OdDisplay.parseHex("zz"))
+        assertNull(OdDisplay.parseHex("0011"))
+        assertNull(OdDisplay.parseHex(null))
+        // a stored frame with a corrupt record: kept, but it cannot be drawn on
+        val m = SelectedFrame("OD000001", "AA:BB:CC:DD:EE:01", null, 1_000L, FrameKind.OPENDISPLAY, OdDisplay(display())).encode()
+            .toMutableMap().also { it[SelectedFrame.DISPLAY] = "zz" }
+        val f = SelectedFrame.decode(m)!!
+        assertNull(f.display)
+        assertEquals(Txt(R.string.reason_no_caps), f.lookup.reasonOrNull)
+    }
+
+    @Test
+    fun seenFrame_describe() {
+        val a = OdAdvert.parse(bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0x9C, 0x01))
+        assertEquals(listOf(Txt(R.string.od_name), Txt(R.string.od_battery, 4, 12)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY, a).describe())
+        // no advertisement this app reads: still named as an OpenDisplay frame
+        assertEquals(listOf(Txt(R.string.od_name)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY).describe())
     }
 }

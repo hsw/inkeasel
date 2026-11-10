@@ -395,7 +395,7 @@ boundaries are independent of data frame boundaries. The real frame reported LZO
 protocol: the wire contract is one header, `opendisplay_protocol.h` in
 [opendisplay-protocol](https://github.com/OpenDisplay/opendisplay-protocol), and the reference sender is
 [py-opendisplay](https://github.com/OpenDisplay/py-opendisplay). This section is the part InkEasel uses, in
-`OdProtocol.kt` and `OdClient.kt`; tried on a Seeed reTerminal E1001 (800×480, panel 60 in four greys,
+`OdProtocol.kt`, `OdExchange.kt` (the request and answer sequences) and `OdClient.kt`; tried on a Seeed reTerminal E1001 (800×480, panel 60 in four greys,
 firmware 2.27).
 
 ### OpenDisplay advertising
@@ -448,8 +448,12 @@ The full-frame direct write, compressed where the frame takes it:
    bytes; `size` is the image's uncompressed byte count, which the frame checks against its panel).
    Uncompressed: `00 70`. Answered `00 70`; a refused compressed start (`FF 70`, or `FF FF` from older
    firmware) is retried uncompressed.
-2. `00 71 [≤230 bytes]` per chunk (the rest of the zlib stream, or the image), each answered `00 71`.
+2. `00 71 [≤230 bytes]` per chunk (the rest of the zlib stream, or the image), each answered `00 71`. The app
+   waits up to 90 s for each answer, as the reference sender does: the firmware answers after writing the chunk
+   to the panel, which on Spectra 6 and other colour panels can take up to about a minute.
    Uncompressed, once the frame has every byte it answers the last chunk with `00 72` and refreshes by itself.
+   A zlib stream that fits in the start whole (a plain white frame is about 120 bytes) has no chunks: the
+   frame inflates it on the start and finishes it on the end.
 3. `00 72 00` (end, full refresh), always after a compressed write, and after an uncompressed one only if the
    frame did not end it itself; answered `00 72` (`FF 72` if the stream was incomplete).
 4. Then, unsolicited, `00 73` when the panel is refreshed or `00 74` if the refresh timed out.
@@ -458,7 +462,9 @@ The frame takes zlib if its display's transmission modes have bit 0 (streaming i
 (inflates the whole stream in a buffer: under 50 KB compressed); the E1001 has bit 0. Its inflater takes a
 DEFLATE window of 512 bytes (9 bits) at most and rejects a header that declares more. `java.util.zip.Deflater`
 cannot be given a window, so the app compresses with JZlib (a pure-Java port of zlib) at level 9 with a 9-bit
-window: one stream, header `18 D3` (deflate, 512-byte window), no match further back than the window.
+window: one stream, header `18 D3` (deflate, 512-byte window), no match further back than the window. It
+compresses only for a frame with either mode, and sends the picture uncompressed when the stream would not be
+smaller or a buffered-only frame could not hold it (`Od.zlibFor`).
 
 The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
 greys at 800×480 from a phone, debug build *(observed)*: uncompressed, the 96,000 bytes take about 19 s (one

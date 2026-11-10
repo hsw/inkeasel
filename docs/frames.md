@@ -139,12 +139,15 @@ chosen), unless the user has already moved onto the list.
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
 - An OpenDisplay frame is listed with "OpenDisplay · battery 4.20 V" (from its advertisement) and is always
-  selectable: what it can show is known only once connected. Selecting it connects (Android waits for the
-  frame's next wake-up, up to about a minute; the screen says "Reading the panel of frame NM000001… It wakes
-  about once a minute.") and reads the display from its config (`OdClient.interrogate`). A supported display
-  saves the frame with it and closes the screen (with the "not verified on hardware" toast where it applies);
-  an unsupported one, or a failure (not reachable, encryption on), toasts why ("Frame NM000001 is not
-  supported: …", "Frame NM000001: …") and leaves the selection as it was. **Close** cancels the reading.
+  selectable: what it can show is known only once connected. Selecting it scans for the frame's name until it
+  next wakes up and advertises (up to 75 s; the screen says "Reading the panel of frame OD000001… It wakes
+  about once a minute."), connects at once and reads the display from its config (`OdClient.interrogate`). A
+  supported display saves the frame with it and closes the screen (with the "not verified on hardware" toast
+  where it applies); an unsupported one, or a failure (not heard, encryption on), toasts why ("Frame OD000001
+  is not supported: …", "Frame OD000001: …") and leaves the selection as it was. The newest choice wins:
+  selecting another frame while one is being read (a NowMean frame, or another OpenDisplay frame, which is
+  then read instead), **Close**, or the Bluetooth panel opening cancels the reading, and the cancelled read
+  chooses nothing; selecting the frame being read again changes nothing.
 - Frames the app cannot draw on are listed with the reason ("not supported: …", in the error colour) and
   "unavailable", and cannot be chosen; they stay focusable so the D-pad reaches the reason, and a press only
   toasts it ("Frame NM000001 is not supported: …"). A supported frame whose format was never seen working on
@@ -244,7 +247,9 @@ The catalog browses normally, but nothing is uploaded:
   list, `FrameClient` and `OdClient`
 - `OdProtocol.kt`: OpenDisplay requests and answers, the config reader, `OdDisplay` (the display record, its
   caps and rejections) and `OdAdvert`; free of Android types
-- `OdClient.kt`: BLE client of an OpenDisplay frame: reads its display, uploads
+- `OdExchange.kt`: the OpenDisplay request and answer sequences (config read, direct write, refresh) over any
+  link; free of Android types, tested against a scripted frame
+- `OdClient.kt`: BLE client of an OpenDisplay frame: finds it by name, reads its display, uploads
 - `FrameSettings.kt`: the settings dialog; its "Frame" section is the live frame list
 - `EpdImage.kt`: decode, fit, dither and pack for one `FrameFormat`
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name (protocol:

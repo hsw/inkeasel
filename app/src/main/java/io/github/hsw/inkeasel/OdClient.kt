@@ -11,7 +11,6 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.os.Build
-import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +28,7 @@ private const val TAG = "OdClient"
  * encryption only: a frame with encryption on answers "auth required" and is refused.
  *
  * Such a frame sleeps most of the time and wakes about once a minute to advertise; a connection must start
- * right after an advertisement, so an upload scans for the frame's name and connects at once.
+ * right after an advertisement, so both scan for the frame's name (up to [FIND_MS]) and connect at once.
  */
 @SuppressLint("MissingPermission") // permissions are requested by MainActivity before any upload or scan
 class OdClient(private val ctx: Context) {
@@ -38,20 +37,15 @@ class OdClient(private val ctx: Context) {
     private val scanner = FrameScanner(ctx)
 
     /**
-     * Connects to the frame [name] at [address] (Android waits for its next advertisement) and reads the
-     * display it reports. Fails if it reports none, or has encryption on.
+     * Waits for the frame [name] to advertise, connects at once and reads the display it reports. Fails if it
+     * is not heard, reports none, or has encryption on.
      */
-    suspend fun interrogate(name: String, address: String): OdDisplay {
-        val bt = usable()
-        val dev = try {
-            bt.getRemoteDevice(address)
-        } catch (e: IllegalArgumentException) {
-            find(name)
-        }
-        val s = OdSession(ctx, dev)
+    suspend fun interrogate(name: String): OdDisplay {
+        usable()
+        val s = OdSession(ctx, find(name))
         try {
             s.open()
-            return s.display(name)
+            return s.exchange.display(name)
         } finally {
             s.close()
         }
@@ -70,15 +64,15 @@ class OdClient(private val ctx: Context) {
         val s = OdSession(ctx, dev)
         try {
             s.open()
-            val display = s.display(sel.name)
+            val display = s.exchange.display(sel.name)
             store.seen(sel.name, dev.address, null, System.currentTimeMillis(), display)
             // the frame's config may have changed since it was chosen: never send a picture in another layout
             when (val l = OdDisplay.lookup(display)) {
                 is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, sel.name, l.reason))
                 is FormatLookup.Supported -> if (l.format != format) throw TxtException(Txt(R.string.frame_err_format_changed, sel.name))
             }
-            val zlib = withContext(Dispatchers.Default) { Od.zlib(payload) }.takeIf { display.takesZlib(it.size) && it.size < payload.size }
-            s.write(payload, zlib)
+            val zlib = withContext(Dispatchers.Default) { Od.zlibFor(display, payload) }
+            s.exchange.write(payload, zlib)
         } finally {
             s.close()
         }
@@ -90,17 +84,7 @@ class OdClient(private val ctx: Context) {
 
     /** Scans until the frame [name] advertises (it wakes about once a minute), then stops at once. */
     private suspend fun find(name: String): BluetoothDevice {
-        val found = CompletableDeferred<SeenFrame>()
-        val stop = scanner.start(
-            onSeen = { if (it.name == name && it.kind == FrameKind.OPENDISPLAY) found.complete(it) },
-            onFailed = { found.completeExceptionally(TxtException(it)) },
-        )
-        val seen = try {
-            withTimeoutOrNull(FIND_MS) { found.await() }
-        } finally {
-            stop()
-        }
-            ?: throw TxtException(Txt(R.string.frame_err_not_found, name, BlePermissions.scanHint))
+        val seen = scanner.awaitFrame(name, FrameKind.OPENDISPLAY, FIND_MS)
         Log.i(TAG, "found $name at ${seen.address}: ${seen.od}")
         return usable().getRemoteDevice(seen.address)
     }
@@ -113,7 +97,7 @@ class OdClient(private val ctx: Context) {
 
 /**
  * One GATT connection to an OpenDisplay frame: one characteristic for requests and answers (notifications,
- * queued in [replies]). Android allows a single outstanding GATT operation at a time.
+ * queued in [replies] for [exchange]). Android allows a single outstanding GATT operation at a time.
  */
 @SuppressLint("MissingPermission")
 private class OdSession(private val ctx: Context, private val device: BluetoothDevice) : BluetoothGattCallback() {
@@ -150,106 +134,9 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
         Log.i(TAG, "connected, mtu=$mtu, write without response=$noResponse")
     }
 
-    /** Reads the frame's config and returns its display record; the frame [name] is for messages. */
-    suspend fun display(name: String): OdDisplay {
-        val reader = Od.ConfigReader()
-        request(Od.request(Od.READ_CONFIG))
-        var config: ByteArray? = null
-        var timeout = 10_000L
-        while (config == null) {
-            val r = reply(Od.READ_CONFIG, "config", timeout)
-            if (!r.ok) throw TxtException(Txt(R.string.od_err_refused, "config", r.status))
-            config = try {
-                reader.add(r.data)
-            } catch (e: IllegalArgumentException) {
-                throw TxtException(Txt(R.string.od_err_config), e)
-            }
-            timeout = 3_000
-        }
-        val d = Od.display(config) ?: throw TxtException(Txt(R.string.od_err_config))
-        Log.i(TAG, "$name: ${config.size} B of config, $d")
-        return d
-    }
-
-    /**
-     * Writes [payload] as a full-frame direct write and waits for the refresh: compressed as [zlib] if given
-     * (back to uncompressed if the frame refuses the compressed start), else uncompressed.
-     */
-    suspend fun write(payload: ByteArray, zlib: ByteArray?) {
-        val t0 = SystemClock.elapsedRealtime()
-        val ended = if (zlib != null && startCompressed(payload.size, zlib)) {
-            chunks(zlib.copyOfRange(minOf(zlib.size, Od.START_DATA), zlib.size), canEnd = false)
-        } else {
-            request(Od.start())
-            reply(Od.WRITE_START, "start", 10_000).also { if (!it.ok) throw TxtException(Txt(R.string.od_err_refused, "start", it.status)) }
-            chunks(payload, canEnd = true)
-        }
-        Log.i(TAG, "data: ${payload.size} B as ${zlib?.size ?: payload.size} B in ${SystemClock.elapsedRealtime() - t0} ms, ended by the frame: $ended")
-        if (!ended) {
-            request(Od.end())
-            reply(Od.WRITE_END, "end", 90_000).also { if (!it.ok) throw TxtException(Txt(R.string.od_err_refused, "end", it.status)) }
-        }
-        val r = reply(null, "refresh", 90_000)
-        Log.i(TAG, "refresh: $r after ${SystemClock.elapsedRealtime() - t0} ms")
-        when (r.op) {
-            Od.REFRESH_DONE -> return
-            Od.REFRESH_TIMEOUT -> throw TxtException(Txt(R.string.od_err_refresh))
-            else -> throw TxtException(Txt(R.string.od_err_refused, "refresh", r.op))
-        }
-    }
-
-    /**
-     * Starts a compressed write of [size] image bytes with the head of [zlib]; false if the frame refuses it
-     * (`FF 70`, or `FF FF` from older firmware), so the caller can send uncompressed.
-     */
-    private suspend fun startCompressed(size: Int, zlib: ByteArray): Boolean {
-        request(Od.startCompressed(size, zlib.copyOf(minOf(zlib.size, Od.START_DATA))))
-        val r = reply(null, "start", 10_000)
-        if (r.ok && r.op == Od.WRITE_START) return true
-        Log.w(TAG, "compressed start refused: $r; sending uncompressed")
-        return false
-    }
-
-    /**
-     * Sends [data] in [Od.WRITE_DATA] chunks, each answered. True if the frame answered the last one with the
-     * end ([canEnd]: an uncompressed write ends by itself once the frame has every byte).
-     */
-    private suspend fun chunks(data: ByteArray, canEnd: Boolean): Boolean {
-        val type = if (noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-        var at = 0
-        while (at < data.size) {
-            val chunk = data.copyOfRange(at, minOf(data.size, at + Od.CHUNK))
-            send(Od.data(chunk), type)
-            at += chunk.size
-            val r = reply(null, "data", 30_000)
-            if (!r.ok) throw TxtException(Txt(R.string.od_err_refused, "data", r.status))
-            if (canEnd && r.op == Od.WRITE_END) return true
-            if (r.op != Od.WRITE_DATA) throw TxtException(Txt(R.string.od_err_refused, "data", r.op))
-        }
-        return false
-    }
-
-    /** Writes a request with response, after dropping any stale answer. */
-    private suspend fun request(value: ByteArray) {
-        while (replies.tryReceive().isSuccess) Unit
-        send(value, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-    }
-
-    /**
-     * The next answer, for opcode [op] (others are skipped; `null`: any); fails on "auth required" (encryption
-     * is on) and after [timeoutMs].
-     */
-    private suspend fun reply(op: Int?, what: String, timeoutMs: Long): Od.Reply {
-        val deadline = SystemClock.elapsedRealtime() + timeoutMs
-        while (true) {
-            val left = deadline - SystemClock.elapsedRealtime()
-            val raw = (if (left > 0) withTimeoutOrNull(left) { replies.receive() } else null)
-                ?: throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, what, timeoutMs.toInt())))
-            val r = Od.Reply.parse(raw) ?: continue
-            if (r.authRequired) throw TxtException(Txt(R.string.od_err_auth))
-            if (op == null || r.op == (op and 0xFF)) return r
-            Log.i(TAG, "$what: skipping $r")
-        }
+    /** The request and answer sequences over this connection; after [open]. */
+    val exchange = OdExchange(replies, { lost }, { Log.i(TAG, it) }) { value, data ->
+        send(value, if (data && noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
     }
 
     private suspend fun send(value: ByteArray, type: Int) {

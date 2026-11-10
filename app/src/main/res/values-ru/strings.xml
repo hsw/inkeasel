@@ -181,6 +181,12 @@
     <string name="od_err_no_service">у устройства нет сервиса OpenDisplay</string>
     <string name="od_err_config">не удалось прочитать настройки рамки</string>
     <string name="od_err_auth">на рамке включено шифрование: пока не поддерживается</string>
-    <string name="od_err_refused">рамка отклонила шаг %1$s (код 0x%2$02x)</string>
+    <string name="od_err_refused">рамка отклонила %1$s (код 0x%2$02x)</string>
+    <string name="od_err_unexpected">%1$s: неожиданный ответ рамки 0x%2$02x</string>
+    <string name="od_err_step_config">чтение настроек</string>
+    <string name="od_err_step_start">начало картинки</string>
+    <string name="od_err_step_data">часть картинки</string>
+    <string name="od_err_step_end">конец картинки</string>
+    <string name="od_err_step_refresh">обновление экрана</string>
     <string name="od_err_refresh">рамка не смогла обновить экран</string>
 </resources>

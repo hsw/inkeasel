@@ -75,6 +75,16 @@ object Od {
         return out.toByteArray()
     }
 
+    /**
+     * The zlib stream to send [payload] as to a frame reporting [display], or `null` to send it uncompressed:
+     * the frame takes no zlib at all (then nothing is compressed), takes none of that size, or the stream would
+     * not be smaller.
+     */
+    fun zlibFor(display: OdDisplay, payload: ByteArray): ByteArray? {
+        if (!display.takesAnyZlib) return null
+        return zlib(payload).takeIf { display.takesZlib(it.size) && it.size < payload.size }
+    }
+
     /** log2 of [WINDOW]. */
     private const val WINDOW_BITS = 9
 
@@ -183,6 +193,9 @@ class OdDisplay(val raw: ByteArray) {
         val modes = raw[22].toInt() and 0xFF
         return modes and 0x01 != 0 || (modes and 0x02 != 0 && size < Od.BUFFERED_MAX)
     }
+
+    /** Either zlib mode of [takesZlib], whatever the size: whether compressing is worth trying at all. */
+    val takesAnyZlib: Boolean get() = raw[22].toInt() and 0x03 != 0
 
     /** `color_scheme`: 0 mono, 1 BWR, 2 BWY, 3 BWRY, 4 Spectra 6, 5 four greys, 6+ others. */
     val scheme: Int get() = raw[21].toInt() and 0xFF

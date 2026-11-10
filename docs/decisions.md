@@ -3,6 +3,17 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — Choosing a frame: the newest press wins over a running OpenDisplay read
+
+Choosing an OpenDisplay frame reads its panel first, which can take a minute or two (scan until it wakes,
+connect, read the config), while the frame list stays usable. A read that finished after the user had chosen
+another frame used to replace that choice silently and run the after-choice work (a pending share) a second
+time. Now every choice, closing the settings and the Bluetooth panel cancel the running read, and a read checks
+that it is still the current one before it chooses or toasts; pressing another OpenDisplay frame starts its
+read in place of the old one, and pressing the frame being read again changes nothing. Rejected: ignoring every
+press while a read runs (the list would look dead for up to two minutes, and the user's last choice is the one
+they mean); disabling the list during the read (the same, and the D-pad would lose its place).
+
 ## 2026-11-10 — Dithering follows OpenDisplay's `epaper-dithering`: Burkes, serpentine, OKLab
 
 The app's Floyd–Steinberg in raster order with the nearest ink by RGB distance sent vivid colours toward
@@ -96,9 +107,10 @@ compression, the sliding-window pipe and partial refresh are left out.
   once, then sent in its new format.
 - Only the display record is kept. The config also carries the frame's Wi-Fi password and encryption key in
   plain text; they are dropped on arrival and never logged.
-- Uploads find the frame by name every time instead of connecting to the saved address first: the frame is
-  connectable only just after it advertises (about once a minute), so a connect started right after hearing it
-  is what works.
+- Uploads find the frame by name every time instead of connecting to the saved address first, and so does
+  choosing it: the frame is connectable only just after it advertises (about once a minute), so a connect
+  started right after hearing it is what works. (Choosing it first connected to the address from the list,
+  which Android gives up after about 30 s, so a press made more than that before the next wake failed.)
 - Uncompressed for now: the firmware inflates only a 512-byte window, which `java.util.zip.Deflater` cannot be
   asked for; with one answer per 230 bytes a four-grey 800×480 picture takes about 19 s from a phone. A small
   encoder of our own is the next step.

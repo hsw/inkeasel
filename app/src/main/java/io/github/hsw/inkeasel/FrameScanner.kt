@@ -9,6 +9,8 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Why Bluetooth cannot be used: as a [reason] inside a longer text (lowercase where the language allows), or
@@ -24,9 +26,9 @@ enum class BtProblem(private val reasonId: Int, private val sentenceId: Int) {
 
 /**
  * BLE scan for frames: NowMean ([FrameKind.NOWMEAN]: service 0xFFBB) and OpenDisplay ([FrameKind.OPENDISPLAY]:
- * manufacturer data 0x2446), shared by the settings list (continuous, every frame) and [FrameClient] (until
- * the selected frame shows up). Every advertisement is reported, so signal and battery
- * stay current; nameless ones are skipped, since the name is the frame's identity.
+ * manufacturer data 0x2446), shared by the settings list (continuous, every frame), [FrameClient] and
+ * [OdClient] (until the selected frame shows up, [awaitFrame]). Every advertisement is reported, so signal and
+ * battery stay current; nameless ones are skipped, since the name is the frame's identity.
  */
 @SuppressLint("MissingPermission") // callers check the permissions first (MainActivity)
 class FrameScanner(ctx: Context) {
@@ -78,6 +80,24 @@ class FrameScanner(ctx: Context) {
                 Log.i(TAG, "scan stop: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Scans until the frame [name] of [kind] advertises, then stops at once and returns what it advertised;
+     * fails on a scan error, or after [timeoutMs] with a hint to the scan permissions.
+     */
+    suspend fun awaitFrame(name: String, kind: FrameKind, timeoutMs: Long): SeenFrame {
+        val found = CompletableDeferred<SeenFrame>()
+        val stop = start(
+            onSeen = { if (it.name == name && it.kind == kind) found.complete(it) },
+            onFailed = { found.completeExceptionally(TxtException(it)) },
+        )
+        val seen = try {
+            withTimeoutOrNull(timeoutMs) { found.await() }
+        } finally {
+            stop()
+        }
+        return seen ?: throw TxtException(Txt(R.string.frame_err_not_found, name, BlePermissions.scanHint))
     }
 
     private fun seen(r: ScanResult): SeenFrame? {

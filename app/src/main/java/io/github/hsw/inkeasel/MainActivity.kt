@@ -91,6 +91,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.drop
@@ -353,6 +354,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun showBlePanel(stage: BleAsk.Stage, picture: Picture?) {
         dropPending()
+        cancelProbe()
         settingsOpen = false
         details = null
         nav.close()
@@ -466,20 +468,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun closeSettings() {
-        probe?.cancel()
+        cancelProbe()
         settingsOpen = false
     }
 
     /** The OpenDisplay frame whose panel is being read before it is chosen ([select]), or `null`. */
     var probing by mutableStateOf<String?>(null)
         private set
+
+    /** The read behind [probing]; a read that is no longer this one chooses nothing and leaves [probing] alone. */
     private var probe: Job? = null
+
+    /** Stops the read of an OpenDisplay frame, if one runs: a newer choice, or closing the settings, wins. */
+    private fun cancelProbe() {
+        probe?.cancel()
+        probe = null
+        probing = null
+    }
+
+    /**
+     * Reads the display an OpenDisplay frame of this name reports ([OdClient.interrogate]); tests replace it
+     * with a scripted frame.
+     */
+    internal var readDisplay: suspend (name: String) -> OdDisplay = { OdClient(getApplication()).interrogate(it) }
 
     /**
      * Choose [f] as the frame: saved with its advertisement (OpenDisplay: the display it reports once
      * connected, read first) and the time it was seen; closes the settings and calls [onSelected]. An
      * OpenDisplay frame that cannot be reached or reports a panel this app cannot draw on is not chosen, and a
-     * toast says why.
+     * toast says why. The newest press wins: it cancels a read still running for another frame (pressing the
+     * frame being read again changes nothing), and so does closing the settings.
      */
     fun select(f: SeenFrame, onSelected: () -> Unit) {
         when (f.kind) {
@@ -488,16 +506,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 onSelected()
             }
             FrameKind.OPENDISPLAY -> {
-                if (probing != null) return
+                if (probing == f.name) return
+                cancelProbe()
                 probing = f.name
-                probe = viewModelScope.launch {
+                // started once [probe] holds it, so the read can tell whether it is still the current one
+                val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+                    val me = coroutineContext[Job]
                     try {
-                        val d = OdClient(getApplication()).interrogate(f.name, f.address)
+                        val d = readDisplay(f.name)
+                        ensureActive()
+                        if (probe !== me) return@launch
                         Log.i(TAG, "frame ${f.name} reports $d")
                         when (val l = OdDisplay.lookup(d)) {
                             is FormatLookup.Unsupported -> toast(Txt(R.string.frame_toast_unsupported, f.name, l.reason))
                             is FormatLookup.Supported -> {
                                 if (!l.format.verified) toast(Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified)))
+                                probe = null
+                                probing = null
                                 choose(SelectedFrame(f.name, f.address, null, System.currentTimeMillis(), f.kind, d))
                                 onSelected()
                             }
@@ -505,24 +530,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
+                        ensureActive()
+                        if (probe !== me) return@launch
                         Log.w(TAG, "reading frame ${f.name} failed", e)
                         toast(Txt(R.string.od_toast_failed, f.name, e.userText(R.string.upload_err_text)))
                     } finally {
-                        probing = null
+                        if (probe === me) {
+                            probe = null
+                            probing = null
+                        }
                     }
                 }
+                probe = job
+                job.start()
             }
         }
     }
 
+    /** Saves [frame] as the chosen one and closes the settings; a read still running for another frame stops. */
     private fun choose(frame: SelectedFrame) {
+        cancelProbe()
         frames.select(frame)
         selected = frame
         settingsOpen = false
         Log.i(TAG, "frame selected: ${frame.kind.id} ${frame.name} ${frame.address} ${frame.advert ?: frame.display}")
     }
 
-    private fun toast(t: Txt) {
+    /** Shows [Txt] as a long toast; tests replace it to see the texts (unit tests have no app resources). */
+    internal var toast: (Txt) -> Unit = { t ->
         val app = getApplication<Application>()
         Toast.makeText(app, t.resolve(app), Toast.LENGTH_LONG).show()
     }

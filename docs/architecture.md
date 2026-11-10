@@ -72,7 +72,9 @@ Frames ([frames.md](frames.md)):
 - `FrameAdvert.kt`: parser of a NowMean frame's manufacturer data
 - `OdProtocol.kt`: the OpenDisplay requests and answers, config and display record (`OdDisplay`), advertisement
   (`OdAdvert`); pure
-- `OdClient.kt`: BLE client of an OpenDisplay frame: reads its display when it is chosen, uploads
+- `OdExchange.kt`: the OpenDisplay request and answer sequences over any link (pure)
+- `OdClient.kt`: BLE client of an OpenDisplay frame (the GATT link, `OdSession`): finds it by name, reads its
+  display when it is chosen, uploads
 - `FrameCaps.kt`: protocol-neutral `FrameCaps` and `FrameKind`
 - `FrameFormat.kt`: render formats and `FrameFormats`, the one place that maps an advertisement to a format or
   to the reason it is not supported (pure)

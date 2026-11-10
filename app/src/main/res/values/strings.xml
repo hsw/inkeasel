@@ -217,6 +217,12 @@
     <string name="od_err_no_service">the device has no OpenDisplay service</string>
     <string name="od_err_config">could not read the frame\'s settings</string>
     <string name="od_err_auth">the frame has encryption on: not supported yet</string>
-    <string name="od_err_refused">the frame refused the %1$s step (code 0x%2$02x)</string>
+    <string name="od_err_refused">the frame refused %1$s (code 0x%2$02x)</string>
+    <string name="od_err_unexpected">%1$s: unexpected answer 0x%2$02x from the frame</string>
+    <string name="od_err_step_config">reading its settings</string>
+    <string name="od_err_step_start">the start of the picture</string>
+    <string name="od_err_step_data">a part of the picture</string>
+    <string name="od_err_step_end">the end of the picture</string>
+    <string name="od_err_step_refresh">the screen refresh</string>
     <string name="od_err_refresh">the frame could not refresh its screen</string>
 </resources>
