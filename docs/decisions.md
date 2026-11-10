@@ -96,6 +96,9 @@ Huffman codes only (simpler, but worse than the flush: 69 KB on the same sample)
 
 ## 2026-11-10 — OpenDisplay frames: a second protocol, written in Kotlin, uncompressed for now
 
+*Partly overtaken: compression, see "OpenDisplay uploads use JZlib with a true 512-byte window" above; the
+dithering is now the `epaper-dithering` port (entry above), in Kotlin, not through JNI.*
+
 InkEasel also draws on frames running the open OpenDisplay firmware (first a Seeed reTerminal E1001). There
 is no Android or Java client of the protocol, so the part this app needs (read the config, full-frame direct
 write) is written here from the protocol header and the reference Python sender; encryption sessions,

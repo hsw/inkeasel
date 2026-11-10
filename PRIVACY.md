@@ -25,11 +25,11 @@ sent to the developer.**
   profile). Either one fixes the Catalog's nudity filter at "Hide all nudity". The answer is used only for
   that: it is neither stored nor sent. When the filter in force changes, the app writes it, and which of the
   two set it, to the device's system log (logcat).
-- **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them, and during
-  an upload (also of a poster, in the background) when the chosen frame has to be found by its name (a
-  NowMean frame that does not answer at its saved address; an OpenDisplay frame on every upload): the search
-  asks Android only for devices that advertise a NowMean frame's Bluetooth service or OpenDisplay
-  manufacturer data, and the app stores only the frame you choose.
+- **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them (and, when you
+  choose an OpenDisplay frame, until it wakes up and advertises), and during an upload (also of a poster, in the
+  background) when the chosen frame has to be found by its name (a NowMean frame that does not answer at its saved
+  address; an OpenDisplay frame on every upload): the search asks Android only for devices that advertise a NowMean
+  frame's Bluetooth service or OpenDisplay manufacturer data, and the app stores only the frame you choose.
 - **An OpenDisplay frame's configuration**, over Bluetooth, when you choose the frame and at each upload to
   it: the app keeps only its display part (panel model, size, rotation, colour scheme). The rest of it, which
   can include the frame's Wi-Fi network and password, is dropped at once: not stored, not logged, not sent.

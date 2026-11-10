@@ -61,7 +61,8 @@ Sharing and uploads:
   at a time; see [Uploads](#uploads)
 - `UploadService.kt`: transient foreground service for manual uploads (and the hold of automatic ones while the
   listener is not bound)
-- `DrawGate.kt`: spacing between uploads (at least 35 s apart, kept in prefs, so also across app restarts; see
+- `DrawGate.kt`: spacing between uploads (at least 35 s after a NowMean upload, kept in prefs, so also across
+  app restarts; an OpenDisplay upload ends when the frame reports its refresh done and does not arm it; see
   [now-playing.md](now-playing.md))
 
 Frames ([frames.md](frames.md)):
@@ -367,7 +368,8 @@ file is gone, it is dropped, and the picture stays in "My pictures" either way.
 One process-wide `UploadEngine` (pure core `UploadEngineCore`, queue rules in `UploadQueue`) holds the queue and
 the worker: one upload at a time, wired to the frame (`FrameClient`), each picture rendered in the selected
 frame's format (`FrameStore`, `FrameFormats`). A newer request replaces a queued one of the same kind, and a
-manual one goes first; the next upload waits for the frame to finish drawing (`DrawGate`). Every request is
+manual one goes first; the next upload waits for a NowMean frame to finish drawing (`DrawGate`; an OpenDisplay
+upload reports its refresh done itself and does not arm it). Every request is
 reported exactly once, a replaced one from inside the `submit` that replaced it. What the engine does with each
 report (toasts, `FrameController` callbacks) is pure (`UploadReports`; `UploadOutcome`: toast, report to the
 controller, remember as the default), and the controller tests use the production rules: never copy them into a
@@ -464,5 +466,11 @@ other.
   (`NudityLockReader`), only to lock the Catalog's nudity filter; the answer is not stored or sent (the system log
   gets the filter in force and the lock's kind when it changes). The filter as chosen is kept in prefs `catalog`.
   Details: [catalog.md](catalog.md).
-- **BLE scan**: a scan runs while the settings search for frames, and during an upload when the chosen frame has
-  to be found again by its name (filtered to the frame's service; see [frames.md](frames.md)).
+- **BLE scan**: a scan runs while the settings search for frames (also while an OpenDisplay frame being chosen
+  is awaited), and during an upload when the chosen frame has to be found again by its name (a NowMean frame
+  that does not answer at its saved address; an OpenDisplay frame on every upload), filtered to the NowMean
+  service or the OpenDisplay manufacturer data (`FrameScanner`; see [frames.md](frames.md)).
+- **OpenDisplay config**: when such a frame is chosen and at each upload, `OdExchange.display` reads the frame's
+  whole config. Only the display record (`Od.display` → `OdDisplay`) is kept and logged; the rest, including
+  the Wi-Fi network and password and the encryption key, is dropped on arrival: never stored (prefs `frame`
+  holds only `selected.display`), logged or sent.

@@ -16,7 +16,7 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
   - `docs/now-playing.md`: the poster pipeline, granting notification access, its emulator tests;
   - `docs/frames.md`: supported panels, choosing the frame, uploading to it;
   - `docs/building.md`: build, tests, emulators and device techniques, lint, CI, R8, releasing and signing;
-  - `docs/protocol.md`: the frame's BLE protocol and image formats;
+  - `docs/protocol.md`: the BLE protocols (NowMean, OpenDisplay), image formats and dithering;
   - `docs/decisions.md`: design decisions with reasons and rejected options (committed, newest first).
 - `PRIVACY.md` is the privacy policy (shown in the app as `settings_privacy_url`); it must say exactly what the
   code does (what is read, when, what is stored): a change to either updates the other.
@@ -30,10 +30,11 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
 
 - `JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug lintDebug` (CI adds `assembleRelease`).
   Everything else about building, testing and releasing: `docs/building.md`.
-- In the sandboxed agent shell `packageDebugResources` may fail (`clonefile` → "Operation not permitted"):
-  add `-x packageDebugResources` for a test-only run. Robolectric's first run downloads about 200 MB into
-  `~/.m2/repository`; a sandboxed shell without network or write access there fails at that point, so run it
-  once outside the sandbox.
+- In the sandboxed agent shell `packageDebugResources` may fail (`clonefile` → "Operation not permitted"): add `-x
+  packageDebugResources` for a test-only run. Not after `gradle clean` (it then fails in
+  `parseDebugLocalResources`) nor after adding a string (`R` keeps the old ids): run once without `-x`.
+  Robolectric's first run downloads about 200 MB into `~/.m2/repository`; a sandboxed shell without network or
+  write access there fails at that point, so run it once outside the sandbox.
 - Rules that cost a lot when broken (reasons in the docs):
   - Room 2.6.1, Paging 3.3.6 and MockWebServer 4.12.0 are pinned; after a dependency change check
     `./gradlew :app:dependencies` (Compose on the BOM, kotlin-stdlib on 2.0.x) and smoke-test the release APK.
@@ -77,6 +78,9 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
   `uploader.upload` in `FrameController` (re-entry under its lock). Lock order is controller → engine. Never copy
   `UploadReports` into a test rig.
 - What plays reaches the log only through `MediaLog`.
+- An OpenDisplay frame's config carries its Wi-Fi password and encryption key: only the display record
+  (`OdDisplay`) is kept, stored (`selected.display`) or logged; never log or store the raw config or a config
+  reply. PRIVACY.md says so.
 - Every request goes through `Http.client` (a `newBuilder()` of it is fine, a new `OkHttpClient` is not); only
   requests tagged `Holdable` may be held.
 - Every catalog write takes `CatalogStore`'s write `Mutex`; network requests run outside it. No DAO returns the
@@ -86,6 +90,7 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
 
 ## Public-repo hygiene
 This repository is public. Committed text must contain no IP addresses, MAC addresses of real devices, names
-of real frames (use `NM000001`), hostnames, local or home-directory paths, or names of other private projects.
+of real frames (use `NM000001`, or `OD000001` for an OpenDisplay frame), hostnames, local or home-directory
+paths, or names of other private projects.
 Commits use the GitHub noreply address (set in `.git/config`) and never carry a `Claude-Session` trailer or
 session links. Never commit `local.properties`, keystores or APKs.

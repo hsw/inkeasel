@@ -42,8 +42,9 @@ import java.io.File
  * ([BlePermissions]): it asks for them before a manual upload, and `AutoUploader` reports an automatic one as
  * failed without them. The debug adb trigger can start it without them; it then refuses with a toast.
  *
- * Uploads are spaced by the frame's panel refresh ([DrawGate], via [FrameClient.awaitIdle]); a manual request
- * that has to wait toasts how long.
+ * Uploads after a NowMean one are spaced by its panel refresh ([DrawGate], via [FrameClient.awaitIdle]; an
+ * OpenDisplay frame reports its refresh done and does not arm it); a manual request that has to wait toasts how
+ * long.
  *
  * It stops with `stopSelfResult(lastStartId)`, so a start accepted by the system but not yet delivered to
  * [onStartCommand] keeps it running. [onDestroy] reports nothing: the engine is the only reporter, and a

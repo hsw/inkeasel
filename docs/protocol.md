@@ -6,7 +6,8 @@ The second protocol, OpenDisplay, is an open one with its own specification; the
 [OpenDisplay](#opendisplay) at the end.
 
 How to read the marks:
-- No mark: what this app does, in `FrameClient.kt`, `FrameScanner.kt`, `FrameAdvert.kt` and `FrameFormat.kt`.
+- No mark: what this app does, in `FrameClient.kt`, `FrameScanner.kt`, `FrameAdvert.kt`, `FrameFormat.kt`,
+  `Oklab.kt` and `Levels.kt`.
 - *(observed)*: seen on the real frame, but nothing in the code checks it.
 - *(vendor app)*: how the vendor's app does it; this app does not use it, and it was not tried on hardware.
 
@@ -337,6 +338,7 @@ Raw payload in bytes, with `P(n)` = n rounded up to a multiple of 512:
 
 ### Dithering
 
+The same for both protocols (OpenDisplay frames too, [OpenDisplay image formats](#opendisplay-image-formats)).
 The frame takes device codes, so dithering is up to the client. This app dithers each type onto its own
 inks with the recipe of OpenDisplay's `epaper-dithering` library (MIT), ported to Kotlin (`FrameFormat.dither`,
 `Oklab.kt`) with its constants and order of operations; no code is copied beyond the constants:
@@ -395,8 +397,8 @@ boundaries are independent of data frame boundaries. The real frame reported LZO
 protocol: the wire contract is one header, `opendisplay_protocol.h` in
 [opendisplay-protocol](https://github.com/OpenDisplay/opendisplay-protocol), and the reference sender is
 [py-opendisplay](https://github.com/OpenDisplay/py-opendisplay). This section is the part InkEasel uses, in
-`OdProtocol.kt`, `OdExchange.kt` (the request and answer sequences) and `OdClient.kt`; tried on a Seeed reTerminal E1001 (800×480, panel 60 in four greys,
-firmware 2.27).
+`OdProtocol.kt`, `OdExchange.kt` (the request and answer sequences) and `OdClient.kt`; tried on a Seeed reTerminal
+E1001 (800×480, panel 60 in four greys, firmware 2.27).
 
 ### OpenDisplay advertising
 
@@ -483,8 +485,9 @@ Not used: the sliding-window pipe (`00 80`), partial writes (`00 76`, 1-bit pane
 
 ### OpenDisplay image formats
 
-The frame takes the panel's native layout and does no conversion; the sender dithers. Each row is padded to a
-whole byte, first pixel in the most significant bit; there is no other padding.
+The frame takes the panel's native layout and does no conversion; the sender dithers ([Dithering](#dithering),
+the same for both protocols). Each row is padded to a whole byte, first pixel in the most significant bit;
+there is no other padding.
 
 | Scheme | Payload | Ink codes |
 |---|---|---|
@@ -497,4 +500,5 @@ whole byte, first pixel in the most significant bit; there is no other padding.
 Four greys at 800×480: 2 × 100 × 480 = 96,000 bytes. The greys are dithered at the even levels 0, 85, 170,
 255, as the reference sender does where it has no measured palette. Verified on hardware: four greys (a scale
 of the four levels came out in order). The others follow the reference sender and are marked "not verified on
-hardware"; BWRY, the sixteen, eight and seven colour schemes and the split Spectra 6 are refused.
+hardware"; BWRY, the sixteen, eight and seven colour schemes, the split Spectra 6 and Spectra 6 at an odd
+width (the frame pads each row to a byte, while the 4-bpp packing runs on across rows) are refused.

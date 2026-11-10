@@ -19,6 +19,9 @@ In short:
 - **E6** 1360×480, 1440×600 and 1200×1600, **E4** and **BWR**: implemented from the vendor app's formats,
   not yet seen on a real frame; the settings say "not verified on hardware", and they can still be chosen.
 - **BW, BP, E7, BWY**, a rotated panel or panel type A: listed with the reason and not selectable.
+- **OpenDisplay**: four greys verified on a reTerminal E1001 (800×480); mono, BWR, BWY and Spectra 6
+  supported but not verified on hardware; BWRY, the grey and seven-colour schemes, Spectra 6 at an odd width
+  and a frame with encryption on are refused.
 
 ### Per colour type and resolution
 
@@ -52,8 +55,9 @@ own inks, sent zlib-compressed where the frame takes it ([protocol.md](protocol.
 | Spectra 6 (even widths) | 4 bpp, the NowMean E6 codes | no |
 
 Refused with the reason: BWRY and the other schemes ("colour scheme 6 is not supported yet"), four greys on
-panels `0x28` and `0x48`, which keep the greys the other way round, and a frame with encryption on (it answers
-"auth required"; the toast says encryption is not supported yet).
+panels `0x28` and `0x48`, which keep the greys the other way round, Spectra 6 at an odd width (the frame pads
+each row to a byte, the 4-bpp packing runs on across rows), and a frame with encryption on (it answers "auth
+required"; the toast says encryption is not supported yet).
 
 A reTerminal E1001 runs either as a 1-bit panel (59, with partial refresh) or as a four-grey one (60, full
 refresh only); both are supported, and the app always sends the whole picture with a full refresh.
@@ -80,10 +84,10 @@ The check and the render format (size, inks, packing, marker, verified flag) com
 rotation; from a NowMean frame's advertisement, `FrameAdvert.caps`, or an OpenDisplay frame's display record,
 `OdDisplay.caps`) and the frame's kind (the same inks are packed differently by the two protocols); a new
 panel type is one more entry there. A protocol's own rejections come first: a NowMean frame's panel A or
-unknown size code (`FrameAdvert.lookup`), an OpenDisplay frame's unknown colour scheme or swapped greys
-(`OdDisplay.lookup`). The frame
-list does not let a refused frame be chosen, `FrameClient` refuses a selected frame whose caps no longer qualify, and
-`UploadEngine` renders with the format found there.
+unknown size code (`FrameAdvert.lookup`), an OpenDisplay frame's unknown colour scheme, swapped greys or odd
+Spectra 6 width (`OdDisplay.lookup`). The frame list does not let a refused frame be chosen, `FrameClient`
+(OpenDisplay: `OdClient`) refuses a selected frame whose caps no longer qualify, and `UploadEngine` renders
+with the format found there.
 
 ## Rendering
 
@@ -109,9 +113,10 @@ one), dithered onto the panel's inks.
   see-through pixel is laid on white first. A 1024×600 E6 picture dithers in about 55 ms, an 800×480 four-grey
   one in about 28 ms (JVM on a desktop, warm).
 - Packings: `Nibbles4` (4 bpp, optionally split), `Crumbs2` (2 bpp), `BitPlanes` (1-bpp planes, padded,
-  optionally split) and, for OpenDisplay, `RowPlanes` (1-bpp planes with each row padded to a byte). `FrameFormat.kt` is free of Android types and runs as JVM unit tests.
-- The size and inks come from the frame's advertisement (OpenDisplay: its display record); there is no rotation step (only rotation 0° is
-  supported).
+  optionally split) and, for OpenDisplay, `RowPlanes` (1-bpp planes with each row padded to a byte).
+  `FrameFormat.kt` is free of Android types and runs as JVM unit tests.
+- The size and inks come from the frame's advertisement (OpenDisplay: its display record); there is no
+  rotation step (only rotation 0° is supported).
 
 The catalog cards keep the frame's shape: their aspect is the chosen frame's format, or 1024×600
 (`FrameFormats.DEFAULT`, the E6 frame this app was built and verified with) while no frame is chosen.
@@ -127,15 +132,15 @@ chosen), unless the user has already moved onto the list.
 
 - Under the "Frame" title: the chosen frame ("Selected: NM000001 · <address> · seen <time>", plus "not
   verified on hardware" for an unverified format), or "No frame selected: choose one to send pictures."
-- While it is open, the app scans for BLE service `0xFFBB` (`FrameScanner`, low-latency mode) and lists
-  every frame heard, one entry per name (the name is the frame's identity; its MAC may change; a nameless
-  advertisement is skipped), sorted by name and updated live: name, MAC, colour and panel type, resolution
-  and rotation, battery, firmware, signal (RSSI) and safe mode if set (e.g. "E6, panel TA · 1024×600, 0° ·
-  battery 100 % · firmware 21 · signal -60 dBm"). The chosen frame is marked ("NM000001 — selected"). The
-  scan stops when the screen closes or the app goes to the background. With no frame heard yet it shows
-  "Searching for frames…" and the hint "The frame must be nearby and not connected to a phone." (before
-  Android 12 also that the search needs location on); a scan error shows "Frame search failed: BLE scan
-  error (<code>)" and "Retry".
+- While it is open, the app scans for BLE service `0xFFBB` (NowMean) and manufacturer data `0x2446`
+  (OpenDisplay; `FrameScanner`, low-latency mode) and lists every frame heard, one entry per name (the name is
+  the frame's identity; its MAC may change; a nameless advertisement is skipped), sorted by name and updated
+  live: name, MAC, colour and panel type, resolution and rotation, battery, firmware, signal (RSSI) and safe
+  mode if set (e.g. "E6, panel TA · 1024×600, 0° · battery 100 % · firmware 21 · signal -60 dBm"). The chosen
+  frame is marked ("NM000001 — selected"). The scan stops when the screen closes or the app goes to the
+  background. With no frame heard yet it shows "Searching for frames…" and the hint "The frame must be nearby
+  and not connected to a phone." (before Android 12 also that the search needs location on); a scan error
+  shows "Frame search failed: BLE scan error (<code>)" and "Retry".
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
 - An OpenDisplay frame is listed with "OpenDisplay · battery 4.20 V" (from its advertisement) and is always
@@ -150,8 +155,8 @@ chosen), unless the user has already moved onto the list.
   chooses nothing; selecting the frame being read again changes nothing.
 - Frames the app cannot draw on are listed with the reason ("not supported: …", in the error colour) and
   "unavailable", and cannot be chosen; they stay focusable so the D-pad reaches the reason, and a press only
-  toasts it ("Frame NM000001 is not supported: …"). A supported frame whose format was never seen working on
-  a real panel says "not verified on hardware" under its properties (and in a toast when chosen); it can be
+  toasts it ("Frame NM000001 is not supported: …"). A supported frame whose format was never seen working on a
+  real panel says "not verified on hardware" under its properties (and in a toast when chosen); it can be
   chosen.
 - Without Bluetooth permission the screen asks for it ("Allow"; on Android 11 and older its text names the
   location permission, which the system dialog asks for, and why a Bluetooth search needs it); with Bluetooth
@@ -164,21 +169,23 @@ chosen), unless the user has already moved onto the list.
   (remembered in prefs `permissions`) does a silent "no" count as blocked. The permission set
   (`BlePermissions`) and when the app asks: [architecture.md](architecture.md).
 
-A BLE scan runs only while the settings search for frames, and during an upload when the chosen frame has to
-be found again by its name (filtered to the frame's service, see "Uploading to the chosen frame").
+A BLE scan runs only while the settings search for frames, while an OpenDisplay frame being chosen is awaited,
+and during an upload when the chosen frame has to be found again by its name: a NowMean frame not answering
+at its saved address, and every upload to an OpenDisplay frame (filtered to the NowMean service or the
+OpenDisplay manufacturer data, see "Uploading to the chosen frame").
 
 ## What is stored
 
-Stored in prefs `frame` (`FrameStore`, `SelectedFrame`; next to the upload spacing `endedAt` and the
-`onFrame` key): `selected.kind` (the frame's protocol, `nowmean`), `selected.name`, `selected.address`,
+Stored in prefs `frame` (`FrameStore`, `SelectedFrame`; next to the upload spacing `endedAt` and the `onFrame`
+key): `selected.kind` (the frame's protocol, `nowmean` or `opendisplay`), `selected.name`, `selected.address`,
 `selected.advert` (the raw manufacturer data as hex, the source of truth), its parsed properties
 (`selected.colour`, `.panel`, `.width`, `.height`, `.rotation`, `.battery`, `.firmware`, `.safeMode`, for
 reading the file only) and `selected.seenAt` (wall-clock ms when it was last seen). An OpenDisplay frame keeps
 `selected.display` instead of the advertisement: the raw display record of its config, the source of truth,
-with `.panel`, `.colour`, `.width`, `.height` and `.rotation` parsed next to it; nothing else of its config. A selection replaces
-every entry of the previous frame. A frame of a kind this build does not know, or with a blank name or
-address, reads back as none. The `address`/`name` keys of older builds (the first frame a scan found) are
-ignored and removed on the first selection, so an existing install shows the picker once.
+with `.panel`, `.colour`, `.width`, `.height` and `.rotation` parsed next to it; nothing else of its config. A
+selection replaces every entry of the previous frame. A frame of a kind this build does not know, or with a
+blank name or address, reads back as none. The `address`/`name` keys of older builds (the first frame a scan
+found) are ignored and removed on the first selection, so an existing install shows the picker once.
 
 Stored data never holds translated text. The chosen frame stays in the app's private storage on the device
 (see [PRIVACY.md](../PRIVACY.md)).
@@ -205,7 +212,9 @@ the upload ("the parameters of frame NM000001 have changed, send again", or "not
 no longer gives the format the picture was rendered for, saving the new display so the next upload uses it.
 The picture goes in one attempt, compressed if the frame takes zlib (uncompressed if it refuses the
 compressed start), and the upload ends when the frame reports its refresh done
-([protocol.md](protocol.md#opendisplay-upload)); `DrawGate` does not apply.
+([protocol.md](protocol.md#opendisplay-upload)). OpenDisplay uploads do not arm `DrawGate` (the frame
+reports its refresh done); the wait before each upload still applies, so one sent within 35 s of a NowMean
+upload waits for that frame's drawing time.
 
 NowMean uploads are spaced by `DrawGate`: the frame acks an upload at once but draws it for ~27 s after the link
 drops and gives no sign when it is done, and a picture sent meanwhile is not drawn properly, so the next
@@ -254,10 +263,10 @@ The catalog browses normally, but nothing is uploaded:
 - `EpdImage.kt`: decode, fit, dither and pack for one `FrameFormat`
 - `FrameClient.kt`: BLE connect/upload to the chosen frame, rescan by its name (protocol:
   [protocol.md](protocol.md))
-- `DrawGate.kt`: spacing between uploads (pure, its time kept in prefs)
+- `DrawGate.kt`: spacing between NowMean uploads (pure, its time kept in prefs)
 
 ## Testing with a frame
 
 Emulator Bluetooth is virtual: uploads to a real frame need a real device. The frame path logs under
-`adb logcat -s FrameScanner FrameClient OdClient UploadEngine UploadService`. In examples and committed text a frame
-is named `NM000001`, never after a real one.
+`adb logcat -s FrameScanner FrameClient OdClient UploadEngine UploadService`. In examples and committed text
+a frame is named `NM000001` (an OpenDisplay one `OD000001`), never after a real one.

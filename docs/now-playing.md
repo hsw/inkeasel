@@ -182,8 +182,9 @@ The default is kept in prefs `default`, the key of the picture on the frame in p
 - Manual uploads (a catalog tap, a share) go through the same engine inside `UploadService`, a short
   `connectedDevice` foreground service, so they finish after the user leaves the app
   ([architecture.md](architecture.md)).
-- Uploads are at least 35 s apart, also across app restarts: the frame draws for ~27 s after an upload and a
-  picture sent meanwhile is not drawn properly (`DrawGate`). A later request waits (a manual one toasts how
+- Uploads are at least 35 s after a NowMean upload, also across app restarts: the frame draws for ~27 s after an
+  upload and a picture sent meanwhile is not drawn properly (`DrawGate`). An OpenDisplay upload ends when the frame
+  reports its refresh done, so it does not hold back the next one. A later request waits (a manual one toasts how
   long); while it waits, a newer request of the same kind replaces it and a manual one goes first.
 - The engine drops an automatic upload, reported as failed, if a manual upload succeeded after it was decided,
   if a poster's turn comes while the poster is switched off, or if a revert's turn comes while the playing

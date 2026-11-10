@@ -127,5 +127,6 @@ poster and is not sent anywhere. The full policy: [PRIVACY.md](PRIVACY.md).
 - [docs/catalog.md](docs/catalog.md): the painting catalog, its database and its export tool.
 - [docs/now-playing.md](docs/now-playing.md): the poster.
 - [docs/frames.md](docs/frames.md): supported frames, choosing one and uploading.
-- [docs/protocol.md](docs/protocol.md): the frame's Bluetooth protocol and image formats.
+- [docs/protocol.md](docs/protocol.md): the frames' Bluetooth protocols (NowMean, OpenDisplay), image formats
+  and dithering.
 - [docs/decisions.md](docs/decisions.md): design decisions, with their reasons.
