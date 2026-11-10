@@ -435,10 +435,8 @@ The full-frame direct write, compressed where the frame takes it:
 The frame takes zlib if its display's transmission modes have bit 0 (streaming inflate, any size) or bit 1
 (inflates the whole stream in a buffer: under 50 KB compressed); the E1001 has bit 0. Its inflater takes a
 DEFLATE window of 512 bytes (9 bits) at most and rejects a header that declares more. `java.util.zip.Deflater`
-cannot be given a window, so the app resets its dictionary (`FULL_FLUSH`) after every 512 bytes of input,
-which no match can cross, and writes the zlib header itself (`18 D3`: deflate, 512-byte window) with the
-Adler-32 of the image. That costs some ratio against a true 9-bit encoder (about 15 % more bytes on a
-dithered photo), for no compression code of our own.
+cannot be given a window, so the app compresses with JZlib (a pure-Java port of zlib) at level 9 with a 9-bit
+window: one stream, header `18 D3` (deflate, 512-byte window), no match further back than the window.
 
 The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
 greys from a phone *(observed)*: uncompressed, 96,000 bytes take about 19 s (one answer per 230 bytes);

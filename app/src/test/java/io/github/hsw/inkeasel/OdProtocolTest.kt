@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.zip.Deflater
 import java.util.zip.Inflater
 import kotlin.random.Random
 
@@ -163,14 +164,14 @@ class OdProtocolTest {
         return ByteArray(96_000) { i -> if (i in 30_000 until 60_000) r.nextInt(256).toByte() else 0 }
     }
 
-    private fun inflate(z: ByteArray, nowrap: Boolean, size: Int): ByteArray {
-        val inf = Inflater(nowrap)
-        inf.setInput(z)
-        val out = ByteArray(size)
-        var n = 0
-        while (n < size && !inf.needsInput()) n += inf.inflate(out, n, size - n)
-        inf.end()
-        return out.copyOf(n)
+    /** Random 600-byte blocks, each repeated: matches the encoder may not take sit 600 bytes back. */
+    private fun repeats(): ByteArray {
+        val r = Random(11)
+        val block = ByteArray(600)
+        return ByteArray(96_000) { i ->
+            if (i % 1200 == 0) r.nextBytes(block)
+            block[i % 600]
+        }
     }
 
     @Test
@@ -179,26 +180,67 @@ class OdProtocolTest {
         val z = Od.zlib(data)
         assertEquals(0x18, z[0].toInt() and 0xFF) // deflate, 2^9 window
         assertEquals(0, ((z[0].toInt() and 0xFF) * 256 + (z[1].toInt() and 0xFF)) % 31)
+        assertEquals(0, z[1].toInt() and 0x20) // no preset dictionary
         assertTrue(z.size < data.size / 2)
         val inf = Inflater()
         inf.setInput(z)
         val out = ByteArray(data.size)
         assertEquals(data.size, inf.inflate(out))
         assertTrue(inf.finished()) // the Adler-32 trailer matched
+        inf.end()
         assertArrayEquals(data, out)
     }
 
     @Test
-    fun zlib_eachPartInflatesWithoutTheOnesBefore() {
-        // a match reaching further back than 512 bytes would need the earlier parts' bytes
-        val data = sample()
-        val (z, starts) = Od.zlibWithFlushes(data)
-        val raw = z.copyOfRange(2, z.size - 4)
-        assertEquals(data.size / Od.WINDOW + 1, starts.size)
-        for ((k, at) in starts.withIndex()) {
-            val part = data.copyOfRange(k * Od.WINDOW, minOf(data.size, (k + 1) * Od.WINDOW))
-            assertArrayEquals("part $k", part, inflate(raw.copyOfRange(at, raw.size), true, part.size))
+    fun zlib_everyMatchStaysInTheWindow() {
+        val payloads = mapOf(
+            "sample" to sample(),
+            "repeats" to repeats(),
+            "white" to ByteArray(96_000) { 0xFF.toByte() },
+            "black" to ByteArray(96_000),
+        )
+        for ((name, data) in payloads) {
+            val r = TinyInflate.zlib(Od.zlib(data))
+            assertArrayEquals(name, data, r.data)
+            assertEquals(name, Od.WINDOW, r.window)
+            assertTrue("$name: distance ${r.maxDistance}", r.maxDistance <= Od.WINDOW)
         }
+    }
+
+    @Test
+    fun tinyInflate_seesMatchesBeyondTheWindow() {
+        // the check above is not vacuous: a 32 KB-window stream of the same data reaches 600 bytes back
+        val data = repeats()
+        val d = Deflater(Deflater.BEST_COMPRESSION)
+        d.setInput(data)
+        d.finish()
+        val buf = ByteArray(data.size + 1024)
+        val n = d.deflate(buf)
+        assertTrue(d.finished())
+        d.end()
+        val r = TinyInflate.zlib(buf.copyOf(n))
+        assertArrayEquals(data, r.data)
+        assertTrue("distance ${r.maxDistance}", r.maxDistance > Od.WINDOW)
+    }
+
+    /** The previous encoder: `Deflater` with its dictionary reset after every [Od.WINDOW] bytes of input. */
+    private fun resetEvery512(data: ByteArray): Int {
+        val d = Deflater(Deflater.BEST_COMPRESSION, true)
+        val buf = ByteArray(data.size + 64 * 1024)
+        var n = 0
+        for (at in data.indices step Od.WINDOW) {
+            d.setInput(data, at, minOf(Od.WINDOW, data.size - at))
+            n += d.deflate(buf, n, buf.size - n, Deflater.FULL_FLUSH)
+        }
+        d.finish()
+        while (!d.finished()) n += d.deflate(buf, n, buf.size - n)
+        d.end()
+        return 2 + n + 4
+    }
+
+    @Test
+    fun zlib_smallerThanResettingTheDictionary() {
+        for (data in listOf(sample(), repeats())) assertTrue(Od.zlib(data).size < resetEvery512(data))
     }
 
     @Test

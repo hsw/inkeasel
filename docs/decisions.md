@@ -3,6 +3,23 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — OpenDisplay uploads use JZlib with a true 512-byte window
+
+Supersedes "OpenDisplay uploads are zlib-compressed with `Deflater` reset every 512 bytes" below. Resetting
+`java.util.zip.Deflater` every 512 bytes cut a 96,000-byte frame into 188 independent parts, each a block with no
+history and its own Huffman tables (plus the flush's empty stored block). JZlib (`com.jcraft:jzlib:1.1.3`, a
+pure-Java port of zlib, BSD-3, no native code, no keep rule needed) takes a 9-bit window directly: one stream at
+level 9, header `18 D3`, its own Adler-32. On the same dithered pictures it saves 11–23 % of the bytes on photos
+and about half on graphics, 1–2 s per upload; on the E1001 from a phone, together with the dithering above, "Night
+Watch" went from 10.7 s to 9.3 s, "Starry Night" from 13.1 s to 12.6 s, "Mona Lisa" from 6.8 s to 6.5 s
+*(observed)*. A test-only inflater checks that no match reaches back more than 512 bytes. Rejected: an encoder of
+our own (LZ77 plus dynamic Huffman, about 400 lines and the bit-level bugs ours, for a size within ±3 % of JZlib);
+declaring a wider window (the boards that inflate with uzlib reject any header above 9 bits, and the ROM inflater
+of ESP32-S3 boards such as the E1001 accepts up to 4096 bytes but silently corrupts a distance beyond it; nothing
+in the config tells which inflater a board has, and the gain is about 3 %); `Deflater` with `HUFFMAN_ONLY` (valid
+with any window, but no matches: worse than JZlib, and on graphics worse than the reset `Deflater`); keeping the
+reset `Deflater` (the numbers above).
+
 ## 2026-11-10 — Panels of greys get auto levels before dithering
 
 A dark painting (Rembrandt's "Night Watch") on the four-grey E1001 used little more than black and dark grey.
@@ -16,6 +33,8 @@ panels (their inks set the range, and stretching saturates colour); tone compres
 measured range, as the OpenDisplay dithering library does (no reliable measurement of these greys yet).
 
 ## 2026-11-10 — OpenDisplay uploads are zlib-compressed with `Deflater` reset every 512 bytes
+
+*Superseded by "OpenDisplay uploads use JZlib with a true 512-byte window" above.*
 
 Implements the "next step" of the OpenDisplay entry below. The frame's inflater takes a DEFLATE window of 512
 bytes at most, and `java.util.zip.Deflater` has no window setting. Resetting its dictionary with

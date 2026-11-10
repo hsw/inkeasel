@@ -31,6 +31,16 @@ code, check the 16 KB alignment (below).
 
 Room exports each schema version to `app/schemas/` (committed): each version's JSON shows what changed.
 
+### Third-party code and algorithms
+
+Besides the AndroidX, Compose, Kotlin, OkHttp and Coil libraries, the app bundles and borrows:
+
+| What | Licence | How it is used |
+|---|---|---|
+| JZlib (`com.jcraft:jzlib:1.1.3`), a pure-Java port of zlib | BSD-3-Clause | binary dependency: compresses OpenDisplay uploads with a 512-byte window ([protocol.md](protocol.md#opendisplay-upload)) |
+
+The app has no licences screen; this table is where the credit is kept.
+
 ## Build
 
     JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest assembleDebug lintDebug

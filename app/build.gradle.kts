@@ -104,6 +104,8 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.paging:paging-runtime:3.3.6")
     implementation("androidx.paging:paging-compose:3.3.6")
+    // zlib with a 512-byte window for OpenDisplay uploads (java.util.zip.Deflater has no window setting)
+    implementation("com.jcraft:jzlib:1.1.3")
 
     testImplementation("junit:junit:4.13.2")
     // the real org.json: android.jar only has stubs, and catalog errors need a real JSONException

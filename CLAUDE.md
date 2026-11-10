@@ -46,6 +46,9 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
     `Nudity.EXPLICIT`/`Nudity.NUDE` change together (`NudityTest`). Run `python3 tools/catalog-export.py
     --self-test` after changing the tool.
   - `lintDebug` has no errors; a new one is a regression.
+  - OpenDisplay uploads keep a DEFLATE window of at most 512 bytes (header `18 D3`): compress only through
+    `Od.zlib` (JZlib, windowBits 9), never `java.util.zip.Deflater`; `OdProtocolTest` checks it with
+    `TinyInflate`.
   - Add a keep rule to `app/proguard-rules.pro` only when an R8 warning or a release smoke test proves it
     necessary.
 - Release signing comes only from the four `INKEASEL_*` secrets; never put a keystore or a secret in the repo.

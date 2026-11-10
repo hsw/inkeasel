@@ -1,9 +1,9 @@
 package io.github.hsw.inkeasel
 
+import com.jcraft.jzlib.Deflater
+import com.jcraft.jzlib.JZlib
 import java.io.ByteArrayOutputStream
 import java.util.UUID
-import java.util.zip.Adler32
-import java.util.zip.Deflater
 
 /**
  * The OpenDisplay BLE protocol (docs/protocol.md#opendisplay), the part this app uses: read the config, send
@@ -53,44 +53,30 @@ object Od {
     const val WINDOW = 512
 
     /**
-     * [data] as a zlib stream the frame can inflate: no match reaches back more than [WINDOW] bytes, and the
-     * header says so. `Deflater` cannot be given a window, so its dictionary is reset ([Deflater.FULL_FLUSH])
-     * after every [WINDOW] bytes of input, which no match can then cross; the raw stream gets a zlib header
-     * with a 512-byte window and the Adler-32 of [data].
+     * [data] as a zlib stream the frame can inflate: one stream from a true 9-bit DEFLATE encoder (JZlib, a
+     * port of zlib; `java.util.zip.Deflater` has no window setting), so no match reaches back more than
+     * [WINDOW] bytes and the header says so (`18 D3`); JZlib writes the header and the Adler-32 itself.
      */
-    fun zlib(data: ByteArray): ByteArray = zlibWithFlushes(data).first
-
-    /** [zlib] and, for tests, where in it each [WINDOW]-byte part of [data] starts (the raw stream's offsets). */
-    internal fun zlibWithFlushes(data: ByteArray): Pair<ByteArray, List<Int>> {
-        val raw = ByteArrayOutputStream()
-        val starts = mutableListOf<Int>()
-        val d = Deflater(Deflater.BEST_COMPRESSION, true)
+    fun zlib(data: ByteArray): ByteArray {
+        val d = Deflater(JZlib.Z_BEST_COMPRESSION, WINDOW_BITS, false)
+        val out = ByteArrayOutputStream(data.size / 2)
         val buf = ByteArray(4096)
         try {
-            var at = 0
-            while (at < data.size) {
-                starts += raw.size()
-                val n = minOf(WINDOW, data.size - at)
-                d.setInput(data, at, n)
-                do {
-                    val k = d.deflate(buf, 0, buf.size, Deflater.FULL_FLUSH)
-                    raw.write(buf, 0, k)
-                } while (k == buf.size)
-                at += n
-            }
-            d.finish()
-            while (!d.finished()) raw.write(buf, 0, d.deflate(buf))
+            d.setInput(data)
+            do {
+                d.setOutput(buf, 0, buf.size)
+                val r = d.deflate(JZlib.Z_FINISH)
+                check(r == JZlib.Z_OK || r == JZlib.Z_STREAM_END) { "deflate: $r" }
+                out.write(buf, 0, buf.size - d.availOut)
+            } while (r != JZlib.Z_STREAM_END)
         } finally {
             d.end()
         }
-        // CMF: deflate with a 2^(1+8) window; FLG: maximum compression, no dictionary, check bits
-        val cmf = 0x18
-        val flg = 0xC0 + (31 - (cmf * 256 + 0xC0) % 31) % 31
-        val sum = Adler32().apply { update(data) }.value
-        val out = byteArrayOf(cmf.toByte(), flg.toByte()) + raw.toByteArray() +
-            byteArrayOf((sum shr 24).toByte(), (sum shr 16).toByte(), (sum shr 8).toByte(), sum.toByte())
-        return out to starts
+        return out.toByteArray()
     }
+
+    /** log2 of [WINDOW]. */
+    private const val WINDOW_BITS = 9
 
     fun data(chunk: ByteArray): ByteArray {
         require(chunk.size in 1..CHUNK)
