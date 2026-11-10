@@ -40,7 +40,7 @@ class FrameAdvert private constructor(
             else -> null
         }
 
-    val hex: String get() = hex(raw)
+    val hex: String get() = raw.toHex()
 
     /** "1024×600", or the code if it is unknown ("code 0x1f"). */
     val size: Txt
@@ -118,15 +118,6 @@ class FrameAdvert private constructor(
         }
 
         /** Parse the bytes written as [hex] (e.g. kept in prefs); `null` if [s] is not even-length hex. */
-        fun parseHex(s: String?): FrameAdvert? = s?.let(::unhex)?.let(::parse)
-
-        fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }
-
-        fun unhex(s: String): ByteArray? {
-            if (s.length % 2 != 0 || !s.all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }) return null
-            val out = ByteArray(s.length / 2)
-            for (i in out.indices) out[i] = s.substring(2 * i, 2 * i + 2).toIntOrNull(16)?.toByte() ?: return null
-            return out
-        }
+        fun parseHex(s: String?): FrameAdvert? = s?.let(::bytesOfHex)?.let(::parse)
     }
 }

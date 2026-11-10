@@ -2,6 +2,7 @@ package io.github.hsw.inkeasel
 
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -69,7 +70,7 @@ class DitherGoldenTest {
         val f = FrameFormat(w, h, FrameFormats.E6, Nibbles4())
         val px = picture(::colourPixel)
         assertNotAllInks(px, f.palette)
-        assertTrue(!f.greys)
+        assertFalse(f.greys)
         assertGolden(COLOUR_E6, f.dither(px))
     }
 

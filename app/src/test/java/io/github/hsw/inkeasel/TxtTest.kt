@@ -10,7 +10,7 @@ class TxtTest {
         R.string.retry to "Retry",
         R.string.header_frame to "Frame: %1\$s",
         R.string.frame_signal to "signal %1\$d dBm",
-        R.string.frame_toast_unverified to "Frame %1\$s: %2\$s",
+        R.string.frame_toast_reason to "Frame %1\$s: %2\$s",
         R.string.frame_unverified to "not verified on hardware",
     )
 
@@ -33,11 +33,11 @@ class TxtTest {
 
     @Test
     fun equal_withNestedArgs() {
-        val a = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
-        val b = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
+        val a = Txt(R.string.frame_toast_reason, "NM000001", Txt(R.string.frame_unverified))
+        val b = Txt(R.string.frame_toast_reason, "NM000001", Txt(R.string.frame_unverified))
         assertEquals(a, b)
         assertEquals(a.hashCode(), b.hashCode())
-        assertNotEquals(a, Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unavailable)))
+        assertNotEquals(a, Txt(R.string.frame_toast_reason, "NM000001", Txt(R.string.frame_unavailable)))
     }
 
     @Test
@@ -59,15 +59,15 @@ class TxtTest {
 
     @Test
     fun nestedArgs_resolvedFirst() {
-        val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_unverified))
+        val t = Txt(R.string.frame_toast_reason, "NM000001", Txt(R.string.frame_unverified))
         assertEquals("Frame NM000001: not verified on hardware", t.format(::lookup))
-        assertEquals(listOf(R.string.frame_unverified, R.string.frame_toast_unverified), calls)
+        assertEquals(listOf(R.string.frame_unverified, R.string.frame_toast_reason), calls)
     }
 
     @Test
     fun deeplyNestedArgs() {
         val inner = Txt(R.string.header_frame, "NM000001")
-        val t = Txt(R.string.frame_toast_unverified, "NM000001", Txt(R.string.frame_toast_unverified, "x", inner))
+        val t = Txt(R.string.frame_toast_reason, "NM000001", Txt(R.string.frame_toast_reason, "x", inner))
         assertEquals("Frame NM000001: Frame x: Frame: NM000001", t.format(::lookup))
     }
 

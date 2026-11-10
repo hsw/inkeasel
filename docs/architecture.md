@@ -76,12 +76,12 @@ Frames ([frames.md](frames.md)):
 - `OdExchange.kt`: the OpenDisplay request and answer sequences over any link (pure)
 - `OdClient.kt`: BLE client of an OpenDisplay frame (the GATT link, `OdSession`): finds it by name, reads its
   display when it is chosen, uploads
-- `FrameCaps.kt`: protocol-neutral `FrameCaps` and `FrameKind`
+- `FrameCaps.kt`: protocol-neutral `FrameCaps` and `FrameKind`; `Hex.kt`: the hex form of frame records in prefs
+  and the log
 - `FrameFormat.kt`: render formats and `FrameFormats`, the one place that maps an advertisement to a format or
   to the reason it is not supported (pure)
-- `Oklab.kt`: the dithering's colour math and `InkMatcher`, the nearest ink (OKLab, or RGB distance on a panel
-  with one or two colour inks; pure); `Levels.kt`: auto
-  levels for a panel of greys (pure)
+- `Oklab.kt`: the dithering's colour math and `InkMatcher`, the nearest ink (OKLab, or RGB distance on a panel with
+  one or two colour inks; pure); `Levels.kt`: auto levels for a panel of greys (pure)
 - `EpdImage.kt`: decode, fit, dither and pack a picture for the frame
 - `FrameStore.kt`: the chosen frame (`SelectedFrame`) in prefs `frame`, and `SeenFrame` (one scan result)
 
@@ -366,14 +366,14 @@ file is gone, it is dropped, and the picture stays in "My pictures" either way.
 ## Uploads
 
 One process-wide `UploadEngine` (pure core `UploadEngineCore`, queue rules in `UploadQueue`) holds the queue and
-the worker: one upload at a time, wired to the frame (`FrameClient`), each picture rendered in the selected
-frame's format (`FrameStore`, `FrameFormats`). A newer request replaces a queued one of the same kind, and a
-manual one goes first; the next upload waits for a NowMean frame to finish drawing (`DrawGate`; an OpenDisplay
-upload reports its refresh done itself and does not arm it). Every request is
-reported exactly once, a replaced one from inside the `submit` that replaced it. What the engine does with each
-report (toasts, `FrameController` callbacks) is pure (`UploadReports`; `UploadOutcome`: toast, report to the
-controller, remember as the default), and the controller tests use the production rules: never copy them into a
-test rig. A request (`UploadRequest`) is manual, or automatic with the controller's key and stamp.
+the worker: one upload at a time, wired to the frame (`FrameClient`), each picture rendered in the selected frame's
+format (`FrameStore`, `FrameFormats`). A newer request replaces a queued one of the same kind, and a manual one
+goes first; the next upload waits for a NowMean frame to finish drawing (`DrawGate`; an OpenDisplay upload reports
+its refresh done itself and does not arm it). Every request is reported exactly once, a replaced one from inside
+the `submit` that replaced it. What the engine does with each report (toasts, `FrameController` callbacks) is pure
+(`UploadReports`; `UploadOutcome`: toast, report to the controller, remember as the default), and the controller
+tests use the production rules: never copy them into a test rig. A request (`UploadRequest`) is manual, or
+automatic with the controller's key and stamp.
 
 - **Manual uploads and shares** run in `UploadService` (`foregroundServiceType="connectedDevice"`), a short
   foreground service that holds the process in the foreground, so they finish after the user leaves the app.

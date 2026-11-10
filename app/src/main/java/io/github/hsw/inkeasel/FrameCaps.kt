@@ -9,8 +9,8 @@ enum class ColourScheme { BW, BWR, BWY, E4, E6, E7, BP, G4 }
 /**
  * What a frame can show, whatever protocol reported it: [FrameFormats.find] picks the render format from
  * this alone. A NowMean frame's caps come from its advertisement ([FrameAdvert.caps]); a protocol that
- * reports them only after connecting fills them from there (an OpenDisplay frame's [OdDisplay.caps]). `null` [width]/[height]/[rotation] mean the
- * frame reported a value this app does not know.
+ * reports them only after connecting fills them from there (an OpenDisplay frame's [OdDisplay.caps]). `null`
+ * [width]/[height]/[rotation] mean the frame reported a value this app does not know.
  */
 data class FrameCaps(val width: Int?, val height: Int?, val colours: ColourScheme, val rotation: Int?)
 

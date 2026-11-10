@@ -20,11 +20,11 @@ object Oklab {
     const val WAB = 1.5
 
     /** Linear light 0..1 of an sRGB fraction 0..1 (IEC 61966-2-1, the knee at 0.04045). */
-    fun linear(fraction: Double): Double =
+    private fun linearOfFraction(fraction: Double): Double =
         if (fraction <= 0.04045) fraction / 12.92 else ((fraction + 0.055) / 1.055).pow(2.4)
 
     /** Linear light of each sRGB channel value 0..255. */
-    private val LUT = DoubleArray(256) { linear(it / 255.0) }
+    private val LUT = DoubleArray(256) { linearOfFraction(it / 255.0) }
 
     /** Linear light 0..1 of the sRGB channel value [v] (0..255). */
     fun linear(v: Int): Double = LUT[v]
@@ -63,7 +63,7 @@ object Oklab {
  */
 class InkMatcher(palette: Palette) {
     /** Matched by squared RGB distance, not in OKLab: the palette has one or two colour inks. */
-    val rgb: Boolean = palette.inks.count { it.r != it.g || it.g != it.b } in 1..2
+    val rgb: Boolean = palette.inks.count { !it.grey } in 1..2
 
     private val inkR = IntArray(palette.inks.size) { palette.inks[it].r }
     private val inkG = IntArray(palette.inks.size) { palette.inks[it].g }

@@ -58,8 +58,9 @@
     <string name="scanning">Поиск рамок…</string>
     <string name="scanning_hint">Рамка должна быть рядом и не подключена к телефону.</string>
     <string name="scanning_hint_location">Рамка должна быть рядом и не подключена к телефону, а для поиска нужна включённая геолокация.</string>
-    <string name="frame_toast_unverified">Рамка %1$s: %2$s</string>
+    <string name="frame_toast_reason">Рамка %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Рамка %1$s не поддерживается: %2$s</string>
+    <string name="frame_reading_panel">Читаю параметры панели рамки %1$s… Она просыпается примерно раз в минуту.</string>
     <string name="frame_item_selected">%1$s — выбрана</string>
     <string name="frame_no_advert">нет данных о рамке</string>
     <string name="frame_signal">сигнал %1$d дБм</string>
@@ -107,15 +108,16 @@
     <string name="access_disclosure_cancel">Отмена</string>
     <string name="settings_privacy">Политика конфиденциальности</string>
 
-    <!-- frame advertisement (FrameAdvert.describe) -->
+    <!-- frame advertisement (FrameAdvert.describe, OdAdvert.describe) -->
     <string name="advert_colour_panel">%1$s, панель %2$s</string>
     <string name="advert_size_code">код 0x%1$02x</string>
     <string name="advert_rotation_unknown">поворот ?</string>
     <string name="advert_battery">батарея %1$d %%</string>
     <string name="advert_firmware">прошивка %1$d</string>
     <string name="advert_safe_mode">безопасный режим</string>
+    <string name="advert_battery_volts">батарея %1$d,%2$02d В</string>
 
-    <!-- why a frame cannot be chosen (FrameAdvert.rejection, FrameFormats.find) -->
+    <!-- why a frame cannot be chosen (FrameAdvert.rejection, OdDisplay.rejection, FrameFormats.find) -->
     <string name="reason_panel_a">панель A (не фоторамка)</string>
     <string name="reason_unknown_size_code">неизвестное разрешение (%1$s)</string>
     <string name="reason_unknown_size">неизвестное разрешение</string>
@@ -125,6 +127,8 @@
     <string name="reason_colours_size">%1$s %2$d×%3$d пока не поддерживается</string>
     <string name="reason_untested_format">формат не проверен (приложение производителя не рисует его правильно)</string>
     <string name="reason_vendor_cannot">приложение производителя не умеет отправлять на такие рамки</string>
+    <string name="reason_colour_scheme">цветовая схема %1$d пока не поддерживается</string>
+    <string name="reason_greys_panel">четыре серых на панели %1$d пока не поддерживаются</string>
 
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">на устройстве нет Bluetooth</string>
@@ -148,7 +152,7 @@
     <string name="upload_err_no_frame">рамка не выбрана</string>
     <string name="upload_err_decode">не удалось декодировать изображение</string>
 
-    <!-- upload over Bluetooth (FrameClient): errors -->
+    <!-- upload over Bluetooth (FrameClient, OdClient, OdExchange): errors -->
     <string name="frame_err_format_changed">параметры рамки %1$s изменились, отправьте снова</string>
     <string name="frame_err_not_acked">рамка не подтвердила приём</string>
     <string name="frame_err_send">не удалось отправить</string>
@@ -163,6 +167,21 @@
     <string name="frame_err_busy">%1$s: стек Bluetooth занят</string>
     <string name="frame_err_timeout">%1$s: нет ответа за %2$d мс</string>
     <string name="frame_err_lost">соединение разорвано (status %1$d)</string>
+    <string name="frame_err_no_od_service">у устройства нет сервиса OpenDisplay</string>
+    <string name="frame_err_config">не удалось прочитать настройки рамки</string>
+    <string name="frame_err_encrypted">на рамке включено шифрование: пока не поддерживается</string>
+    <string name="frame_err_refused">рамка отклонила %1$s (код 0x%2$02x)</string>
+    <string name="frame_err_unexpected">%1$s: неожиданный ответ рамки 0x%2$02x</string>
+    <string name="frame_err_refresh">рамка не смогла обновить экран</string>
+    <string name="frame_err_step_mtu">увеличение MTU</string>
+    <string name="frame_err_step_services">чтение сервисов рамки</string>
+    <string name="frame_err_step_notify">включение ответов рамки</string>
+    <string name="frame_err_step_write">запрос к рамке</string>
+    <string name="frame_err_step_config">чтение настроек</string>
+    <string name="frame_err_step_start">начало картинки</string>
+    <string name="frame_err_step_data">часть картинки</string>
+    <string name="frame_err_step_end">конец картинки</string>
+    <string name="frame_err_step_refresh">обновление экрана</string>
 
     <!-- Share → InkEasel (ShareActivity) -->
     <string name="share_unsupported">Не удалось принять: InkEasel принимает картинку, которой поделилось другое приложение.</string>
@@ -173,20 +192,4 @@
     <string name="share_needs_permission">Сохранено в «Мои картинки». Разрешите доступ к Bluetooth (и выберите рамку), чтобы отправить.</string>
     <string name="share_sending">Сохранено в «Мои картинки» и отправляется на рамку. Рамка перерисуется, когда картинка дойдёт.</string>
     <string name="share_no_frame">Сохранено в «Мои картинки». Рамка не выбрана: выберите её в настройках и отправьте картинку оттуда.</string>
-    <string name="od_battery">батарея %1$d,%2$02d В</string>
-    <string name="od_probing">Читаю параметры панели рамки %1$s… Она просыпается примерно раз в минуту.</string>
-    <string name="od_toast_failed">Рамка %1$s: %2$s</string>
-    <string name="reason_od_scheme">цветовая схема %1$d пока не поддерживается</string>
-    <string name="reason_od_panel">четыре серых на панели %1$d пока не поддерживаются</string>
-    <string name="od_err_no_service">у устройства нет сервиса OpenDisplay</string>
-    <string name="od_err_config">не удалось прочитать настройки рамки</string>
-    <string name="od_err_auth">на рамке включено шифрование: пока не поддерживается</string>
-    <string name="od_err_refused">рамка отклонила %1$s (код 0x%2$02x)</string>
-    <string name="od_err_unexpected">%1$s: неожиданный ответ рамки 0x%2$02x</string>
-    <string name="od_err_step_config">чтение настроек</string>
-    <string name="od_err_step_start">начало картинки</string>
-    <string name="od_err_step_data">часть картинки</string>
-    <string name="od_err_step_end">конец картинки</string>
-    <string name="od_err_step_refresh">обновление экрана</string>
-    <string name="od_err_refresh">рамка не смогла обновить экран</string>
 </resources>

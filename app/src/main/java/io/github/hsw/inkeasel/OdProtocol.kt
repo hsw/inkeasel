@@ -104,7 +104,7 @@ object Od {
         val ok: Boolean get() = status == 0 && !authRequired
         val authRequired: Boolean get() = status == 0xFE || (status == 0 && data.size == 1 && data[0] == 0xFE.toByte())
 
-        override fun toString() = "%02x %02x %s".format(status, op, FrameAdvert.hex(data))
+        override fun toString() = "%02x %02x %s".format(status, op, data.toHex())
 
         companion object {
             /** `null` for a notification shorter than status and opcode. */
@@ -217,15 +217,15 @@ class OdDisplay(val raw: ByteArray) {
     /** Why this frame is out regardless of its caps, or `null`. */
     val rejection: Txt?
         get() = when {
-            colours == null -> Txt(R.string.reason_od_scheme, scheme)
+            colours == null -> Txt(R.string.reason_colour_scheme, scheme)
             // these panels keep the two greys the other way round (the reference sender's per-panel table)
-            colours == ColourScheme.G4 && panel in GREYS_SWAPPED -> Txt(R.string.reason_od_panel, panel)
+            colours == ColourScheme.G4 && panel in GREYS_SWAPPED -> Txt(R.string.reason_greys_panel, panel)
             // the frame pads each row to a whole byte, [Nibbles4] packs one stream: the same only at even widths
-            colours == ColourScheme.E6 && width % 2 != 0 -> Txt(R.string.reason_colours_size, "E6", width, height)
+            colours == ColourScheme.E6 && width % 2 != 0 -> Txt(R.string.reason_colours_size, ColourScheme.E6.name, width, height)
             else -> null
         }
 
-    val hex: String get() = FrameAdvert.hex(raw)
+    val hex: String get() = raw.toHex()
 
     override fun equals(other: Any?) = other is OdDisplay && raw.contentEquals(other.raw)
     override fun hashCode() = raw.contentHashCode()
@@ -235,7 +235,7 @@ class OdDisplay(val raw: ByteArray) {
         private val GREYS_SWAPPED = setOf(0x28, 0x48)
 
         fun parseHex(s: String?): OdDisplay? =
-            s?.let(FrameAdvert::unhex)?.takeIf { it.size >= 23 }?.let(::OdDisplay)
+            s?.let(::bytesOfHex)?.takeIf { it.size >= 23 }?.let(::OdDisplay)
 
         /** The [FormatLookup] of a frame reporting [d]: its own [rejection] first, then [FrameFormats.find]. */
         fun lookup(d: OdDisplay?): FormatLookup = when {
@@ -251,7 +251,7 @@ class OdDisplay(val raw: ByteArray) {
  */
 data class OdAdvert(val batteryMv: Int, val temperatureC: Double) {
     /** The parts of one line for the frame list, e.g. "OpenDisplay · battery 4.12 V". */
-    fun describe(): List<Txt> = listOf(Txt(R.string.od_name), Txt(R.string.od_battery, batteryMv / 1000, batteryMv % 1000 / 10))
+    fun describe(): List<Txt> = listOf(Txt(R.string.advert_opendisplay), Txt(R.string.advert_battery_volts, batteryMv / 1000, batteryMv % 1000 / 10))
 
     companion object {
         fun parse(b: ByteArray?): OdAdvert? {

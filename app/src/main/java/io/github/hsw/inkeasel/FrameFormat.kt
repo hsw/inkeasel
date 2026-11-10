@@ -4,15 +4,20 @@ import kotlin.math.roundToInt
 
 /**
  * One ink of a panel: the RGB dithering aims at and the device's code for it. What the code means is up to
- * the [Packing]: a 4/2-bit colour code ([Nibbles4], [Crumbs2]) or a set of plane bits ([BitPlanes]).
+ * the [Packing]: a 4/2-bit colour code ([Nibbles4], [Crumbs2]) or a set of plane bits ([BitPlanes],
+ * [RowPlanes]).
  */
-data class Ink(val r: Int, val g: Int, val b: Int, val code: Int)
+data class Ink(val r: Int, val g: Int, val b: Int, val code: Int) {
+    /** Black, white or a grey: no colour. */
+    val grey: Boolean get() = r == g && g == b
+}
 
 data class Palette(val name: String, val inks: List<Ink>)
 
 /**
  * How palette indices (one per pixel, row-major from the top-left) become the whole payload the frame
- * expects (before any LZO, docs/protocol.md#packing): bit depth, planes, padding and split layout.
+ * expects (before any compression: LZO for NowMean, zlib for OpenDisplay; docs/protocol.md#packing): bit
+ * depth, planes, padding and split layout.
  */
 interface Packing {
     /** Whether a [w]×[h] image can be laid out this way at all. */
@@ -210,7 +215,7 @@ data class FrameFormat(
     val payloadSize: Int get() = packing.size(width, height)
 
     /** Every ink is a grey (BW, four greys): the picture is dithered by luminance, with auto levels. */
-    val greys: Boolean get() = palette.inks.all { it.r == it.g && it.g == it.b }
+    val greys: Boolean get() = palette.inks.all { it.grey }
     val aspect: Float get() = width.toFloat() / height
 
     /** The dithering's ink matcher, one per format: the inks are converted once. */
@@ -278,8 +283,8 @@ data class FrameFormat(
         val w = at.width
         val h = at.height
         require(px.size == w * h)
-        @Suppress("NAME_SHADOWING") val px = onWhite(px).let { if (greys) Levels.stretched(it) else it }
         require(at.left >= 0 && at.top >= 0 && at.left + w <= width && at.top + h <= height)
+        val src = onWhite(px).let { if (greys) Levels.stretched(it) else it }
         val inks = palette.inks
         // Two rows of the reference's working buffer (pixel value plus the error received so far, 3 channels),
         // not the whole picture (a TV has little memory): the kernel reaches one row down only. A row is loaded
@@ -292,7 +297,7 @@ data class FrameFormat(
             row.fill(0.0)
             if (y >= h) return
             for (x in 0 until w) {
-                val p = px[y * w + x]
+                val p = src[y * w + x]
                 val e = (x + PAD) * 3
                 row[e] = ((p shr 16) and 0xFF).toDouble()
                 row[e + 1] = ((p shr 8) and 0xFF).toDouble()

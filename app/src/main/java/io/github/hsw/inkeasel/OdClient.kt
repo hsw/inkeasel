@@ -14,9 +14,9 @@ import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 
@@ -110,22 +110,27 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
     @Volatile private var lost: IOException? = null
     @Volatile private var mtu = 23
 
+    /** The request and answer sequences over this connection; after [open]. */
+    val exchange = OdExchange(replies, { lost }, { Log.i(TAG, it) }) { value, data ->
+        send(value, if (data && noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+    }
+
     suspend fun open() {
         val g = device.connectGatt(ctx, false, this, BluetoothDevice.TRANSPORT_LE)
             ?: throw TxtException(Txt(R.string.frame_err_gatt))
         gatt = g
-        withTimeoutOrNull(35_000) { connected.await() } ?: throw TxtException(Txt(R.string.frame_err_no_answer))
-        op("MTU", 5_000) { g.requestMtu(MTU) }
+        withTimeoutOrNull(CONNECT_MS) { connected.await() } ?: throw TxtException(Txt(R.string.frame_err_no_answer))
+        op(OdStep.MTU, 5_000) { g.requestMtu(MTU) }
         if (mtu < Od.CHUNK + 2 + 3) throw TxtException(Txt(R.string.frame_err_mtu))
-        if (op("discoverServices", 10_000) { g.discoverServices() } != BluetoothGatt.GATT_SUCCESS) {
+        if (op(OdStep.SERVICES, 10_000) { g.discoverServices() } != BluetoothGatt.GATT_SUCCESS) {
             throw TxtException(Txt(R.string.frame_err_discover))
         }
-        char = g.getService(Od.SERVICE)?.characteristics?.firstOrNull() ?: throw TxtException(Txt(R.string.od_err_no_service))
+        char = g.getService(Od.SERVICE)?.characteristics?.firstOrNull() ?: throw TxtException(Txt(R.string.frame_err_no_od_service))
         noResponse = char.properties and BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE != 0
         g.setCharacteristicNotification(char, true)
-        val cccd = char.getDescriptor(FrameClient.CCCD) ?: throw TxtException(Txt(R.string.od_err_no_service))
+        val cccd = char.getDescriptor(FrameClient.CCCD) ?: throw TxtException(Txt(R.string.frame_err_no_od_service))
         val v = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-        op("CCCD", 5_000) {
+        op(OdStep.NOTIFY, 5_000) {
             if (Build.VERSION.SDK_INT >= 33) g.writeDescriptor(cccd, v) == BluetoothStatusCodes.SUCCESS
             else @Suppress("DEPRECATION") run { cccd.value = v; g.writeDescriptor(cccd) }
         }
@@ -134,32 +139,30 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
         Log.i(TAG, "connected, mtu=$mtu, write without response=$noResponse")
     }
 
-    /** The request and answer sequences over this connection; after [open]. */
-    val exchange = OdExchange(replies, { lost }, { Log.i(TAG, it) }) { value, data ->
-        send(value, if (data && noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-    }
-
     private suspend fun send(value: ByteArray, type: Int) {
         val g = gatt ?: throw TxtException(Txt(R.string.frame_err_not_connected))
-        op("write", 5_000) {
+        op(OdStep.WRITE, 5_000) {
             if (Build.VERSION.SDK_INT >= 33) g.writeCharacteristic(char, value, type) == BluetoothStatusCodes.SUCCESS
             else @Suppress("DEPRECATION") run { char.writeType = type; char.value = value; g.writeCharacteristic(char) }
         }
     }
 
-    /** Runs one GATT operation and waits for its callback; retries while the stack reports busy. */
-    private suspend fun op(what: String, timeoutMs: Long, start: () -> Boolean): Int {
+    /**
+     * Runs one GATT operation, named [step] in its errors, and waits for its callback; retries while the stack
+     * reports busy.
+     */
+    private suspend fun op(step: OdStep, timeoutMs: Long, start: () -> Boolean): Int {
         val d = CompletableDeferred<Int>()
         pending = d
         var tries = 0
         while (!start()) {
             lost?.let { throw it }
-            if (++tries > 400) throw TxtException(Txt(R.string.frame_err_busy, what))
+            if (++tries > 400) throw TxtException(Txt(R.string.frame_err_busy, step.txt))
             delay(5)
         }
         val status = withTimeoutOrNull(timeoutMs) { d.await() }
         pending = null
-        return status ?: throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, what, timeoutMs.toInt())))
+        return status ?: throw (lost ?: TxtException(Txt(R.string.frame_err_timeout, step.txt, timeoutMs.toInt())))
     }
 
     fun close() {
@@ -211,5 +214,12 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
     private companion object {
         /** The protocol's BLE frame ceiling (OD_BLE_MAX_FRAME 256 counts ATT opcode and handle too). */
         const val MTU = 247
+
+        /**
+         * How long the connection may take; it starts right after the frame advertised, and the frame stays
+         * awake only about 40 s after that (`sleep_timeout_ms`, docs/protocol.md#opendisplay-advertising), so a
+         * connection not made by then will not be made at all.
+         */
+        const val CONNECT_MS = 35_000L
     }
 }

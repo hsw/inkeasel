@@ -28,12 +28,12 @@ internal class OdExchange(
             config = try {
                 reader.add(r.data)
             } catch (e: IllegalArgumentException) {
-                throw TxtException(Txt(R.string.od_err_config), e)
+                throw TxtException(Txt(R.string.frame_err_config), e)
             }
             timeout = 3_000
         }
         // only the display record goes to the log: the rest of the config holds the Wi-Fi password and the key
-        val d = Od.display(config) ?: throw TxtException(Txt(R.string.od_err_config))
+        val d = Od.display(config) ?: throw TxtException(Txt(R.string.frame_err_config))
         log("$name: ${config.size} B of config, $d")
         return d
     }
@@ -55,14 +55,14 @@ internal class OdExchange(
         log("data: ${payload.size} B as ${zlib?.size ?: payload.size} B in ${ms(t0)} ms, ended by the frame: $ended")
         if (!ended) {
             request(Od.end())
-            reply(Od.WRITE_END, OdStep.END, 90_000).also { if (!it.ok) throw refused(OdStep.END, it) }
+            reply(Od.WRITE_END, OdStep.END, END_MS).also { if (!it.ok) throw refused(OdStep.END, it) }
         }
-        val r = reply(null, OdStep.REFRESH, 90_000)
+        val r = reply(null, OdStep.REFRESH, REFRESH_MS)
         log("refresh: $r after ${ms(t0)} ms")
         if (!r.ok) throw refused(OdStep.REFRESH, r)
         when (r.op) {
             Od.REFRESH_DONE -> return
-            Od.REFRESH_TIMEOUT -> throw TxtException(Txt(R.string.od_err_refresh))
+            Od.REFRESH_TIMEOUT -> throw TxtException(Txt(R.string.frame_err_refresh))
             else -> throw unexpected(OdStep.REFRESH, r)
         }
     }
@@ -114,15 +114,15 @@ internal class OdExchange(
     private suspend fun next(op: Int?, step: OdStep): Od.Reply {
         while (true) {
             val r = Od.Reply.parse(replies.receive()) ?: continue
-            if (r.authRequired) throw TxtException(Txt(R.string.od_err_auth))
+            if (r.authRequired) throw TxtException(Txt(R.string.frame_err_encrypted))
             if (op == null || r.op == (op and 0xFF)) return r
             log("$step: skipping $r")
         }
     }
 
-    private fun refused(step: OdStep, r: Od.Reply) = TxtException(Txt(R.string.od_err_refused, step.txt, r.status))
+    private fun refused(step: OdStep, r: Od.Reply) = TxtException(Txt(R.string.frame_err_refused, step.txt, r.status))
 
-    private fun unexpected(step: OdStep, r: Od.Reply) = TxtException(Txt(R.string.od_err_unexpected, step.txt, r.op))
+    private fun unexpected(step: OdStep, r: Od.Reply) = TxtException(Txt(R.string.frame_err_unexpected, step.txt, r.op))
 
     private fun ms(t0: Long) = (System.nanoTime() - t0) / 1_000_000
 
@@ -134,16 +134,29 @@ internal class OdExchange(
          * slow but healthy transfer midway.
          */
         const val DATA_MS = 90_000L
+
+        /** How long the frame may take to answer the end of a write, as in the reference sender. */
+        const val END_MS = 90_000L
+
+        /** How long the frame may take to report its refresh after the end, as in the reference sender. */
+        const val REFRESH_MS = 90_000L
     }
 }
 
-/** A step of [OdExchange], as named in the messages ([txt]) and the log ([name]). */
+/**
+ * A step of an OpenDisplay upload, as named in the messages ([txt]) and the log ([name]): the GATT operations of
+ * `OdSession` ([MTU] to [WRITE]), then the requests of [OdExchange].
+ */
 internal enum class OdStep(private val id: Int) {
-    CONFIG(R.string.od_err_step_config),
-    START(R.string.od_err_step_start),
-    DATA(R.string.od_err_step_data),
-    END(R.string.od_err_step_end),
-    REFRESH(R.string.od_err_step_refresh);
+    MTU(R.string.frame_err_step_mtu),
+    SERVICES(R.string.frame_err_step_services),
+    NOTIFY(R.string.frame_err_step_notify),
+    WRITE(R.string.frame_err_step_write),
+    CONFIG(R.string.frame_err_step_config),
+    START(R.string.frame_err_step_start),
+    DATA(R.string.frame_err_step_data),
+    END(R.string.frame_err_step_end),
+    REFRESH(R.string.frame_err_step_refresh);
 
     val txt: Txt get() = Txt(id)
 }

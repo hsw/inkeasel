@@ -7,6 +7,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Random
 
 class FrameFormatTest {
     private fun advert(vararg b: Int) = FrameAdvert.parse(ByteArray(b.size) { b[it].toByte() })
@@ -17,7 +18,7 @@ class FrameFormatTest {
 
     private fun bytes(vararg b: Int) = ByteArray(b.size) { b[it].toByte() }
 
-    private fun unhex(s: String) = FrameAdvert.unhex(s)!!
+    private fun unhex(s: String) = bytesOfHex(s)!!
 
     // advertised b0 (colour type in the high nibble, panel TA) per colour scheme
     private val e6 = 0x43
@@ -442,15 +443,14 @@ class FrameFormatTest {
 
     @Test
     fun dither_twoRowBuffer_equalsTheWholePictureBuffer() {
-        val rnd = java.util.Random(7)
+        val rnd = Random(7)
         for (palette in listOf(FrameFormats.E6, FrameFormats.E4, FrameFormats.BWR, FrameFormats.E7, FrameFormats.BP)) {
             for ((w, h) in listOf(1 to 1, 1 to 5, 2 to 3, 5 to 1, 7 to 4, 24 to 8, 33 to 17)) {
                 val px = IntArray(w * h) { rnd.nextInt() or (0xFF shl 24) } // opaque: see-through pixels are laid on white first
                 val f = FrameFormat(w * 2, h * 2, palette, RowPlanes(4))
-                assertArrayEquals("${palette.name} $w×$h", fullBufferDither(px, w, h, palette), f.dither(px, f.centred(w, h)).let { all ->
-                    val at = f.centred(w, h)
-                    ByteArray(w * h) { all[(at.top + it / w) * f.width + at.left + it % w] }
-                })
+                val at = f.centred(w, h)
+                val all = f.dither(px, at)
+                assertArrayEquals("${palette.name} $w×$h", fullBufferDither(px, w, h, palette), ByteArray(w * h) { all[(at.top + it / w) * f.width + at.left + it % w] })
                 val whole = FrameFormat(w, h, palette, RowPlanes(4))
                 assertArrayEquals(fullBufferDither(px, w, h, palette), whole.dither(px))
             }

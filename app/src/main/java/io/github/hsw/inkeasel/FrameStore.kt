@@ -29,7 +29,7 @@ data class SeenFrame(
     /** Its advertisement in parts for the frame list, or `null` if it sent none this app reads. */
     fun describe(): List<Txt>? = when (kind) {
         FrameKind.NOWMEAN -> advert?.describe()
-        FrameKind.OPENDISPLAY -> od?.describe() ?: listOf(Txt(R.string.od_name))
+        FrameKind.OPENDISPLAY -> od?.describe() ?: listOf(Txt(R.string.advert_opendisplay))
     }
 
     companion object {

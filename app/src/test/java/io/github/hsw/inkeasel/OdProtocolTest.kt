@@ -1,5 +1,7 @@
 package io.github.hsw.inkeasel
 
+import io.github.hsw.inkeasel.OdFixtures.config
+import io.github.hsw.inkeasel.OdFixtures.display
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,22 +15,6 @@ import kotlin.random.Random
 
 class OdProtocolTest {
     private fun bytes(vararg b: Int) = ByteArray(b.size) { b[it].toByte() }
-
-    /** A display record (config packet 0x20, 46 bytes) like a reTerminal E1001's. */
-    private fun display(panel: Int = 60, w: Int = 800, h: Int = 480, rotation: Int = 0, scheme: Int = 5) = ByteArray(46).also {
-        it[2] = panel.toByte(); it[3] = (panel shr 8).toByte()
-        it[4] = w.toByte(); it[5] = (w shr 8).toByte()
-        it[6] = h.toByte(); it[7] = (h shr 8).toByte()
-        it[14] = rotation.toByte()
-        it[21] = scheme.toByte()
-        it[22] = 25
-    }
-
-    /** `[length:2][version][packets][crc:2]` with a system packet, then the display. */
-    private fun config(d: ByteArray, firstType: Int = 0x01): ByteArray {
-        val packets = bytes(0, firstType) + ByteArray(22) + bytes(1, 0x20) + d
-        return bytes(packets.size + 1, 0, 1) + packets + bytes(0xAB, 0xCD)
-    }
 
     @Test
     fun requests() {
@@ -105,9 +91,9 @@ class OdProtocolTest {
 
     @Test
     fun reasons() {
-        assertEquals(Txt(R.string.reason_od_scheme, 6), OdDisplay.lookup(OdDisplay(display(scheme = 6))).reasonOrNull)
-        assertEquals(Txt(R.string.reason_od_panel, 0x28), OdDisplay.lookup(OdDisplay(display(panel = 0x28))).reasonOrNull)
-        assertEquals(Txt(R.string.reason_colours_size, "E6", 801, 480), OdDisplay.lookup(OdDisplay(display(w = 801, scheme = 4))).reasonOrNull)
+        assertEquals(Txt(R.string.reason_colour_scheme, 6), OdDisplay.lookup(OdDisplay(display(scheme = 6))).reasonOrNull)
+        assertEquals(Txt(R.string.reason_greys_panel, 0x28), OdDisplay.lookup(OdDisplay(display(panel = 0x28))).reasonOrNull)
+        assertEquals(Txt(R.string.reason_colours_size, ColourScheme.E6.name, 801, 480), OdDisplay.lookup(OdDisplay(display(w = 801, scheme = 4))).reasonOrNull)
         assertEquals(Txt(R.string.reason_no_caps), OdDisplay.lookup(null).reasonOrNull)
         assertTrue(OdDisplay.lookup(OdDisplay(display(rotation = 1))).reasonOrNull!!.id == R.string.reason_rotation)
     }
@@ -138,7 +124,7 @@ class OdProtocolTest {
         val a = OdAdvert.parse(bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0x9C, 0x01))!!
         assertEquals(4120, a.batteryMv)
         assertEquals(25.0, a.temperatureC, 0.0)
-        assertEquals(Txt(R.string.od_battery, 4, 12), a.describe()[1])
+        assertEquals(Txt(R.string.advert_battery_volts, 4, 12), a.describe()[1])
         assertNull(OdAdvert.parse(bytes(1, 2, 3)))
     }
 
@@ -284,8 +270,8 @@ class OdProtocolTest {
             assertEquals("scheme $scheme", scheme == 5, f.verified)
         }
         // BWRY and the rest are refused
-        for (scheme in listOf(3, 6, 7, 8, 9)) assertEquals(Txt(R.string.reason_od_scheme, scheme), lookup(scheme).reasonOrNull)
-        assertEquals(Txt(R.string.reason_od_panel, 0x48), lookup(5, panel = 0x48).reasonOrNull)
+        for (scheme in listOf(3, 6, 7, 8, 9)) assertEquals(Txt(R.string.reason_colour_scheme, scheme), lookup(scheme).reasonOrNull)
+        assertEquals(Txt(R.string.reason_greys_panel, 0x48), lookup(5, panel = 0x48).reasonOrNull)
         assertEquals(Txt(R.string.reason_unknown_size), lookup(5, w = 0).reasonOrNull)
     }
 
@@ -323,8 +309,8 @@ class OdProtocolTest {
     @Test
     fun seenFrame_describe() {
         val a = OdAdvert.parse(bytes(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0x9C, 0x01))
-        assertEquals(listOf(Txt(R.string.od_name), Txt(R.string.od_battery, 4, 12)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY, a).describe())
+        assertEquals(listOf(Txt(R.string.advert_opendisplay), Txt(R.string.advert_battery_volts, 4, 12)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY, a).describe())
         // no advertisement this app reads: still named as an OpenDisplay frame
-        assertEquals(listOf(Txt(R.string.od_name)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY).describe())
+        assertEquals(listOf(Txt(R.string.advert_opendisplay)), SeenFrame("OD000001", "A", -60, null, FrameKind.OPENDISPLAY).describe())
     }
 }

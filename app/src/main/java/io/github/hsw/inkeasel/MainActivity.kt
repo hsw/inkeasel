@@ -482,6 +482,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** Stops the read of an OpenDisplay frame, if one runs: a newer choice, or closing the settings, wins. */
     private fun cancelProbe() {
         probe?.cancel()
+        clearProbe()
+    }
+
+    /** Forgets the current read without stopping it (it is the caller, or it has ended). */
+    private fun clearProbe() {
         probe = null
         probing = null
     }
@@ -505,46 +510,53 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 choose(SelectedFrame(f.name, f.address, f.advert, System.currentTimeMillis(), f.kind))
                 onSelected()
             }
-            FrameKind.OPENDISPLAY -> {
-                if (probing == f.name) return
-                cancelProbe()
-                probing = f.name
-                // started once [probe] holds it, so the read can tell whether it is still the current one
-                val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
-                    val me = coroutineContext[Job]
-                    try {
-                        val d = readDisplay(f.name)
-                        ensureActive()
-                        if (probe !== me) return@launch
-                        Log.i(TAG, "frame ${f.name} reports $d")
-                        when (val l = OdDisplay.lookup(d)) {
-                            is FormatLookup.Unsupported -> toast(Txt(R.string.frame_toast_unsupported, f.name, l.reason))
-                            is FormatLookup.Supported -> {
-                                if (!l.format.verified) toast(Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified)))
-                                probe = null
-                                probing = null
-                                choose(SelectedFrame(f.name, f.address, null, System.currentTimeMillis(), f.kind, d))
-                                onSelected()
-                            }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        ensureActive()
-                        if (probe !== me) return@launch
-                        Log.w(TAG, "reading frame ${f.name} failed", e)
-                        toast(Txt(R.string.od_toast_failed, f.name, e.userText(R.string.upload_err_text)))
-                    } finally {
-                        if (probe === me) {
-                            probe = null
-                            probing = null
-                        }
-                    }
-                }
-                probe = job
-                job.start()
+            FrameKind.OPENDISPLAY -> readAndChoose(f, onSelected)
+        }
+    }
+
+    /** The OpenDisplay half of [select]: reads [f]'s display, then [readDone] or [readFailed] if still current. */
+    private fun readAndChoose(f: SeenFrame, onSelected: () -> Unit) {
+        if (probing == f.name) return
+        cancelProbe()
+        probing = f.name
+        // started once [probe] holds it, so the read can tell whether it is still the current one
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val me = coroutineContext[Job]
+            try {
+                val d = readDisplay(f.name)
+                ensureActive()
+                if (probe === me) readDone(f, d, onSelected)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                ensureActive()
+                if (probe === me) readFailed(f, e)
+            } finally {
+                if (probe === me) clearProbe()
             }
         }
+        probe = job
+        job.start()
+    }
+
+    /** The current read of [f] got [d]: chooses [f] if this app can draw on that panel, else toasts why not. */
+    private fun readDone(f: SeenFrame, d: OdDisplay, onSelected: () -> Unit) {
+        Log.i(TAG, "frame ${f.name} reports $d")
+        when (val l = OdDisplay.lookup(d)) {
+            is FormatLookup.Unsupported -> toast(Txt(R.string.frame_toast_unsupported, f.name, l.reason))
+            is FormatLookup.Supported -> {
+                if (!l.format.verified) toast(Txt(R.string.frame_toast_reason, f.name, Txt(R.string.frame_unverified)))
+                clearProbe() // this read is done: choose() must not cancel it
+                choose(SelectedFrame(f.name, f.address, null, System.currentTimeMillis(), f.kind, d))
+                onSelected()
+            }
+        }
+    }
+
+    /** The current read of [f] failed with [e]: nothing is chosen, a toast says why. */
+    private fun readFailed(f: SeenFrame, e: Exception) {
+        Log.w(TAG, "reading frame ${f.name} failed", e)
+        toast(Txt(R.string.frame_toast_reason, f.name, e.userText(R.string.upload_err_text)))
     }
 
     /** Saves [frame] as the chosen one and closes the settings; a read still running for another frame stops. */

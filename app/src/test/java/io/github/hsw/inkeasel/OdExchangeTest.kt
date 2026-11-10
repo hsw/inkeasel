@@ -27,13 +27,11 @@ class OdExchangeTest {
         }
 
         /** The opcode of each request sent. */
-        val ops: List<Int> get() = sent.map { ((it[0].toInt() and 0xFF) shl 8) or (it[1].toInt() and 0xFF) }
+        val ops: List<Int> get() = sent.map { op(it) }
 
         /** The bytes of every [Od.WRITE_DATA] request, joined. */
-        val data: ByteArray get() = sent.filter { it[1].toInt() == 0x71 }.fold(ByteArray(0)) { acc, r -> acc + r.copyOfRange(2, r.size) }
+        val data: ByteArray get() = sent.filter { op(it) == Od.WRITE_DATA }.fold(ByteArray(0)) { acc, r -> acc + r.copyOfRange(2, r.size) }
     }
-
-    private fun op(r: ByteArray) = ((r[0].toInt() and 0xFF) shl 8) or (r[1].toInt() and 0xFF)
 
     private fun txtOf(e: Throwable) = (e as TxtException).txt
 
@@ -113,17 +111,17 @@ class OdExchangeTest {
     fun refreshTimeout_isAnError() = runTest {
         val f = Frame(firmware(10, refresh = b(0x00, 0x74)))
         val e = runCatching { f.exchange.write(ByteArray(10), null) }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_refresh), txtOf(e))
+        assertEquals(Txt(R.string.frame_err_refresh), txtOf(e))
     }
 
     @Test
     fun refreshAnsweredOtherwise_namesTheStep() = runTest {
         // an answer that is neither done nor timed out: its opcode, as an unexpected answer
         val other = runCatching { Frame(firmware(10, refresh = b(0x00, 0x75))).exchange.write(ByteArray(10), null) }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_unexpected, OdStep.REFRESH.txt, 0x75), txtOf(other))
+        assertEquals(Txt(R.string.frame_err_unexpected, OdStep.REFRESH.txt, 0x75), txtOf(other))
         // a NACK: its status, as a refusal
         val nack = runCatching { Frame(firmware(10, refresh = b(0xFF, 0x73))).exchange.write(ByteArray(10), null) }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_refused, OdStep.REFRESH.txt, 0xFF), txtOf(nack))
+        assertEquals(Txt(R.string.frame_err_refused, OdStep.REFRESH.txt, 0xFF), txtOf(nack))
     }
 
     @Test
@@ -137,14 +135,14 @@ class OdExchangeTest {
             }
         }
         val e = runCatching { f.exchange.write(ByteArray(1000), ByteArray(Od.START_DATA + 10)) }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_unexpected, OdStep.DATA.txt, 0x72), txtOf(e))
+        assertEquals(Txt(R.string.frame_err_unexpected, OdStep.DATA.txt, 0x72), txtOf(e))
     }
 
     @Test
     fun refusedChunk_givesTheStatus() = runTest {
         val f = Frame { r -> if (op(r) == Od.WRITE_START) listOf(b(0x00, 0x70)) else listOf(b(0xFF, 0x71)) }
         val e = runCatching { f.exchange.write(ByteArray(10), null) }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_refused, OdStep.DATA.txt, 0xFF), txtOf(e))
+        assertEquals(Txt(R.string.frame_err_refused, OdStep.DATA.txt, 0xFF), txtOf(e))
     }
 
     @Test
@@ -171,13 +169,8 @@ class OdExchangeTest {
     }
 
     /** A config with a system packet, then the four-grey display record of an 800×480 panel. */
-    private val display = ByteArray(46).also {
-        it[2] = 60; it[4] = 0x20; it[5] = 0x03; it[6] = 0xE0.toByte(); it[7] = 0x01; it[21] = 5; it[22] = 1
-    }
-    private val config: ByteArray = run {
-        val packets = b(0, 0x01) + ByteArray(22) + b(1, 0x20) + display
-        b(packets.size + 1, 0, 1) + packets + b(0xAB, 0xCD)
-    }
+    private val display = OdFixtures.display()
+    private val config = OdFixtures.config(display)
 
     @Test
     fun display_assemblesTheConfig_skippingOtherAnswers() = runTest {
@@ -197,21 +190,26 @@ class OdExchangeTest {
     fun display_authRequired_isRefused() = runTest {
         for (answer in listOf(b(0xFE, 0x40), b(0x00, 0x40, 0xFE))) {
             val e = runCatching { Frame { listOf(answer) }.exchange.display("OD000001") }.exceptionOrNull()!!
-            assertEquals(Txt(R.string.od_err_auth), txtOf(e))
+            assertEquals(Txt(R.string.frame_err_encrypted), txtOf(e))
         }
     }
 
     @Test
     fun display_shortFirstChunk_isAConfigError() = runTest {
         val e = runCatching { Frame { listOf(b(0x00, 0x40, 0, 0)) }.exchange.display("OD000001") }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_config), txtOf(e))
+        assertEquals(Txt(R.string.frame_err_config), txtOf(e))
         val refused = runCatching { Frame { listOf(b(0xFF, 0x40)) }.exchange.display("OD000001") }.exceptionOrNull()!!
-        assertEquals(Txt(R.string.od_err_refused, OdStep.CONFIG.txt, 0xFF), txtOf(refused))
+        assertEquals(Txt(R.string.frame_err_refused, OdStep.CONFIG.txt, 0xFF), txtOf(refused))
     }
 
     @Test
     fun steps_haveTheirOwnTexts() {
         assertEquals(OdStep.entries.size, OdStep.entries.map { it.txt.id }.toSet().size)
         assertFalse(OdStep.entries.any { it.txt.args.isNotEmpty() })
+    }
+
+    private companion object {
+        /** The opcode of request [r]. */
+        fun op(r: ByteArray) = ((r[0].toInt() and 0xFF) shl 8) or (r[1].toInt() and 0xFF)
     }
 }

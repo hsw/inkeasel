@@ -246,7 +246,7 @@ private fun FrameSettings(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         probing?.let {
-            Text(stringResource(R.string.od_probing, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+            Text(stringResource(R.string.frame_reading_panel, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
         }
         Spacer(Modifier.height(16.dp))
         Box(Modifier.fillMaxWidth()) {
@@ -286,7 +286,7 @@ private fun FrameSettings(
                         ) { reason ->
                             if (reason == null) {
                                 if (f.lookup?.formatOrNull?.verified == false) {
-                                    val msg = Txt(R.string.frame_toast_unverified, f.name, Txt(R.string.frame_unverified))
+                                    val msg = Txt(R.string.frame_toast_reason, f.name, Txt(R.string.frame_unverified))
                                     Toast.makeText(ctx, msg.resolve(ctx), Toast.LENGTH_LONG).show()
                                 }
                                 onSelect(f)

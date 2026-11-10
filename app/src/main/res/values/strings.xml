@@ -73,8 +73,11 @@
     <string name="scanning_hint">The frame must be nearby and not connected to a phone.</string>
     <!-- before Android 12 a BLE scan also needs location turned on -->
     <string name="scanning_hint_location">The frame must be nearby and not connected to a phone, and the search needs location turned on.</string>
-    <string name="frame_toast_unverified">Frame %1$s: %2$s</string>
+    <!-- %1$s the frame's name, %2$s why (a lowercase reason) -->
+    <string name="frame_toast_reason">Frame %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Frame %1$s is not supported: %2$s</string>
+    <!-- under the frame list while an OpenDisplay frame is read before it is chosen: %1$s the frame's name -->
+    <string name="frame_reading_panel">Reading the panel of frame %1$s… It wakes about once a minute.</string>
     <string name="frame_item_selected">%1$s — selected</string>
     <string name="frame_no_advert">no frame data</string>
     <string name="frame_signal">signal %1$d dBm</string>
@@ -136,7 +139,7 @@
     <!-- shown as text in the settings; opened on a tap on phones and tablets, never launched on TV -->
     <string name="settings_privacy_url" translatable="false">https://github.com/hsw/inkeasel/blob/main/PRIVACY.md</string>
 
-    <!-- frame advertisement (FrameAdvert.describe) -->
+    <!-- frame advertisement (FrameAdvert.describe, OdAdvert.describe) -->
     <string name="advert_colour_panel">%1$s, panel %2$s</string>
     <string name="advert_size" translatable="false">%1$d×%2$d</string>
     <string name="advert_size_code">code 0x%1$02x</string>
@@ -147,8 +150,11 @@
     <string name="advert_battery">battery %1$d %%</string>
     <string name="advert_firmware">firmware %1$d</string>
     <string name="advert_safe_mode">safe mode</string>
+    <string name="advert_opendisplay" translatable="false">OpenDisplay</string>
+    <!-- an OpenDisplay frame's battery: %1$d volts, %2$02d hundredths of a volt -->
+    <string name="advert_battery_volts">battery %1$d.%2$02d V</string>
 
-    <!-- why a frame cannot be chosen (FrameAdvert.rejection, FrameFormats.find) -->
+    <!-- why a frame cannot be chosen (FrameAdvert.rejection, OdDisplay.rejection, FrameFormats.find) -->
     <string name="reason_panel_a">panel A (not a photo frame)</string>
     <string name="reason_unknown_size_code">unknown resolution (%1$s)</string>
     <string name="reason_unknown_size">unknown resolution</string>
@@ -158,6 +164,10 @@
     <string name="reason_colours_size">%1$s %2$d×%3$d is not supported yet</string>
     <string name="reason_untested_format">format not verified (the vendor app does not draw it correctly)</string>
     <string name="reason_vendor_cannot">the vendor app cannot send to such frames</string>
+    <!-- %1$d the colour scheme number an OpenDisplay frame reports -->
+    <string name="reason_colour_scheme">colour scheme %1$d is not supported yet</string>
+    <!-- %1$d the panel type number an OpenDisplay frame of four greys reports -->
+    <string name="reason_greys_panel">four greys on panel %1$d are not supported yet</string>
 
     <!-- Bluetooth (FrameScanner) -->
     <string name="bt_missing">this device has no Bluetooth</string>
@@ -182,7 +192,7 @@
     <string name="upload_err_no_frame">no frame selected</string>
     <string name="upload_err_decode">could not decode the picture</string>
 
-    <!-- upload over Bluetooth (FrameClient): errors -->
+    <!-- upload over Bluetooth (FrameClient, OdClient, OdExchange): errors -->
     <string name="frame_err_format_changed">the parameters of frame %1$s have changed, send again</string>
     <string name="frame_err_not_acked">the frame did not confirm the picture</string>
     <string name="frame_err_send">could not send</string>
@@ -194,9 +204,29 @@
     <string name="frame_err_discover">could not read the frame\'s services</string>
     <string name="frame_err_no_ffe1">the device has no FFE1: is it a frame?</string>
     <string name="frame_err_not_connected">not connected</string>
+    <!-- %1$s the step: frame_err_step_* (OpenDisplay) or the GATT operation's name (NowMean) -->
     <string name="frame_err_busy">%1$s: the Bluetooth stack is busy</string>
+    <!-- %1$s the step, as in frame_err_busy; %2$d the wait in milliseconds -->
     <string name="frame_err_timeout">%1$s: no answer within %2$d ms</string>
     <string name="frame_err_lost">connection lost (status %1$d)</string>
+    <string name="frame_err_no_od_service">the device has no OpenDisplay service</string>
+    <string name="frame_err_config">could not read the frame\'s settings</string>
+    <string name="frame_err_encrypted">the frame has encryption on: not supported yet</string>
+    <!-- %1$s the step (frame_err_step_*), %2$02x the status code the frame answered with -->
+    <string name="frame_err_refused">the frame refused %1$s (code 0x%2$02x)</string>
+    <!-- %1$s the step (frame_err_step_*), %2$02x the opcode the frame answered with -->
+    <string name="frame_err_unexpected">%1$s: unexpected answer 0x%2$02x from the frame</string>
+    <string name="frame_err_refresh">the frame could not refresh its screen</string>
+    <!-- the steps of an OpenDisplay upload, nested in frame_err_busy, frame_err_timeout, frame_err_refused and frame_err_unexpected -->
+    <string name="frame_err_step_mtu">raising the MTU</string>
+    <string name="frame_err_step_services">reading the frame\'s services</string>
+    <string name="frame_err_step_notify">turning on the frame\'s answers</string>
+    <string name="frame_err_step_write">a request to the frame</string>
+    <string name="frame_err_step_config">reading its settings</string>
+    <string name="frame_err_step_start">the start of the picture</string>
+    <string name="frame_err_step_data">a part of the picture</string>
+    <string name="frame_err_step_end">the end of the picture</string>
+    <string name="frame_err_step_refresh">the screen refresh</string>
 
     <!-- Share → InkEasel (ShareActivity) -->
     <string name="share_unsupported">This share cannot be taken: InkEasel takes a picture shared by another app.</string>
@@ -208,21 +238,4 @@
     <!-- no result toast is promised: Android 13+ may hide the service's toast while the gallery is in front -->
     <string name="share_sending">Saved to \"My pictures\" and sending it to the frame. The frame redraws when the picture arrives.</string>
     <string name="share_no_frame">Saved to \"My pictures\". No frame selected: choose one in the settings, then send it from there.</string>
-    <string name="od_name" translatable="false">OpenDisplay</string>
-    <string name="od_battery">battery %1$d.%2$02d V</string>
-    <string name="od_probing">Reading the panel of frame %1$s… It wakes about once a minute.</string>
-    <string name="od_toast_failed">Frame %1$s: %2$s</string>
-    <string name="reason_od_scheme">colour scheme %1$d is not supported yet</string>
-    <string name="reason_od_panel">four greys on panel %1$d are not supported yet</string>
-    <string name="od_err_no_service">the device has no OpenDisplay service</string>
-    <string name="od_err_config">could not read the frame\'s settings</string>
-    <string name="od_err_auth">the frame has encryption on: not supported yet</string>
-    <string name="od_err_refused">the frame refused %1$s (code 0x%2$02x)</string>
-    <string name="od_err_unexpected">%1$s: unexpected answer 0x%2$02x from the frame</string>
-    <string name="od_err_step_config">reading its settings</string>
-    <string name="od_err_step_start">the start of the picture</string>
-    <string name="od_err_step_data">a part of the picture</string>
-    <string name="od_err_step_end">the end of the picture</string>
-    <string name="od_err_step_refresh">the screen refresh</string>
-    <string name="od_err_refresh">the frame could not refresh its screen</string>
 </resources>

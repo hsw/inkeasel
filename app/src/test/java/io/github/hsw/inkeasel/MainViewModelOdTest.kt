@@ -43,9 +43,7 @@ class MainViewModelOdTest {
     private val toasts = mutableListOf<Txt>()
 
     /** A display record of [scheme] at 800×480 (5: four greys, verified; 6: sixteen greys, refused). */
-    private fun display(scheme: Int) = OdDisplay(ByteArray(46).also {
-        it[2] = 60; it[4] = 0x20; it[5] = 0x03; it[6] = 0xE0.toByte(); it[7] = 0x01; it[21] = scheme.toByte(); it[22] = 1
-    })
+    private fun display(scheme: Int) = OdDisplay(OdFixtures.display(scheme = scheme))
 
     @Before
     fun setUp() {
@@ -111,18 +109,18 @@ class MainViewModelOdTest {
         assertNull(vm.selected)
         assertEquals(0, selectedCalls)
         assertTrue(vm.settingsOpen)
-        assertEquals(listOf(Txt(R.string.frame_toast_unsupported, frame.name, Txt(R.string.reason_od_scheme, 6))), toasts)
+        assertEquals(listOf(Txt(R.string.frame_toast_unsupported, frame.name, Txt(R.string.reason_colour_scheme, 6))), toasts)
     }
 
     @Test
     fun aFailedRead_isNotChosen_andSaysWhy() {
         select()
-        reported.completeExceptionally(TxtException(Txt(R.string.od_err_auth)))
+        reported.completeExceptionally(TxtException(Txt(R.string.frame_err_encrypted)))
         idle()
         assertNull(vm.probing)
         assertNull(vm.selected)
         assertEquals(0, selectedCalls)
-        assertEquals(listOf(Txt(R.string.od_toast_failed, frame.name, Txt(R.string.od_err_auth))), toasts)
+        assertEquals(listOf(Txt(R.string.frame_toast_reason, frame.name, Txt(R.string.frame_err_encrypted))), toasts)
         // the next press reads again
         reported = CompletableDeferred()
         select()
@@ -189,7 +187,7 @@ class MainViewModelOdTest {
         idle()
         select(other)
         idle()
-        reported.completeExceptionally(TxtException(Txt(R.string.od_err_auth)))
+        reported.completeExceptionally(TxtException(Txt(R.string.frame_err_encrypted)))
         idle()
         assertEquals(other.name, vm.probing)
         assertEquals(emptyList<Txt>(), toasts)

@@ -16,9 +16,7 @@ class FrameStorePrefsTest {
     private val store = FrameStore(context)
 
     /** A display record of [scheme] at 800×480 (5: four greys, 0: mono). */
-    private fun display(scheme: Int) = OdDisplay(ByteArray(46).also {
-        it[2] = 60; it[4] = 0x20; it[5] = 0x03; it[6] = 0xE0.toByte(); it[7] = 0x01; it[21] = scheme.toByte(); it[22] = 1
-    })
+    private fun display(scheme: Int) = OdDisplay(OdFixtures.display(scheme = scheme))
 
     private val od = SelectedFrame("OD000001", "AA:BB:CC:DD:EE:01", null, 1_000L, FrameKind.OPENDISPLAY, display(5))
 
