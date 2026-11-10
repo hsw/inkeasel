@@ -1,6 +1,9 @@
 package io.github.hsw.inkeasel
 
+import java.io.ByteArrayOutputStream
 import java.util.UUID
+import java.util.zip.Adler32
+import java.util.zip.Deflater
 
 /**
  * The OpenDisplay BLE protocol (docs/protocol.md#opendisplay), the part this app uses: read the config, send
@@ -21,6 +24,9 @@ object Od {
     const val REFRESH_DONE = 0x73
     const val REFRESH_TIMEOUT = 0x74
 
+    /** The buffer of a frame that inflates a whole stream at once (transmission mode bit 1 only). */
+    const val BUFFERED_MAX = 50 * 1024
+
     /** Image bytes per [WRITE_DATA] request without encryption; the request is 2 bytes longer. */
     const val CHUNK = 230
 
@@ -30,6 +36,61 @@ object Od {
 
     /** Start an uncompressed full-frame write: every image byte follows in [WRITE_DATA] requests. */
     fun start(): ByteArray = request(WRITE_START)
+
+    /** Bytes of the zlib stream a compressed start carries: the request is at most 200 bytes. */
+    const val START_DATA = 200 - 2 - 4
+
+    /**
+     * Start a compressed full-frame write of [size] image bytes, carrying the first bytes of the zlib stream
+     * ([first], at most [START_DATA]); the rest follows in [WRITE_DATA] requests and the write needs [end].
+     */
+    fun startCompressed(size: Int, first: ByteArray): ByteArray {
+        require(first.size in 1..START_DATA)
+        return request(WRITE_START, byteArrayOf(size.toByte(), (size shr 8).toByte(), (size shr 16).toByte(), (size shr 24).toByte()) + first)
+    }
+
+    /** The largest DEFLATE window the frame's inflater takes (9 bits). */
+    const val WINDOW = 512
+
+    /**
+     * [data] as a zlib stream the frame can inflate: no match reaches back more than [WINDOW] bytes, and the
+     * header says so. `Deflater` cannot be given a window, so its dictionary is reset ([Deflater.FULL_FLUSH])
+     * after every [WINDOW] bytes of input, which no match can then cross; the raw stream gets a zlib header
+     * with a 512-byte window and the Adler-32 of [data].
+     */
+    fun zlib(data: ByteArray): ByteArray = zlibWithFlushes(data).first
+
+    /** [zlib] and, for tests, where in it each [WINDOW]-byte part of [data] starts (the raw stream's offsets). */
+    internal fun zlibWithFlushes(data: ByteArray): Pair<ByteArray, List<Int>> {
+        val raw = ByteArrayOutputStream()
+        val starts = mutableListOf<Int>()
+        val d = Deflater(Deflater.BEST_COMPRESSION, true)
+        val buf = ByteArray(4096)
+        try {
+            var at = 0
+            while (at < data.size) {
+                starts += raw.size()
+                val n = minOf(WINDOW, data.size - at)
+                d.setInput(data, at, n)
+                do {
+                    val k = d.deflate(buf, 0, buf.size, Deflater.FULL_FLUSH)
+                    raw.write(buf, 0, k)
+                } while (k == buf.size)
+                at += n
+            }
+            d.finish()
+            while (!d.finished()) raw.write(buf, 0, d.deflate(buf))
+        } finally {
+            d.end()
+        }
+        // CMF: deflate with a 2^(1+8) window; FLG: maximum compression, no dictionary, check bits
+        val cmf = 0x18
+        val flg = 0xC0 + (31 - (cmf * 256 + 0xC0) % 31) % 31
+        val sum = Adler32().apply { update(data) }.value
+        val out = byteArrayOf(cmf.toByte(), flg.toByte()) + raw.toByteArray() +
+            byteArrayOf((sum shr 24).toByte(), (sum shr 16).toByte(), (sum shr 8).toByte(), sum.toByte())
+        return out to starts
+    }
 
     fun data(chunk: ByteArray): ByteArray {
         require(chunk.size in 1..CHUNK)
@@ -127,6 +188,15 @@ class OdDisplay(val raw: ByteArray) {
             90, 180 -> r
             else -> null
         }
+
+    /**
+     * `transmission_modes` bits 0 (streaming inflate, no size limit) and 1 (buffered inflate, under
+     * [Od.BUFFERED_MAX] compressed bytes): whether the frame takes a zlib stream ([Od.zlib]) of [size] bytes.
+     */
+    fun takesZlib(size: Int): Boolean {
+        val modes = raw[22].toInt() and 0xFF
+        return modes and 0x01 != 0 || (modes and 0x02 != 0 && size < Od.BUFFERED_MAX)
+    }
 
     /** `color_scheme`: 0 mono, 1 BWR, 2 BWY, 3 BWRY, 4 Spectra 6, 5 four greys, 6+ others. */
     val scheme: Int get() = raw[21].toInt() and 0xFF

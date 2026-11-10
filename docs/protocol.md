@@ -419,21 +419,32 @@ a config write and a reboot of the frame, done with the OpenDisplay tools, not b
 
 ### OpenDisplay upload
 
-The uncompressed full-frame direct write:
+The full-frame direct write, compressed where the frame takes it:
 
-1. `00 70`: start; answered `00 70`.
-2. `00 71 [≤230 bytes]` per chunk, each answered `00 71`. Once the frame has every byte of the frame it
-   answers the last chunk with `00 72` and refreshes by itself.
-3. `00 72 00` (end, full refresh) only if the frame did not end it itself; answered `00 72`.
+1. Start. Compressed: `00 70 [size:4 LE][first ≤194 bytes of the zlib stream]` (the request is at most 200
+   bytes; `size` is the image's uncompressed byte count, which the frame checks against its panel).
+   Uncompressed: `00 70`. Answered `00 70`; a refused compressed start (`FF 70`, or `FF FF` from older
+   firmware) is retried uncompressed.
+2. `00 71 [≤230 bytes]` per chunk (the rest of the zlib stream, or the image), each answered `00 71`.
+   Uncompressed, once the frame has every byte it answers the last chunk with `00 72` and refreshes by itself.
+3. `00 72 00` (end, full refresh), always after a compressed write, and after an uncompressed one only if the
+   frame did not end it itself; answered `00 72` (`FF 72` if the stream was incomplete).
 4. Then, unsolicited, `00 73` when the panel is refreshed or `00 74` if the refresh timed out.
 
-The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
-greys: 96,000 bytes take about 19 s from a phone (one answer per 230 bytes), the refresh about 4 s
-*(observed)*.
+The frame takes zlib if its display's transmission modes have bit 0 (streaming inflate, any size) or bit 1
+(inflates the whole stream in a buffer: under 50 KB compressed); the E1001 has bit 0. Its inflater takes a
+DEFLATE window of 512 bytes (9 bits) at most and rejects a header that declares more. `java.util.zip.Deflater`
+cannot be given a window, so the app resets its dictionary (`FULL_FLUSH`) after every 512 bytes of input,
+which no match can cross, and writes the zlib header itself (`18 D3`: deflate, 512-byte window) with the
+Adler-32 of the image. That costs some ratio against a true 9-bit encoder (about 15 % more bytes on a
+dithered photo), for no compression code of our own.
 
-Not used: zlib compression (`00 70 [size:4 LE][zlib…]`; the firmware's inflater takes only a 512-byte
-window, which `java.util.zip.Deflater` cannot be asked for), the sliding-window pipe (`00 80`), partial
-writes (`00 76`, 1-bit panels only) and fast refresh.
+The frame reports the end of its refresh, so no fixed spacing between uploads is needed. On the E1001 in four
+greys from a phone *(observed)*: uncompressed, 96,000 bytes take about 19 s (one answer per 230 bytes);
+compressed, a full-frame painting (59 KB) about 13 s and a portrait with white bars (28 KB) about 7 s; the
+refresh about 4 s.
+
+Not used: the sliding-window pipe (`00 80`), partial writes (`00 76`, 1-bit panels only) and fast refresh.
 
 ### OpenDisplay image formats
 

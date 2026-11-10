@@ -6,6 +6,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.zip.Inflater
+import kotlin.random.Random
 
 class OdProtocolTest {
     private fun bytes(vararg b: Int) = ByteArray(b.size) { b[it].toByte() }
@@ -153,5 +155,65 @@ class OdProtocolTest {
     @Test
     fun seenFrame_openDisplayIsAskedOnceChosen() {
         assertNull(SeenFrame("OD000001", "AA:BB:CC:DD:EE:01", -60, null, FrameKind.OPENDISPLAY).lookup)
+    }
+
+    /** A 4-grey-like payload: noise in the middle, long white runs around it. */
+    private fun sample(): ByteArray {
+        val r = Random(7)
+        return ByteArray(96_000) { i -> if (i in 30_000 until 60_000) r.nextInt(256).toByte() else 0 }
+    }
+
+    private fun inflate(z: ByteArray, nowrap: Boolean, size: Int): ByteArray {
+        val inf = Inflater(nowrap)
+        inf.setInput(z)
+        val out = ByteArray(size)
+        var n = 0
+        while (n < size && !inf.needsInput()) n += inf.inflate(out, n, size - n)
+        inf.end()
+        return out.copyOf(n)
+    }
+
+    @Test
+    fun zlib_inflatesBack_withA512ByteWindowHeader() {
+        val data = sample()
+        val z = Od.zlib(data)
+        assertEquals(0x18, z[0].toInt() and 0xFF) // deflate, 2^9 window
+        assertEquals(0, ((z[0].toInt() and 0xFF) * 256 + (z[1].toInt() and 0xFF)) % 31)
+        assertTrue(z.size < data.size / 2)
+        val inf = Inflater()
+        inf.setInput(z)
+        val out = ByteArray(data.size)
+        assertEquals(data.size, inf.inflate(out))
+        assertTrue(inf.finished()) // the Adler-32 trailer matched
+        assertArrayEquals(data, out)
+    }
+
+    @Test
+    fun zlib_eachPartInflatesWithoutTheOnesBefore() {
+        // a match reaching further back than 512 bytes would need the earlier parts' bytes
+        val data = sample()
+        val (z, starts) = Od.zlibWithFlushes(data)
+        val raw = z.copyOfRange(2, z.size - 4)
+        assertEquals(data.size / Od.WINDOW + 1, starts.size)
+        for ((k, at) in starts.withIndex()) {
+            val part = data.copyOfRange(k * Od.WINDOW, minOf(data.size, (k + 1) * Od.WINDOW))
+            assertArrayEquals("part $k", part, inflate(raw.copyOfRange(at, raw.size), true, part.size))
+        }
+    }
+
+    @Test
+    fun startCompressed_sizeLittleEndianThenHead() {
+        assertArrayEquals(bytes(0x00, 0x70, 0x00, 0x77, 0x01, 0x00, 0x18, 0xDA), Od.startCompressed(96_000, bytes(0x18, 0xDA)))
+        assertEquals(200, Od.startCompressed(1, ByteArray(Od.START_DATA)).size)
+    }
+
+    @Test
+    fun takesZlib_byTransmissionModes() {
+        val streaming = OdDisplay(display()) // modes 25: streaming inflate
+        assertTrue(streaming.takesZlib(90_000))
+        val buffered = OdDisplay(display().also { it[22] = 0x02 })
+        assertTrue(buffered.takesZlib(10_000))
+        assertFalse(buffered.takesZlib(60_000))
+        assertFalse(OdDisplay(display().also { it[22] = 0x08 }).takesZlib(10))
     }
 }

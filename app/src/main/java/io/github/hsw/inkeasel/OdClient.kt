@@ -14,6 +14,8 @@ import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -75,7 +77,8 @@ class OdClient(private val ctx: Context) {
                 is FormatLookup.Unsupported -> throw TxtException(Txt(R.string.frame_err_unsupported, sel.name, l.reason))
                 is FormatLookup.Supported -> if (l.format != format) throw TxtException(Txt(R.string.frame_err_format_changed, sel.name))
             }
-            s.write(payload)
+            val zlib = withContext(Dispatchers.Default) { Od.zlib(payload) }.takeIf { display.takesZlib(it.size) && it.size < payload.size }
+            s.write(payload, zlib)
         } finally {
             s.close()
         }
@@ -169,30 +172,19 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
     }
 
     /**
-     * Writes [payload] as an uncompressed full-frame direct write and waits for the refresh: start, data
-     * chunks (each answered; the last one is answered with the end, as the frame finishes by itself once it
-     * has every byte), end if it did not, then the refresh notice.
+     * Writes [payload] as a full-frame direct write and waits for the refresh: compressed as [zlib] if given
+     * (back to uncompressed if the frame refuses the compressed start), else uncompressed.
      */
-    suspend fun write(payload: ByteArray) {
-        request(Od.start())
-        reply(Od.WRITE_START, "start", 10_000).also { if (!it.ok) throw TxtException(Txt(R.string.od_err_refused, "start", it.status)) }
+    suspend fun write(payload: ByteArray, zlib: ByteArray?) {
         val t0 = SystemClock.elapsedRealtime()
-        var at = 0
-        var ended = false
-        while (at < payload.size) {
-            val chunk = payload.copyOfRange(at, minOf(payload.size, at + Od.CHUNK))
-            send(Od.data(chunk), if (noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-            at += chunk.size
-            val r = reply(null, "data", 30_000)
-            if (!r.ok) throw TxtException(Txt(R.string.od_err_refused, "data", r.status))
-            if (r.op == Od.WRITE_END) {
-                ended = true
-                break
-            }
-            if (r.op != Od.WRITE_DATA) throw TxtException(Txt(R.string.od_err_refused, "data", r.op))
+        val ended = if (zlib != null && startCompressed(payload.size, zlib)) {
+            chunks(zlib.copyOfRange(minOf(zlib.size, Od.START_DATA), zlib.size), canEnd = false)
+        } else {
+            request(Od.start())
+            reply(Od.WRITE_START, "start", 10_000).also { if (!it.ok) throw TxtException(Txt(R.string.od_err_refused, "start", it.status)) }
+            chunks(payload, canEnd = true)
         }
-        Log.i(TAG, "data: ${payload.size} B in ${SystemClock.elapsedRealtime() - t0} ms, ended by the frame: $ended")
-        if (at < payload.size) throw TxtException(Txt(R.string.od_err_refused, "data", 0))
+        Log.i(TAG, "data: ${payload.size} B as ${zlib?.size ?: payload.size} B in ${SystemClock.elapsedRealtime() - t0} ms, ended by the frame: $ended")
         if (!ended) {
             request(Od.end())
             reply(Od.WRITE_END, "end", 90_000).also { if (!it.ok) throw TxtException(Txt(R.string.od_err_refused, "end", it.status)) }
@@ -204,6 +196,37 @@ private class OdSession(private val ctx: Context, private val device: BluetoothD
             Od.REFRESH_TIMEOUT -> throw TxtException(Txt(R.string.od_err_refresh))
             else -> throw TxtException(Txt(R.string.od_err_refused, "refresh", r.op))
         }
+    }
+
+    /**
+     * Starts a compressed write of [size] image bytes with the head of [zlib]; false if the frame refuses it
+     * (`FF 70`, or `FF FF` from older firmware), so the caller can send uncompressed.
+     */
+    private suspend fun startCompressed(size: Int, zlib: ByteArray): Boolean {
+        request(Od.startCompressed(size, zlib.copyOf(minOf(zlib.size, Od.START_DATA))))
+        val r = reply(null, "start", 10_000)
+        if (r.ok && r.op == Od.WRITE_START) return true
+        Log.w(TAG, "compressed start refused: $r; sending uncompressed")
+        return false
+    }
+
+    /**
+     * Sends [data] in [Od.WRITE_DATA] chunks, each answered. True if the frame answered the last one with the
+     * end ([canEnd]: an uncompressed write ends by itself once the frame has every byte).
+     */
+    private suspend fun chunks(data: ByteArray, canEnd: Boolean): Boolean {
+        val type = if (noResponse) BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE else BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+        var at = 0
+        while (at < data.size) {
+            val chunk = data.copyOfRange(at, minOf(data.size, at + Od.CHUNK))
+            send(Od.data(chunk), type)
+            at += chunk.size
+            val r = reply(null, "data", 30_000)
+            if (!r.ok) throw TxtException(Txt(R.string.od_err_refused, "data", r.status))
+            if (canEnd && r.op == Od.WRITE_END) return true
+            if (r.op != Od.WRITE_DATA) throw TxtException(Txt(R.string.od_err_refused, "data", r.op))
+        }
+        return false
     }
 
     /** Writes a request with response, after dropping any stale answer. */

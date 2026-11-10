@@ -3,6 +3,18 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — OpenDisplay uploads are zlib-compressed with `Deflater` reset every 512 bytes
+
+Implements the "next step" of the OpenDisplay entry below. The frame's inflater takes a DEFLATE window of 512
+bytes at most, and `java.util.zip.Deflater` has no window setting. Resetting its dictionary with
+`FULL_FLUSH` after every 512 bytes of input keeps every match inside the window, and the app writes the zlib
+header (512-byte window) and Adler-32 itself. Measured on the E1001 from a phone: a full-frame painting goes as
+59 KB of 96 in 13 s instead of 19, a portrait with white bars as 28 KB in 7 s. A frame that refuses the
+compressed start gets the picture uncompressed.
+Rejected: an encoder of our own with a true 9-bit window (LZ77 plus dynamic Huffman, a few hundred lines):
+about 15 % fewer bytes on a dithered photo (on a sample, 53 KB against 62 KB), not worth the code yet; fixed
+Huffman codes only (simpler, but worse than the flush: 69 KB on the same sample).
+
 ## 2026-11-10 — OpenDisplay frames: a second protocol, written in Kotlin, uncompressed for now
 
 InkEasel also draws on frames running the open OpenDisplay firmware (first a Seeed reTerminal E1001). There

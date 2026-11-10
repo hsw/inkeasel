@@ -41,7 +41,8 @@ The advertised size table and the byte layouts: [protocol.md](protocol.md#resolu
 ### OpenDisplay
 
 Any size the frame reports, rotation 0° only; formats from the reference sender, every type dithered with its
-own inks, sent uncompressed ([protocol.md](protocol.md#opendisplay-image-formats)).
+own inks, sent zlib-compressed where the frame takes it ([protocol.md](protocol.md#opendisplay-image-formats),
+[protocol.md](protocol.md#opendisplay-upload)).
 
 | Colour scheme | Payload | Verified on hardware |
 |---|---|---|
@@ -190,7 +191,8 @@ An OpenDisplay frame (`OdClient.upload`) is found by its name on every upload (i
 after it advertises; the scan waits up to 75 s), then the app connects, reads its config again and fails
 the upload ("the parameters of frame NM000001 have changed, send again", or "not supported") if its display
 no longer gives the format the picture was rendered for, saving the new display so the next upload uses it.
-The picture goes in one attempt, and the upload ends when the frame reports its refresh done
+The picture goes in one attempt, compressed if the frame takes zlib (uncompressed if it refuses the
+compressed start), and the upload ends when the frame reports its refresh done
 ([protocol.md](protocol.md#opendisplay-upload)); `DrawGate` does not apply.
 
 NowMean uploads are spaced by `DrawGate`: the frame acks an upload at once but draws it for ~27 s after the link
