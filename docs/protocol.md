@@ -340,7 +340,8 @@ Raw payload in bytes, with `P(n)` = n rounded up to a multiple of 512:
 The frame takes device codes, so dithering is up to the client. This app dithers each type onto its own
 inks: Floyd–Steinberg (7/16 right, 3/16 down-left, 5/16 down, 1/16 down-right) in plain raster order, not
 serpentine; the nearest ink by squared RGB distance, the first one winning a tie; the pixel plus its
-accumulated error clamped to 0..255. There is no contrast, saturation or gamma step.
+accumulated error clamped to 0..255. There is no contrast, saturation or gamma step on a colour panel; a
+panel of greys first gets auto levels ([frames.md](frames.md#rendering)).
 
 The vendor app dithers the same way, but always onto the measured E6 inks, whatever the colour type, and
 then maps pixels to codes by exact RGB match. On other types most E6 inks match nothing and become black or

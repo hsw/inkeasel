@@ -205,6 +205,9 @@ data class FrameFormat(
     }
 
     val payloadSize: Int get() = packing.size(width, height)
+
+    /** Every ink is a grey (BW, four greys): the picture is dithered by luminance, with auto levels. */
+    val greys: Boolean get() = palette.inks.all { it.r == it.g && it.g == it.b }
     val aspect: Float get() = width.toFloat() / height
 
     /**
@@ -264,12 +267,15 @@ data class FrameFormat(
      * (docs/protocol.md#dithering: the vendor app dithers every type with the E6 inks, which breaks the
      * others): plain raster order, nearest ink by squared RGB distance (the first wins a tie), the pixel plus
      * its error clamped to 0..255. The picture sits at [at] on the panel and the rest is [paper], plain: no
-     * error reaches the bars, so they stay clean. One ink index per pixel of the whole panel.
+     * error reaches the bars, so they stay clean. One ink index per pixel of the whole panel. On a panel of
+     * [greys] the picture first becomes greys with auto levels ([Levels.stretched], measured on the picture
+     * alone, not the bars).
      */
     fun dither(px: IntArray, at: Placement): ByteArray {
         val w = at.width
         val h = at.height
         require(px.size == w * h)
+        @Suppress("NAME_SHADOWING") val px = if (greys) Levels.stretched(px) else px
         require(at.left >= 0 && at.top >= 0 && at.left + w <= width && at.top + h <= height)
         val inks = palette.inks
         val pr = IntArray(inks.size) { inks[it].r }

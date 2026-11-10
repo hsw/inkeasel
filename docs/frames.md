@@ -97,6 +97,11 @@ one), dithered onto the panel's inks.
   (`FrameFormat.sampleSize`); each intermediate bitmap is recycled as soon as the next step has its pixels.
 - Fit: scaled up or down, whole, centred; each side at least 1 px. The bars are the panel's own white (the
   ink nearest to white, `FrameFormat.paper`) and plain: no dithering error reaches them.
+- Auto levels on a panel of greys only (four greys, mono; `FrameFormat.greys`, `Levels.kt`): the picture
+  becomes greys by luminance (BT.601) and its range is stretched to black..white, so a dark painting uses the
+  whole scale. The lightest 0.5 % of the pixels is clipped to white; the dark end is not clipped (it merges the
+  darkest areas into one black blot). Measured on the picture alone, not the bars. A picture of one grey is
+  left as it is. Colour panels get no tone step.
 - Dithering: Floyd–Steinberg onto the panel's own inks, never the E6 inks for every type as the vendor app
   does ([protocol.md](protocol.md#dithering)).
 - Packings: `Nibbles4` (4 bpp, optionally split), `Crumbs2` (2 bpp), `BitPlanes` (1-bpp planes, padded,

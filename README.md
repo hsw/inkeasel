@@ -27,7 +27,8 @@ NowMean e-paper frames.
 
 Frames running the [OpenDisplay](https://opendisplay.org) firmware, such as the Seeed reTerminal E1001.
 
-- **Four greys**: tested on a reTerminal E1001 (7.5", 800×480).
+- **Four greys**: tested on a reTerminal E1001 (7.5", 800×480). Dark pictures are brightened to use the
+  whole grey scale.
 - **Black and white, BWR, BWY and Spectra 6**: supported but not yet tried on a real frame.
 - A frame with encryption switched on cannot be used yet.
 

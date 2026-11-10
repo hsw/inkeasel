@@ -3,6 +3,18 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-10 — Panels of greys get auto levels before dithering
+
+A dark painting (Rembrandt's "Night Watch") on the four-grey E1001 used little more than black and dark grey.
+On a panel whose inks are all greys the picture is now dithered by luminance with its range stretched to
+black..white: the lightest 0.5 % of the pixels clipped, the dark end not clipped, measured on the picture
+without the white bars. It is a common auto-contrast (`ImageOps.autocontrast` on luminance, light end only);
+clipping the dark end as well had merged a dark cypress into one black blot.
+Automatic, no setting: on a picture that already spans the range it changes nearly nothing.
+Rejected: per-channel stretching (it shifts the balance of a blue-heavy picture); auto levels on colour
+panels (their inks set the range, and stretching saturates colour); tone compression into the panel's
+measured range, as the OpenDisplay dithering library does (no reliable measurement of these greys yet).
+
 ## 2026-11-10 — OpenDisplay uploads are zlib-compressed with `Deflater` reset every 512 bytes
 
 Implements the "next step" of the OpenDisplay entry below. The frame's inflater takes a DEFLATE window of 512
