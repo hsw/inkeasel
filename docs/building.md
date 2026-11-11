@@ -167,6 +167,9 @@ tested on an NVIDIA Shield TV Pro 2019 (Android 11) and these emulators.
 
 ### Techniques
 
+- **Emulator serial**: the adb serial follows the first free port (`emulator-5554`, `-5556`, …), so a
+  second or leftover emulator shifts it. Start with `-port 5554`, or take the serial from `adb devices`
+  before waiting on `sys.boot_completed`.
 - **DNS** is flaky right after an emulator boots; a catalog "Unable to resolve host" usually passes on
   retry.
 - **Offline or slow network**: airplane mode does not cut the TV emulator's ethernet. Set a dead global
@@ -184,14 +187,24 @@ tested on an NVIDIA Shield TV Pro 2019 (Android 11) and these emulators.
       adb shell rm /sdcard/s.png
 
 - **README screenshots** live in `docs/screenshots/`: English UI, nothing identifying (no real frame names,
-  addresses or personal pictures), the tablet's status bar in demo mode, compressed with pngquant. Demo
-  mode:
+  addresses or personal pictures), the tablet's status bar in demo mode, compressed with pngquant. Sizes:
+  `tv-catalog.png` and `settings.png` 1280×720, `tablet-catalog.png` 800×1280 (portrait). Demo mode:
 
       adb shell settings put global sysui_demo_allowed 1
       adb shell am broadcast -a com.android.systemui.demo -e command enter
       adb shell am broadcast -a com.android.systemui.demo -e command exit
 
-- **UI language**: switch the app's locale without changing the device's:
+  The Pixel Tablet starts in landscape; turn it to portrait (it may then show "System UI isn't
+  responding": press Wait):
+
+      adb shell settings put system accelerometer_rotation 0
+      adb shell settings put system user_rotation 1
+
+  A first launch opens the settings and then the Bluetooth panel: close both. The settings shot needs a
+  real device that sees frames: blur the frame names and addresses in the "Selected" line and in every
+  frame row.
+- **UI language**: switch the app's locale without changing the device's (Android 13 and later; on the
+  Shield, Android 11, switch the system language for the shot and back afterwards):
 
       adb shell cmd locale set-app-locales io.github.hsw.inkeasel --locales ru-RU   # or en-US
 
