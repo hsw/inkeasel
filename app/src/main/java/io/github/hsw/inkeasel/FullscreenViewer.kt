@@ -3,7 +3,7 @@ package io.github.hsw.inkeasel
 import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -79,13 +80,14 @@ private val SYSTEM_KEYS = setOf(Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Ke
  * panel: letterboxed on black and fitted to the screen, no crop, in a rendition sized to the window
  * ([ViewerRules.rendition]) and decoded to the window's size; the card's thumbnail stands in while it loads.
  * Opening it sends nothing. It opens clean, the picture alone ("as in a museum": no caption, counter or hint).
- * Left/Right (a swipe on a touch screen) go to the previous and next picture of the same list ([onStep]; the
- * catalog's from the database, [ViewerSteps]). Down or CENTER (a tap) shows the picture's card over its lower
+ * Left/Right (a swipe sideways on a touch screen) go to the previous and next picture of the same list ([onStep];
+ * the catalog's from the database, [ViewerSteps]). Down or CENTER (a tap) shows the picture's card over its lower
  * part ([ViewerOverlay]): its details ([PictureRows]: artist, date, source, licence, image credit, …) and
  * "Send to frame" ([onSend], the card's own send path), focused first, with a frame chosen, otherwise a note
  * that none is. Up or Back (a tap) hides it; Left/Right go on stepping under it. A CENTER press the viewer
  * handles itself (the one that shows the card, or one still held when the viewer opens) never also presses the
- * card's button ([HeldCenter]). Back without the card closes ([onClose]) in one press. The screen is not kept
+ * card's button ([HeldCenter]). Back without the card closes ([onClose]) in one press; a swipe down does what
+ * Back does ([ViewerSwipe.BACK]). The screen is not kept
  * on: a still picture lets the screen saver start as usual.
  */
 @Composable
@@ -106,6 +108,8 @@ fun FullscreenViewer(
         var overlay by remember { mutableStateOf(ViewerOverlay.HIDDEN) }
         val held = remember { HeldCenter() }
         val currentStep by rememberUpdatedState(onStep) // nothing past either end of the list
+        val currentClose by rememberUpdatedState(onClose)
+        val back = { overlay.onBack()?.let { overlay = it } ?: currentClose() }
         val root = remember { FocusRequester() }
         val send = remember { FocusRequester() }
         LaunchedEffect(overlay, selected != null) {
@@ -128,7 +132,7 @@ fun FullscreenViewer(
                         // Back hides the card, or closes; taken here also while the card's button has the focus
                         // (Compose would take that Back to move the focus out of the button first)
                         e.key == Key.Back || e.key == Key.Escape -> {
-                            if (e.type == KeyEventType.KeyUp) overlay.onBack()?.let { overlay = it } ?: onClose()
+                            if (e.type == KeyEventType.KeyUp) back()
                             true
                         }
                         e.key in SYSTEM_KEYS -> false
@@ -156,14 +160,21 @@ fun FullscreenViewer(
                 .focusable()
                 .pointerInput(Unit) { detectTapGestures(onTap = { overlay = overlay.onTap() }) }
                 .pointerInput(Unit) {
-                    var dx = 0f
-                    detectHorizontalDragGestures(
-                        onDragStart = { dx = 0f },
-                        onDragEnd = { ViewerRules.swipe(dx, swipeMin).takeIf { it != 0 }?.let(currentStep) },
-                        onDragCancel = { dx = 0f },
+                    var drag = Offset.Zero
+                    detectDragGestures(
+                        onDragStart = { drag = Offset.Zero },
+                        onDragEnd = {
+                            when (ViewerRules.swipe(drag.x, drag.y, swipeMin)) {
+                                ViewerSwipe.NEXT -> currentStep(1)
+                                ViewerSwipe.PREVIOUS -> currentStep(-1)
+                                ViewerSwipe.BACK -> back()
+                                ViewerSwipe.NONE -> Unit
+                            }
+                        },
+                        onDragCancel = { drag = Offset.Zero },
                     ) { change, amount ->
                         change.consume()
-                        dx += amount
+                        drag += amount
                     }
                 },
         ) {

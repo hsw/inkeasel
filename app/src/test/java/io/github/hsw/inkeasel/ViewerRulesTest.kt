@@ -108,10 +108,15 @@ class ViewerRulesTest {
     }
 
     @Test
-    fun swipe_pastTheThreshold() {
-        assertEquals(1, ViewerRules.swipe(-200f, 100f)) // to the left: the next picture
-        assertEquals(-1, ViewerRules.swipe(150f, 100f))
-        assertEquals(0, ViewerRules.swipe(-60f, 100f))
+    fun swipe_pastTheThreshold_byItsLongerAxis() {
+        assertEquals(ViewerSwipe.NEXT, ViewerRules.swipe(-200f, 0f, 100f)) // to the left: the next picture
+        assertEquals(ViewerSwipe.PREVIOUS, ViewerRules.swipe(150f, 40f, 100f))
+        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(-60f, 0f, 100f))
+        assertEquals(ViewerSwipe.BACK, ViewerRules.swipe(30f, 150f, 100f)) // down: what Back does
+        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(0f, 60f, 100f))
+        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(0f, -200f, 100f)) // up: nothing
+        assertEquals(ViewerSwipe.NEXT, ViewerRules.swipe(-150f, 120f, 100f)) // diagonal: the longer axis
+        assertEquals(ViewerSwipe.BACK, ViewerRules.swipe(-120f, 150f, 100f))
     }
 
     @Test

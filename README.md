@@ -77,7 +77,8 @@ You can change the frame later with the button at the top of the screen ("Frame:
 **Catalog.** About 9,600 famous paintings, plus landscapes from the Cleveland Museum of Art and Wikimedia
 Commons. A press on a picture shows it full screen, alone on black; Left and Right go to the previous and
 next picture. Down (or OK) opens its card: the details (artist, date, museum, licence) and **Send to frame**;
-Up or Back hides it, and Back again returns to the list. On a touch screen a tap shows and hides the card. A
+Up or Back hides it, and Back again returns to the list. On a touch screen a swipe sideways goes to the next or previous picture, a tap shows and hides the card,
+and a swipe down does what Back does. A
 long press on a picture in the list shows its details with **Send to frame** and **View full screen**. The catalog comes with the app and updates itself at most once a week when
 the device is online. Titles and artists follow the device language.
 

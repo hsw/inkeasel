@@ -3,6 +3,17 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Viewer: a swipe down does what Back does
+
+On a phone the viewer hides the system bars, so leaving it took a swipe from the edge to bring the bars back
+and then a press on Back. A swipe down (64 dp or more, longer than it is wide) now does what Back does: it
+hides the card when it is shown, otherwise it closes the viewer, back to the grid or to the details panel that
+opened it. A swipe is read by its longer axis, so a slanted sideways swipe still steps. Rejected: closing at
+once even with the card shown (a swipe down over the card reads as putting the card away, and Back does the
+same); a swipe up to show the card (a tap already toggles it, and the D-pad's Down shows it, so the two
+directions would read the other way round); the picture following the finger while dragging (more code for a
+gesture that already works without it).
+
 ## 2026-11-11 — Settings: the nudity filter is a radio group, strictest first
 
 **Settings → Catalog → Nudity** was one row showing the filter in force, whose press moved to the next value

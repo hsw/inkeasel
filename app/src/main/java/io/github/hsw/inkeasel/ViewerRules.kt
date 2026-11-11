@@ -4,6 +4,7 @@ import io.github.hsw.inkeasel.catalog.CommonsUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -130,6 +131,20 @@ enum class ViewerOverlay {
     fun onTap(): ViewerOverlay = if (this == CARD) HIDDEN else CARD
 }
 
+/** What a swipe on the viewer does ([ViewerRules.swipe]). */
+enum class ViewerSwipe {
+    NONE,
+
+    /** To the next picture of the list. */
+    NEXT,
+
+    /** To the previous picture. */
+    PREVIOUS,
+
+    /** What Back does: hides the card, or closes the viewer when none is shown. */
+    BACK,
+}
+
 /**
  * Which rendition the viewer loads and what it says about the picture. Pure: a window size in pixels in, a URL
  * (or a local file path) and [Txt] parts out.
@@ -183,12 +198,17 @@ object ViewerRules {
         CatalogError.of(e) ?: e.userText(R.string.viewer_failed)
 
     /**
-     * A horizontal swipe of [dx] px: -1 (to the previous picture, a swipe to the right) or +1 (to the next, a
-     * swipe to the left) once it is longer than [threshold] px; 0 for a shorter one.
+     * What a swipe of [dx] × [dy] px does, by its longer axis, once that is at least [threshold] px:
+     * sideways the next picture (a swipe to the left) or the previous one (to the right); down what Back does;
+     * up nothing.
      */
-    fun swipe(dx: Float, threshold: Float): Int = when {
-        dx <= -threshold -> 1
-        dx >= threshold -> -1
-        else -> 0
+    fun swipe(dx: Float, dy: Float, threshold: Float): ViewerSwipe = when {
+        abs(dx) >= abs(dy) -> when {
+            dx <= -threshold -> ViewerSwipe.NEXT
+            dx >= threshold -> ViewerSwipe.PREVIOUS
+            else -> ViewerSwipe.NONE
+        }
+        dy >= threshold -> ViewerSwipe.BACK
+        else -> ViewerSwipe.NONE
     }
 }
