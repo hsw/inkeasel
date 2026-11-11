@@ -21,9 +21,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
- * The viewer's touch gestures: a swipe sideways steps, a swipe down does what Back does (hides the card, or
- * closes), a swipe up does nothing, a tap toggles the card. A local picture whose file does not exist keeps Coil
- * off the network.
+ * The viewer's touch gestures: a swipe sideways steps, a swipe down (or a short flick down) does what Back
+ * does (hides the card, or closes), a short slow pull springs back, a swipe up does nothing, a tap toggles the
+ * card. A local picture whose file does not exist keeps Coil off the network.
  */
 @RunWith(RobolectricTestRunner::class)
 class FullscreenViewerUiTest {
@@ -55,6 +55,18 @@ class FullscreenViewerUiTest {
     fun swipeDown_closes() {
         show()
         picture().performTouchInput { swipeDown() }
+        compose.waitForIdle()
+        assertEquals(1, closes)
+    }
+
+    @Test
+    fun shortSlowPull_springsBack_shortFlick_closes() {
+        show()
+        // 64 dp is 64 px at Robolectric's default density; the flick needs 800 px/s
+        picture().performTouchInput { swipeDown(startY = centerY, endY = centerY + 30f, durationMillis = 1_000) }
+        compose.waitForIdle()
+        assertEquals(0, closes)
+        picture().performTouchInput { swipeDown(startY = centerY, endY = centerY + 60f, durationMillis = 50) }
         compose.waitForIdle()
         assertEquals(1, closes)
     }

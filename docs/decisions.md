@@ -3,16 +3,21 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
-## 2026-11-11 — Viewer: a swipe down does what Back does
+## 2026-11-11 — Viewer: a swipe down does what Back does, and the picture follows it
 
 On a phone the viewer hides the system bars, so leaving it took a swipe from the edge to bring the bars back
-and then a press on Back. A swipe down (64 dp or more, longer than it is wide) now does what Back does: it
-hides the card when it is shown, otherwise it closes the viewer, back to the grid or to the details panel that
-opened it. A swipe is read by its longer axis, so a slanted sideways swipe still steps. Rejected: closing at
-once even with the card shown (a swipe down over the card reads as putting the card away, and Back does the
-same); a swipe up to show the card (a tap already toggles it, and the D-pad's Down shows it, so the two
-directions would read the other way round); the picture following the finger while dragging (more code for a
-gesture that already works without it).
+and then a press on Back. A swipe down now does what Back does: it hides the card when it is shown, otherwise it
+closes the viewer, back to the grid or to the details panel that opened it. A swipe is read by its longer axis,
+so a slanted sideways swipe still steps, and it counts when it is 64 dp long or, shorter, let go at 800 dp/s or
+more the same way (a flick: the usual way to page on a phone; distance alone missed it). Without the card the
+picture follows the finger down, shrinking while the black fades so the grid shows through; let go short of a
+swipe it springs back, past it it slides on out and the viewer closes. That feedback tells whether the swipe
+will close and lets it be taken back halfway. Rejected: closing at once even with the card shown (a swipe down
+over the card reads as putting the card away, and Back does the same); a swipe up to show the card (a tap
+already toggles it, and the D-pad's Down shows it, so the two directions would read the other way round);
+distance alone with no feedback (the first version: a short flick did nothing, and nothing moved until the
+viewer was gone). Sideways the picture still changes at once: its neighbour in the Catalog is read from the
+database only when the step is taken, so a slide that follows the finger needs the neighbours read ahead.
 
 ## 2026-11-11 — Settings: the nudity filter is a radio group, strictest first
 

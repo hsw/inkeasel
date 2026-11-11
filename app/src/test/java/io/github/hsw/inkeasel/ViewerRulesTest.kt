@@ -108,15 +108,37 @@ class ViewerRulesTest {
     }
 
     @Test
-    fun swipe_pastTheThreshold_byItsLongerAxis() {
-        assertEquals(ViewerSwipe.NEXT, ViewerRules.swipe(-200f, 0f, 100f)) // to the left: the next picture
-        assertEquals(ViewerSwipe.PREVIOUS, ViewerRules.swipe(150f, 40f, 100f))
-        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(-60f, 0f, 100f))
-        assertEquals(ViewerSwipe.BACK, ViewerRules.swipe(30f, 150f, 100f)) // down: what Back does
-        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(0f, 60f, 100f))
-        assertEquals(ViewerSwipe.NONE, ViewerRules.swipe(0f, -200f, 100f)) // up: nothing
-        assertEquals(ViewerSwipe.NEXT, ViewerRules.swipe(-150f, 120f, 100f)) // diagonal: the longer axis
-        assertEquals(ViewerSwipe.BACK, ViewerRules.swipe(-120f, 150f, 100f))
+    fun swipe_pastTheDistance_byItsLongerAxis() {
+        fun swipe(dx: Float, dy: Float) = ViewerRules.swipe(dx, dy, 0f, 0f, 100f, 1000f)
+        assertEquals(ViewerSwipe.NEXT, swipe(-200f, 0f)) // to the left: the next picture
+        assertEquals(ViewerSwipe.PREVIOUS, swipe(150f, 40f))
+        assertEquals(ViewerSwipe.NONE, swipe(-60f, 0f))
+        assertEquals(ViewerSwipe.BACK, swipe(30f, 150f)) // down: what Back does
+        assertEquals(ViewerSwipe.NONE, swipe(0f, 60f))
+        assertEquals(ViewerSwipe.NONE, swipe(0f, -200f)) // up: nothing
+        assertEquals(ViewerSwipe.NEXT, swipe(-150f, 120f)) // slanted: the longer axis
+        assertEquals(ViewerSwipe.BACK, swipe(-120f, 150f))
+    }
+
+    @Test
+    fun swipe_shortButFlicked_countsOnlyTheSameWay() {
+        fun swipe(dx: Float, dy: Float, vx: Float, vy: Float) = ViewerRules.swipe(dx, dy, vx, vy, 100f, 1000f)
+        assertEquals(ViewerSwipe.BACK, swipe(0f, 30f, 0f, 1500f))
+        assertEquals(ViewerSwipe.NONE, swipe(0f, 30f, 0f, 500f)) // short and slow
+        assertEquals(ViewerSwipe.NONE, swipe(0f, 30f, 0f, -1500f)) // let go moving back up
+        assertEquals(ViewerSwipe.NONE, swipe(0f, -30f, 0f, -1500f)) // a flick up
+        assertEquals(ViewerSwipe.NEXT, swipe(-30f, 0f, -1500f, 0f))
+        assertEquals(ViewerSwipe.PREVIOUS, swipe(30f, 5f, 1500f, 0f))
+        assertEquals(ViewerSwipe.NONE, swipe(30f, 5f, -1500f, 0f))
+    }
+
+    @Test
+    fun pullProgress_isTheShareOfTheHeight() {
+        assertEquals(0f, ViewerRules.pullProgress(0f, 1000f))
+        assertEquals(0.25f, ViewerRules.pullProgress(250f, 1000f))
+        assertEquals(1f, ViewerRules.pullProgress(1500f, 1000f))
+        assertEquals(0f, ViewerRules.pullProgress(-20f, 1000f))
+        assertEquals(0f, ViewerRules.pullProgress(50f, 0f)) // not laid out yet
     }
 
     @Test

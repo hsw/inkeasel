@@ -251,7 +251,8 @@ the title and "n / N", the details panel's lines (`PictureRows`: artist, date, c
 image credit where the licence asks for one, …; they scroll when long), why the full image did not load, and
 **Send to frame**, focused (with no frame chosen, a note that none is, instead). Up, Back or a tap hides the
 card (a swipe down does what Back does: hides the card, or closes the viewer; `ViewerRules.swipe` reads a swipe
-by its longer axis, 64 dp or more; a swipe up does nothing); Left and Right go on stepping with it shown, and it shows the new picture. Back without the card returns
+by its longer axis, 64 dp or a flick of 800 dp/s; a swipe up does nothing; without the card the picture follows
+the finger down, shrinks and fades the black, `ViewerRules.pullProgress`, and springs back when let go short); Left and Right go on stepping with it shown, and it shows the new picture. Back without the card returns
 to the grid when a press opened the view (`viewerByPress`), to the details panel of the picture on screen when
 the panel did.
 

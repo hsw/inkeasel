@@ -198,17 +198,28 @@ object ViewerRules {
         CatalogError.of(e) ?: e.userText(R.string.viewer_failed)
 
     /**
-     * What a swipe of [dx] × [dy] px does, by its longer axis, once that is at least [threshold] px:
-     * sideways the next picture (a swipe to the left) or the previous one (to the right); down what Back does;
-     * up nothing.
+     * What a swipe of [dx] × [dy] px, let go at [vx] × [vy] px/s, does, by its longer axis: sideways the next
+     * picture (a swipe to the left) or the previous one (to the right); down what Back does; up nothing. It
+     * counts once it is at least [distance] px long or, short, is let go at [speed] px/s or more the same way
+     * (a flick).
      */
-    fun swipe(dx: Float, dy: Float, threshold: Float): ViewerSwipe = when {
-        abs(dx) >= abs(dy) -> when {
-            dx <= -threshold -> ViewerSwipe.NEXT
-            dx >= threshold -> ViewerSwipe.PREVIOUS
+    fun swipe(dx: Float, dy: Float, vx: Float, vy: Float, distance: Float, speed: Float): ViewerSwipe {
+        fun counts(d: Float, v: Float) = d > 0 && (d >= distance || v >= speed)
+        return when {
+            abs(dx) >= abs(dy) -> when {
+                counts(-dx, -vx) -> ViewerSwipe.NEXT
+                counts(dx, vx) -> ViewerSwipe.PREVIOUS
+                else -> ViewerSwipe.NONE
+            }
+            counts(dy, vy) -> ViewerSwipe.BACK
             else -> ViewerSwipe.NONE
         }
-        dy >= threshold -> ViewerSwipe.BACK
-        else -> ViewerSwipe.NONE
     }
+
+    /**
+     * How far a picture pulled down by [pull] px in a window [height] px high has gone, 0 to 1: the viewer
+     * shrinks it and fades its black by this much, so the grid shows through.
+     */
+    fun pullProgress(pull: Float, height: Float): Float =
+        if (height <= 0f) 0f else (pull / height).coerceIn(0f, 1f)
 }

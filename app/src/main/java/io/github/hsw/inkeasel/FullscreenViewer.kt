@@ -1,11 +1,15 @@
 package io.github.hsw.inkeasel
 
 import android.util.Log
-import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,23 +32,27 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -66,7 +74,9 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import coil.size.Precision
 import coil.size.Scale
+import kotlinx.coroutines.launch
 import java.io.File
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -87,7 +97,8 @@ private val SYSTEM_KEYS = setOf(Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Ke
  * that none is. Up or Back (a tap) hides it; Left/Right go on stepping under it. A CENTER press the viewer
  * handles itself (the one that shows the card, or one still held when the viewer opens) never also presses the
  * card's button ([HeldCenter]). Back without the card closes ([onClose]) in one press; a swipe down does what
- * Back does ([ViewerSwipe.BACK]). The screen is not kept
+ * Back does ([ViewerSwipe.BACK]). Without the card the picture follows the finger down, shrinking while its
+ * black fades so the grid shows through ([ViewerRules.pullProgress]); let go short of a swipe it springs back. The screen is not kept
  * on: a still picture lets the screen saver start as usual.
  */
 @Composable
@@ -117,11 +128,16 @@ fun FullscreenViewer(
             // the card's button takes the focus while it is shown; the picture itself the rest of the time
             runCatching { if (overlay == ViewerOverlay.CARD && selected != null) send.requestFocus() else root.requestFocus() }
         }
-        val swipeMin = with(LocalDensity.current) { 64.dp.toPx() }
+        val density = LocalDensity.current
+        val swipeMin = with(density) { 64.dp.toPx() }
+        val flickMin = with(density) { 800.dp.toPx() } // per second
+        val scope = rememberCoroutineScope()
+        // how far a swipe down has pulled the picture, in px: it follows the finger while the card is hidden
+        val pull = remember { Animatable(0f) }
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .background(Color.Black)
+                .drawBehind { drawRect(Color.Black, alpha = 1f - ViewerRules.pullProgress(pull.value, size.height)) }
                 .onPreviewKeyEvent { e ->
                     val down = e.type == KeyEventType.KeyDown
                     when {
@@ -161,27 +177,56 @@ fun FullscreenViewer(
                 .pointerInput(Unit) { detectTapGestures(onTap = { overlay = overlay.onTap() }) }
                 .pointerInput(Unit) {
                     var drag = Offset.Zero
+                    val tracker = VelocityTracker()
+                    val springBack = { scope.launch { pull.animateTo(0f, spring()) } }
                     detectDragGestures(
-                        onDragStart = { drag = Offset.Zero },
+                        onDragStart = {
+                            drag = Offset.Zero
+                            tracker.resetTracking()
+                        },
                         onDragEnd = {
-                            when (ViewerRules.swipe(drag.x, drag.y, swipeMin)) {
-                                ViewerSwipe.NEXT -> currentStep(1)
-                                ViewerSwipe.PREVIOUS -> currentStep(-1)
-                                ViewerSwipe.BACK -> back()
-                                ViewerSwipe.NONE -> Unit
+                            val v = tracker.calculateVelocity()
+                            val swipe = ViewerRules.swipe(drag.x, drag.y, v.x, v.y, swipeMin, flickMin)
+                            if (swipe == ViewerSwipe.BACK && overlay == ViewerOverlay.HIDDEN) {
+                                // the picture goes on down out of the window, then the viewer closes
+                                scope.launch {
+                                    pull.animateTo(size.height.toFloat(), tween(150))
+                                    currentClose()
+                                }
+                            } else {
+                                springBack()
+                                when (swipe) {
+                                    ViewerSwipe.NEXT -> currentStep(1)
+                                    ViewerSwipe.PREVIOUS -> currentStep(-1)
+                                    ViewerSwipe.BACK -> back()
+                                    ViewerSwipe.NONE -> Unit
+                                }
                             }
                         },
-                        onDragCancel = { drag = Offset.Zero },
+                        onDragCancel = { springBack() },
                     ) { change, amount ->
                         change.consume()
                         drag += amount
+                        tracker.addPosition(change.uptimeMillis, change.position)
+                        // only a swipe that goes more down than sideways pulls the picture
+                        val down = if (overlay == ViewerOverlay.HIDDEN && drag.y > abs(drag.x)) drag.y else 0f
+                        scope.launch { pull.snapTo(down) }
                     }
                 },
         ) {
             val w = constraints.maxWidth
             val h = constraints.maxHeight
             var failure by remember(p.id) { mutableStateOf<Txt?>(null) }
-            key(p.id) { FittedPicture(p, w, h) { failure = it } }
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    translationY = pull.value
+                    val scale = 1f - 0.3f * ViewerRules.pullProgress(pull.value, size.height)
+                    scaleX = scale
+                    scaleY = scale
+                },
+            ) {
+                key(p.id) { FittedPicture(p, w, h) { failure = it } }
+            }
             if (overlay == ViewerOverlay.CARD) PictureCardOverlay(p, state, selected, failure, send, onSend)
         }
     }
