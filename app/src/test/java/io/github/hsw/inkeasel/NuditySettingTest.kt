@@ -31,13 +31,45 @@ class NuditySettingTest {
         }
     }
 
+    private val hideNudes = NudityRow(NudityFilter.HIDE_NUDES, Txt(R.string.settings_nudity_hide_nudes), marked = false)
+    private val hideExplicit = NudityRow(NudityFilter.HIDE_EXPLICIT, Txt(R.string.settings_nudity_hide_explicit), marked = false)
+    private val showAll = NudityRow(NudityFilter.SHOW_ALL, Txt(R.string.settings_nudity_show_all), marked = false)
+
     @Test
-    fun next_cyclesFromTheDefaultThroughAllThree() {
-        val seen = generateSequence(NudityFilter.DEFAULT, NuditySetting::next).take(4).toList()
+    fun rows_strictestFirst_theChoiceMarked() {
         assertEquals(
-            listOf(NudityFilter.HIDE_EXPLICIT, NudityFilter.HIDE_NUDES, NudityFilter.SHOW_ALL, NudityFilter.HIDE_EXPLICIT),
-            seen,
+            listOf(hideNudes, hideExplicit.copy(marked = true), showAll),
+            NuditySetting.rows(NudityFilter.HIDE_EXPLICIT, locked = false),
         )
+        assertEquals(
+            listOf(hideNudes.copy(marked = true), hideExplicit, showAll),
+            NuditySetting.rows(NudityFilter.HIDE_NUDES, locked = false),
+        )
+        assertEquals(
+            listOf(hideNudes, hideExplicit, showAll.copy(marked = true)),
+            NuditySetting.rows(NudityFilter.SHOW_ALL, locked = false),
+        )
+    }
+
+    @Test
+    fun rows_locked_markTheLocksValue_whateverTheChoice() {
+        for (choice in NudityFilter.entries) {
+            assertEquals(
+                choice.name,
+                listOf(hideNudes.copy(marked = true), hideExplicit, showAll),
+                NuditySetting.rows(choice, locked = true),
+            )
+        }
+    }
+
+    @Test
+    fun rows_eachValueOnce_exactlyOneMarked() {
+        for (locked in listOf(false, true)) for (choice in NudityFilter.entries) {
+            val rows = NuditySetting.rows(choice, locked)
+            assertEquals(NudityFilter.entries.toSet(), rows.map { it.filter }.toSet())
+            assertEquals(3, rows.size)
+            assertEquals(1, rows.count { it.marked })
+        }
     }
 
     @Test

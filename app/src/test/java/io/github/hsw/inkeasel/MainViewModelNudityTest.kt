@@ -1,6 +1,7 @@
 package io.github.hsw.inkeasel
 
 import android.app.Application
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
@@ -15,8 +16,11 @@ import io.github.hsw.inkeasel.catalog.NudityFilter
 import io.github.hsw.inkeasel.catalog.NudityLevel
 import io.github.hsw.inkeasel.catalog.PictureEntity
 import kotlin.coroutines.ContinuationInterceptor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainCoroutineDispatcher
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.junit.After
@@ -470,14 +474,14 @@ class MainViewModelNudityTest {
     fun anExplicitCard_passesOnlyWhenTheChoiceShowsAll() {
         val explicit = picture.copy(id = "wd:Q0-explicit", nudity = NudityLevel.EXPLICIT.ordinal)
         assertEquals(false, runBlocking { vm.allowed(explicit) }) // the default hides explicit works
-        vm.pressNudity() // hide all nudes
+        vm.chooseNudity(NudityFilter.HIDE_NUDES)
         assertEquals(false, runBlocking { vm.allowed(explicit) })
-        vm.pressNudity() // show all
+        vm.chooseNudity(NudityFilter.SHOW_ALL)
         assertEquals(true, runBlocking { vm.allowed(explicit) })
         vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
         opened()
         assertEquals(explicit.id, vm.viewer?.picture?.id)
-        vm.pressNudity() // back to the default: the viewer closes, and the card no longer opens it
+        vm.chooseNudity(NudityFilter.HIDE_EXPLICIT) // back to the default: the viewer closes, and the card no longer opens it
         assertNull(vm.viewer)
         vm.openViewer(explicit, catalogPicture = { error("no step expected") }, byPress = true)
         opened()
@@ -493,25 +497,52 @@ class MainViewModelNudityTest {
         assertEquals(NudityFilter.HIDE_NUDES.nudityBelow, store.nudityBelow.value)
     }
 
+    /** The values [CatalogStore.nudityBelow] takes while [block] runs, the current one first. */
+    private fun boundsDuring(block: () -> Unit): List<Int> {
+        val seen = mutableListOf<Int>()
+        // unconfined: each new value reaches the collector at once, so none is conflated away
+        val job = CoroutineScope(Dispatchers.Unconfined).launch { store.nudityBelow.collect { seen += it } }
+        try {
+            block()
+        } finally {
+            job.cancel()
+        }
+        return seen
+    }
+
     @Test
-    fun aPressWhileLocked_changesNothing() {
+    fun aChoiceWhileLocked_changesNothing() {
         restricted(true)
         vm.readNudityLock()
-        vm.pressNudity()
+        val seen = boundsDuring {
+            for (f in NudityFilter.entries) vm.chooseNudity(f)
+        }
+        assertEquals(listOf(NudityFilter.HIDE_NUDES.nudityBelow), seen)
         assertEquals(NudityFilter.HIDE_EXPLICIT, vm.nudityChoice)
         assertEquals(NudityFilter.HIDE_EXPLICIT, CatalogFilterStore(app).nudity)
         assertEquals(NudityFilter.HIDE_NUDES.nudityBelow, store.nudityBelow.value)
     }
 
     @Test
-    fun aPressCyclesTheChoice_savesIt_andPutsItInForce() {
-        val seen = mutableListOf<NudityFilter>()
-        repeat(3) {
-            vm.pressNudity()
-            assertEquals(vm.nudityChoice.nudityBelow, store.nudityBelow.value)
-            assertEquals(vm.nudityChoice, CatalogFilterStore(app).nudity)
-            seen += vm.nudityChoice
+    fun aChoice_isSaved_andPutInForceOnce_withNoOtherValueOnTheWay() {
+        // every move between the three, each straight to its value (a cycling row went from "hide all nudity"
+        // to "hide explicit works" through "show all")
+        val moves = listOf(NudityFilter.HIDE_NUDES, NudityFilter.HIDE_EXPLICIT, NudityFilter.SHOW_ALL, NudityFilter.HIDE_NUDES, NudityFilter.SHOW_ALL, NudityFilter.HIDE_EXPLICIT)
+        for (to in moves) {
+            val from = vm.nudityChoice
+            val seen = boundsDuring { vm.chooseNudity(to) }
+            assertEquals("$from -> $to", listOf(from.nudityBelow, to.nudityBelow), seen)
+            assertEquals(to, vm.nudityChoice)
+            assertEquals(to, CatalogFilterStore(app).nudity)
         }
-        assertEquals(listOf(NudityFilter.HIDE_NUDES, NudityFilter.SHOW_ALL, NudityFilter.HIDE_EXPLICIT), seen)
+    }
+
+    @Test
+    fun theChoiceAlreadyMade_isANoOp() {
+        openCatalogViewer()
+        val seen = boundsDuring { vm.chooseNudity(NudityFilter.DEFAULT) }
+        assertEquals(listOf(NudityFilter.DEFAULT.nudityBelow), seen)
+        assertNotNull(vm.viewer) // nothing re-applied: the Catalog viewer stays
+        assertEquals(false, app.getSharedPreferences("catalog", Context.MODE_PRIVATE).contains("nudity"))
     }
 }

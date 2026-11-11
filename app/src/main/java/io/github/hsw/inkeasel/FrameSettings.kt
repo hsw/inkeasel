@@ -110,9 +110,9 @@ fun FrameSettingsDialog(
     poster: Boolean,
     access: Boolean,
     pending: Boolean,
-    nudity: NudityFilter,
+    nudityChoice: NudityFilter,
     nudityLock: NudityLock?,
-    onNudity: () -> Unit,
+    onNudity: (NudityFilter) -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     probing: String?,
@@ -133,7 +133,7 @@ fun FrameSettingsDialog(
                     poster = poster,
                     access = access,
                     pending = pending,
-                    nudity = nudity,
+                    nudityChoice = nudityChoice,
                     nudityLock = nudityLock,
                     onNudity = onNudity,
                     onPoster = onPoster,
@@ -180,9 +180,9 @@ private fun FrameSettings(
     poster: Boolean,
     access: Boolean,
     pending: Boolean,
-    nudity: NudityFilter,
+    nudityChoice: NudityFilter,
     nudityLock: NudityLock?,
-    onNudity: () -> Unit,
+    onNudity: (NudityFilter) -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     sidePadding: Int,
@@ -250,7 +250,7 @@ private fun FrameSettings(
         poster = poster,
         access = access,
         pending = pending,
-        nudity = nudity,
+        nudityChoice = nudityChoice,
         nudityLock = nudityLock,
         onNudity = onNudity,
         onPoster = onPoster,
@@ -284,9 +284,9 @@ internal fun FrameSettingsContent(
     poster: Boolean,
     access: Boolean,
     pending: Boolean,
-    nudity: NudityFilter,
+    nudityChoice: NudityFilter,
     nudityLock: NudityLock?,
-    onNudity: () -> Unit,
+    onNudity: (NudityFilter) -> Unit,
     onPoster: () -> PosterSwitch.Press,
     onDisclosureConfirmed: () -> Unit,
     sidePadding: Int,
@@ -427,36 +427,48 @@ internal fun FrameSettingsContent(
             }
         }
         Spacer(Modifier.height(32.dp))
-        CatalogSection(nudity, nudityLock, onNudity)
+        CatalogSection(nudityChoice, nudityLock, onNudity)
         Spacer(Modifier.height(32.dp))
         FeaturesSection(ble, poster, access, pending, onPoster, onDisclosureConfirmed)
     }
 }
 
 /**
- * "Catalog": the nudity filter ([NuditySetting]). The row shows the filter in force ([nudity]); a press (OK or a
- * tap) calls [onNudity] (`MainViewModel.pressNudity`), which moves to the next value and applies it at once.
- * Under the value, where the marks come from and that some works may be unmarked. While the device locks the
- * filter ([lock]) the row is disabled (still focusable, so the D-pad reaches its text) and says why.
+ * "Catalog": the nudity filter ([NuditySetting]) as a radio group under a "Nudity" header, one row per value from
+ * the strictest to showing all; the mark is on the filter in force ([NuditySetting.rows] of the user's [choice]
+ * and the [lock]). A press on a row (OK or a tap) calls [onNudity] with its value (`MainViewModel.chooseNudity`),
+ * which saves it and applies it at once, with no other value on the way. While the device locks the filter the
+ * rows are disabled (still focusable, so the D-pad reaches them), a press does nothing, and the marked row says
+ * why. After the group, where the marks come from and that some works may be unmarked.
  */
 @Composable
-private fun CatalogSection(nudity: NudityFilter, lock: NudityLock?, onNudity: () -> Unit) {
-    val press: () -> Unit = { if (lock == null) onNudity() }
+private fun CatalogSection(choice: NudityFilter, lock: NudityLock?, onNudity: (NudityFilter) -> Unit) {
+    val enabled = lock == null // one flag for the whole group
     Text(stringResource(R.string.settings_catalog), style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(8.dp))
-    ListItem(
-        selected = false,
-        onClick = press,
-        enabled = lock == null,
-        modifier = Modifier.onTap(press),
-        headlineContent = { Text(stringResource(R.string.settings_nudity)) },
-        supportingContent = {
-            Column {
-                Text(NuditySetting.valueText(nudity).text(), style = MaterialTheme.typography.bodyMedium)
-                lock?.let { Text(it.reason.text(), style = MaterialTheme.typography.bodyMedium) }
-                Text(stringResource(R.string.settings_nudity_about), style = MaterialTheme.typography.bodyMedium)
-            }
-        },
+    Text(stringResource(R.string.settings_nudity), style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(8.dp))
+    Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in NuditySetting.rows(choice, locked = lock != null)) key(row.filter) {
+            val press: () -> Unit = { if (enabled) onNudity(row.filter) }
+            val reason = lock?.takeIf { row.marked }?.reason
+            ListItem(
+                selected = row.marked,
+                onClick = press,
+                enabled = enabled,
+                modifier = Modifier.semantics { role = Role.RadioButton }.onTap(press),
+                colors = radioRowColors(),
+                leadingContent = { RadioButton(selected = row.marked, onClick = null, enabled = enabled) },
+                headlineContent = { Text(row.text.text()) },
+                supportingContent = reason?.let { { Text(it.text(), style = MaterialTheme.typography.bodyMedium) } },
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+    Text(
+        stringResource(R.string.settings_nudity_about),
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -700,10 +712,7 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, reading: Boolean, modif
         selected = isSelected,
         onClick = { onClick(reason) },
         modifier = modifier.semantics { role = Role.RadioButton }.onTap { onClick(reason) },
-        colors = ListItemDefaults.colors(
-            selectedContainerColor = Color.Transparent,
-            selectedContentColor = MaterialTheme.colorScheme.onSurface,
-        ),
+        colors = radioRowColors(),
         leadingContent = { RadioButton(selected = isSelected, onClick = null) },
         headlineContent = { Text(f.name) },
         supportingContent = {
@@ -729,6 +738,16 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, reading: Boolean, modif
         trailingContent = { if (reason != null) Text(stringResource(R.string.frame_unavailable), color = dim) },
     )
 }
+
+/**
+ * A radio row's colours (a frame, a nudity value): selected looks like unselected, so only the leading
+ * `RadioButton` shows the mark and the focus highlight stays the one strong colour (docs/decisions.md).
+ */
+@Composable
+private fun radioRowColors() = ListItemDefaults.colors(
+    selectedContainerColor = Color.Transparent,
+    selectedContentColor = MaterialTheme.colorScheme.onSurface,
+)
 
 /**
  * Registers [receiver] for the system broadcasts in [filter]. On Android 13+ it is not exported; before that it is

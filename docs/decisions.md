@@ -3,6 +3,22 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Settings: the nudity filter is a radio group, strictest first
+
+**Settings → Catalog → Nudity** was one row showing the filter in force, whose press moved to the next value
+(hide explicit → hide all nudity → show all → hide explicit). Going from "Hide all nudity" back to the default
+took two presses through "Show all", which put every explicit work in force on the Catalog for a moment (the
+grid re-paged, an open Catalog viewer closed), and the row never showed the other values. It is now a radio
+group under a "Nudity" header: one `ListItem` per value, ordered by strictness ("Hide all nudity", "Hide
+explicit works", "Show all"), each a radio row like a frame's (selected semantics, `Role.RadioButton`, the
+neutral selected colours, a leading `RadioButton` mark, `selectableGroup()`); a press chooses that value
+directly (`MainViewModel.chooseNudity`), and the marked one changes nothing. While the device locks the filter
+the mark is on the lock's value, the rows are disabled but focusable and the reason is the marked row's
+supporting text, so the D-pad reaches it. Rejected: the cycling row (passes through "Show all", shows one value
+at a time); the default first (the order would then follow no rule; strictness reads as a scale); a dropdown or
+a second screen (one more step on a TV for three values). Supersedes the press of "The Catalog's nudity filter is
+a setting with three values; the device can lock it" (2026-11-09).
+
 ## 2026-11-11 — Settings: one row style, no buttons inside rows
 
 In "Permissions and features" the Bluetooth row and the restricted-settings hint were a plain `Row` with the
@@ -282,7 +298,8 @@ password (PKCS12 ignores it, with a keytool warning).
 
 ## 2026-11-09 — The Catalog's nudity filter is a setting with three values; the device can lock it
 **Settings → Catalog → Nudity** chooses the filter: "Hide explicit works" (the default), "Hide all nudity"
-or "Show all"; a press (OK or a tap) moves to the next value in that order, and the choice is stored in plain
+or "Show all"; a press (OK or a tap) moves to the next value in that order (superseded by "Settings: the
+nudity filter is a radio group, strictest first", above), and the choice is stored in plain
 preferences (`CatalogFilterStore`, like the poster switch). The levels are those the catalog marks (explicit:
 genitals in focus, a sexual act or assault; nude: other nudity), from the release's `nsfw` field, the
 built-in list and Wikidata's nude genre; the row says that some works may not be marked (the live sources

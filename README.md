@@ -81,10 +81,10 @@ Up or Back hides it, and Back again returns to the list. On a touch screen a tap
 long press on a picture in the list shows its details with **Send to frame** and **View full screen**. The catalog comes with the app and updates itself at most once a week when
 the device is online. Titles and artists follow the device language.
 
-**Nudity filter.** By default the catalog hides explicit works. **Settings → Catalog → Nudity** switches
-between "Hide explicit works", "Hide all nudity" and "Show all". With the TV's parental controls on, or in a
-restricted profile, it is locked at "Hide all nudity". Works are marked from Wikidata and a hand-checked
-list, so some may not be marked.
+**Nudity filter.** By default the catalog hides explicit works. **Settings → Catalog → Nudity** lists the
+three choices, strictest first: "Hide all nudity", "Hide explicit works" and "Show all"; press the one you
+want. With the TV's parental controls on, or in a restricted profile, it is locked at "Hide all nudity". Works
+are marked from Wikidata and a hand-checked list, so some may not be marked.
 
 **My pictures.** Your own pictures on the device. On a phone or tablet, share a picture to InkEasel from the
 gallery or a file manager: it is saved here and sent to the frame. On a TV, copy pictures into the folder the

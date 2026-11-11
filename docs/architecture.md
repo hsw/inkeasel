@@ -38,7 +38,7 @@ App and screens:
   the viewer's own CENTER) kept from the dialog's buttons (pure)
 - `Touch.kt`: `Modifier.onTap` (tap, and tap plus long press), the touch twin of tv-material's D-pad clicks;
   `CENTER_KEYS`; `Modifier.dropHeldCenter` (applies `HeldCenter`)
-- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
+- `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity radio group) and
   "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access, the
   privacy policy row). A thin stateful wrapper (`FrameSettings`: the scanner, the Bluetooth state receiver, the
   scan error, whether location is switched off where the scan needs it (before Android 12; read on resume and
@@ -104,7 +104,7 @@ Catalog and network ([catalog.md](catalog.md)):
 - `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache
 - `SourceMapping.kt`: the live sources' JSON mapped to catalog rows (`LiveRow`) (pure)
 - `CatalogFilterStore.kt`, `NudityLockReader.kt`, `NuditySetting.kt`: the nudity filter as chosen, the device's
-  lock on it, and the row's rules (pure)
+  lock on it, and the radio rows' rules (pure)
 - `catalog/`: the painting catalog database (`CatalogDb`, `CatalogDao`), its owner `CatalogStore`, the release
   sync and import (`CatalogSync`, `CatalogSyncPlan`, `CatalogImport`, `CatalogRows`, `CatalogWriter`), the
   stored order (`CatalogRank`), the live sources' refresh (`LiveSources.kt`: `LiveRefresh`, `LiveSourceRows`),

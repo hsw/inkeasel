@@ -50,8 +50,9 @@ week later; the live sources a week after their last whole list.
 - `Images.kt`: Coil's image loader, once per process, with its 150 MB disk cache.
 - `CatalogFilterStore.kt`: the Catalog's nudity filter as chosen (prefs `catalog`); `NudityLockReader.kt`: the
   device's lock on it (TV parental controls, a restricted profile); `NuditySetting.kt`: the lock decision,
-  the press's next value and the row's texts (pure).
-- `MainViewModel` (in `MainActivity.kt`): the filter in force (`applyNudity`) and the stored-level gate
+  the radio rows (their order, texts and mark) (pure).
+- `MainViewModel` (in `MainActivity.kt`): the filter as chosen in the settings (`chooseNudity`), the filter in
+  force (`applyNudity`) and the stored-level gate
   (`allowed`, `whenAllowed`).
 - `tools/catalog-export.py`: the export; `tools/catalog-nsfw.txt`: the hand-kept nudity list.
 
@@ -353,12 +354,13 @@ Cleveland or Commons copy of a Wikidata painting is hidden as its duplicate what
 
 ### Setting and lock
 
-Below the frame list, **Settings → Catalog** has one row, **Nudity**, with the filter in force. A press (OK
-or a tap) moves to the next value in that order (hide explicit → hide all nudity → show all → hide explicit,
-`NuditySetting.next`) and applies it at once (prefs `catalog`, key `nudity`, the `NudityFilter` name; the
-default for a value it does not know, `CatalogFilterStore`); under the value the row says that works are
-marked from Wikidata and a hand-checked list and that some may not be marked (Cleveland and Commons rows
-never are).
+Below the frame list, **Settings → Catalog** has a **Nudity** radio group (`NuditySetting.rows`): one row per
+value, from the strictest, "Hide all nudity", "Hide explicit works", "Show all", with the radio mark on the
+filter in force. A press on a row (OK or a tap) chooses its value (`MainViewModel.chooseNudity`) and applies it
+at once, with no other value on the way (prefs `catalog`, key `nudity`, the `NudityFilter` name; the default
+for a value it does not know, `CatalogFilterStore`); a press on the marked row changes nothing. After the group
+the settings say that works are marked from Wikidata and a hand-checked list and that some may not be marked
+(Cleveland and Commons rows never are).
 
 The device can lock it at "Hide all nudity" (`NudityLockReader`, read at each `onStart` of the activity, so
 also on a return to the foreground, and when the settings open, since in a split screen the system settings
@@ -366,8 +368,9 @@ change it while the app stays started; never stored or sent): Android TV's paren
 (`TvInputManager.isParentalControlsEnabled()`; phones and tablets without `android.software.live_tv` have no
 such service), or a user that may not change accounts (`UserManager.DISALLOW_MODIFY_ACCOUNTS`, set for a
 restricted profile, and on some managed devices). Parental controls win as the more specific reason; a read
-that fails counts as off. The row then shows that value with the reason ("Locked by the TV's parental
-controls" or "Locked for this profile"), is disabled (the D-pad still reaches it) and a press does nothing;
+that fails counts as off. The mark is then on that value, whose row gives the reason ("Locked by the TV's
+parental controls" or "Locked for this profile"); the rows are disabled (the D-pad still reaches them) and a
+press does nothing;
 the stored choice comes back once the lock is off. Family Link and Google TV kids profiles have no public API
 and are not seen. In force is `NudityFilter.effective(choice, lock)`; `PRIVACY.md` says what the lock reads.
 The system log gets the filter in force and the lock's kind when it changes.

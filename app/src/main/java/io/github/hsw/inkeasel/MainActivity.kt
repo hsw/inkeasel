@@ -150,11 +150,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         applyNudity()
     }
 
-    /** "Catalog → Nudity" pressed: the next value ([NuditySetting.next]), saved and in force; nothing while locked. */
-    fun pressNudity() {
-        if (nudityLock != null) return
-        nudityChoice = NuditySetting.next(nudityChoice)
-        catalogFilter.nudity = nudityChoice
+    /**
+     * A "Catalog → Nudity" row pressed: [filter] becomes the choice, saved and in force at once, with no other value
+     * on the way. Nothing while locked, nor when it is the choice already.
+     */
+    fun chooseNudity(filter: NudityFilter) {
+        if (nudityLock != null || filter == nudityChoice) return
+        nudityChoice = filter
+        catalogFilter.nudity = filter
         applyNudity()
     }
 
@@ -983,9 +986,9 @@ fun App(
                         poster = vm.posterOn,
                         access = vm.listenerAccess,
                         pending = vm.posterPending,
-                        nudity = vm.nudityInForce,
+                        nudityChoice = vm.nudityChoice,
                         nudityLock = vm.nudityLock,
-                        onNudity = vm::pressNudity,
+                        onNudity = vm::chooseNudity,
                         onPoster = vm::pressPoster,
                         onDisclosureConfirmed = vm::confirmDisclosure,
                         probing = vm.probing,

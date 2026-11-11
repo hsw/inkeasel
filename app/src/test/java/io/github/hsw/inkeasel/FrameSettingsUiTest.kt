@@ -38,6 +38,7 @@ import androidx.compose.ui.test.pressKey
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.catalog.NudityFilter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
@@ -93,6 +94,9 @@ class FrameSettingsUiTest {
     private var scanError by mutableStateOf<Txt?>(null)
     private var scanRun by mutableStateOf(1)
     private var locationOff by mutableStateOf(false)
+    private var nudityChoice by mutableStateOf(NudityFilter.HIDE_EXPLICIT)
+    private var nudityLock by mutableStateOf<NudityLock?>(null)
+    private val nudityChosen = mutableListOf<NudityFilter>()
     private var bleRequests = 0
     private var ble = BleAccess(permitted = true, blocked = false, request = { bleRequests++ })
 
@@ -104,9 +108,9 @@ class FrameSettingsUiTest {
                 poster = false,
                 access = false,
                 pending = false,
-                nudity = NudityFilter.HIDE_NUDES,
-                nudityLock = null,
-                onNudity = {},
+                nudityChoice = nudityChoice,
+                nudityLock = nudityLock,
+                onNudity = { nudityChosen += it },
                 onPoster = { PosterSwitch.Press.TURN_ON },
                 onDisclosureConfirmed = {},
                 sidePadding = 48,
@@ -128,7 +132,10 @@ class FrameSettingsUiTest {
     /** A frame's row: the clickable node with its name (the header line "Selected: …" names it too). */
     private fun row(f: SeenFrame): SemanticsNodeInteraction = compose.onNode(hasText(f.name, substring = true) and hasClickAction())
     private fun SemanticsNodeInteraction.press(key: Key) = performKeyInput { pressKey(key) }
-    private fun nudityRow(): SemanticsNodeInteraction = compose.onNodeWithText(str(R.string.settings_nudity))
+    /** The radio row of a nudity value (by default the first, "Hide all nudity"). */
+    private fun nudityRow(f: NudityFilter = NudityFilter.HIDE_NUDES): SemanticsNodeInteraction =
+        compose.onNode(hasText(NuditySetting.valueText(f).resolve(app)) and radio)
+    private val radio = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
     private fun posterRow(): SemanticsNodeInteraction = compose.onNodeWithText(str(R.string.feature_poster))
 
     /** Presses Down on whatever has the focus until [to] has it (D-pad). */
@@ -151,7 +158,7 @@ class FrameSettingsUiTest {
     fun down_movesFromCloseIntoTheContent() { // D-pad
         show()
         close().press(Key.DirectionDown)
-        compose.onNodeWithText(str(R.string.settings_nudity)).assertIsFocused()
+        nudityRow().assertIsFocused()
     }
 
     @Test
@@ -223,9 +230,9 @@ class FrameSettingsUiTest {
                 poster = false,
                 access = false,
                 pending = false,
-                nudity = NudityFilter.HIDE_NUDES,
+                nudityChoice = NudityFilter.HIDE_EXPLICIT,
                 nudityLock = null,
-                onNudity = {},
+                onNudity = { nudityChosen += it },
                 onPoster = { PosterSwitch.Press.TURN_ON },
                 onDisclosureConfirmed = {},
                 probing = null,
@@ -544,8 +551,9 @@ class FrameSettingsUiTest {
         // unclipped: the column scrolls, and a row out of view has empty clipped bounds
         val lefts = rows.map { it.getUnclippedBoundsInRoot().left }
         assertEquals(List(rows.size) { lefts[0] }, lefts)
-        // and so do their headlines (a plain Row put its text at the container's edge)
-        val heads = listOf(R.string.settings_nudity, R.string.perm_bt, R.string.feature_poster, R.string.app_info, R.string.settings_privacy)
+        // and so do their headlines (a plain Row put its text at the container's edge); a nudity row's headline
+        // follows its radio mark
+        val heads = listOf(R.string.perm_bt, R.string.feature_poster, R.string.app_info, R.string.settings_privacy)
             .map { compose.onNodeWithText(str(it), useUnmergedTree = true).getUnclippedBoundsInRoot().left }
         assertEquals(List(heads.size) { heads[0] }, heads)
     }
@@ -630,5 +638,89 @@ class FrameSettingsUiTest {
         show() // no access screen resolves here: no restricted setting to tell
         compose.onAllNodesWithText(str(R.string.access_restricted)).assertCountEquals(0)
     }
-}
 
+    // The nudity filter as a radio group: one row per value, strictest first, the mark on the filter in force
+
+    private val strictestFirst = listOf(NudityFilter.HIDE_NUDES, NudityFilter.HIDE_EXPLICIT, NudityFilter.SHOW_ALL)
+
+    /** Asserts that the row of [marked] is the selected radio and the others are not. */
+    private fun assertMarked(marked: NudityFilter) {
+        for (f in strictestFirst) {
+            nudityRow(f).assert(radio)
+            if (f == marked) nudityRow(f).assertIsSelected() else nudityRow(f).assertIsNotSelected()
+        }
+    }
+
+    @Test
+    fun nudityRows_strictestFirst_underTheirHeader_theAboutTextAfter() { // no input
+        show()
+        val header = compose.onNodeWithText(str(R.string.settings_nudity)).getUnclippedBoundsInRoot()
+        val tops = strictestFirst.map { nudityRow(it).getUnclippedBoundsInRoot().top }
+        assertEquals(tops.sorted(), tops)
+        assertTrue(header.bottom <= tops[0])
+        val last = nudityRow(NudityFilter.SHOW_ALL).getUnclippedBoundsInRoot()
+        assertTrue(last.bottom <= compose.onNodeWithText(str(R.string.settings_nudity_about)).getUnclippedBoundsInRoot().top)
+    }
+
+    @Test
+    fun nudityRows_dpadCenter_choosesItsValue() { // D-pad
+        show()
+        close().press(Key.DirectionDown)
+        for (f in strictestFirst) {
+            moveDownTo(nudityRow(f))
+            nudityRow(f).press(Key.DirectionCenter)
+            compose.waitForIdle()
+        }
+        assertEquals(strictestFirst, nudityChosen)
+    }
+
+    @Test
+    fun nudityRows_tap_choosesItsValue() { // touch
+        show()
+        for (f in strictestFirst.reversed()) nudityRow(f).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(strictestFirst.reversed(), nudityChosen)
+    }
+
+    @Test
+    fun nudityMark_followsTheValue() { // no input
+        show()
+        assertMarked(NudityFilter.HIDE_EXPLICIT)
+        nudityChoice = NudityFilter.SHOW_ALL
+        compose.waitForIdle()
+        assertMarked(NudityFilter.SHOW_ALL)
+        nudityChoice = NudityFilter.HIDE_NUDES
+        compose.waitForIdle()
+        assertMarked(NudityFilter.HIDE_NUDES)
+        compose.onAllNodesWithText(str(R.string.settings_nudity_locked_tv)).assertCountEquals(0)
+    }
+
+    @Test
+    fun nudityLocked_marksTheLocksValue_andSaysWhyInThatRow() { // no input
+        nudityChoice = NudityFilter.SHOW_ALL // the stored choice stays, the lock's value is in force
+        nudityLock = NudityLock.PARENTAL_CONTROLS
+        show()
+        assertMarked(NudityFilter.HIDE_NUDES)
+        nudityRow(NudityFilter.HIDE_NUDES).assertTextContains(str(R.string.settings_nudity_locked_tv))
+        compose.onAllNodesWithText(str(R.string.settings_nudity_locked_tv)).assertCountEquals(1)
+        nudityLock = NudityLock.RESTRICTED_PROFILE
+        compose.waitForIdle()
+        nudityRow(NudityFilter.HIDE_NUDES).assertTextContains(str(R.string.settings_nudity_locked_profile))
+    }
+
+    @Test
+    fun nudityLocked_rowsAreFocusable_butAPressDoesNothing() { // D-pad and touch
+        nudityLock = NudityLock.RESTRICTED_PROFILE
+        show()
+        close().press(Key.DirectionDown)
+        for (f in strictestFirst) {
+            moveDownTo(nudityRow(f))
+            nudityRow(f).press(Key.DirectionCenter)
+            compose.waitForIdle()
+        }
+        for (f in strictestFirst) nudityRow(f).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(emptyList<NudityFilter>(), nudityChosen)
+        assertMarked(NudityFilter.HIDE_NUDES)
+    }
+}
