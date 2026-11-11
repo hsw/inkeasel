@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -50,10 +51,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -62,7 +67,9 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.tv.material3.Button
 import androidx.tv.material3.ListItem
+import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.RadioButton
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
@@ -318,7 +325,10 @@ internal fun FrameSettingsContent(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        probing?.let {
+        // the frame being read says so in its own row; while no row shows it (the list is hidden by a problem
+        // below), this line does, so a running read stays visible
+        val listHidden = !ble.permitted || btProblem != null || scanError != null
+        probing?.takeIf { name -> listHidden || frames.none { it.name == name } }?.let {
             Text(stringResource(R.string.frame_reading_panel, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
         }
         Spacer(Modifier.height(16.dp))
@@ -346,11 +356,12 @@ internal fun FrameSettingsContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (f in frames) key(f.name) {
                         FrameItem(
                             f,
                             isSelected = f.name == selected?.name,
+                            reading = f.name == probing,
                             modifier = if (f.name == target) Modifier.focusRequester(targetFocus) else Modifier,
                         ) { reason ->
                             if (reason == null) {
@@ -621,20 +632,29 @@ private fun blockedText(): String =
     Txt(R.string.perm_bt_blocked, Txt(R.string.app_name), BlePermissions.settingsName).text()
 
 /**
- * One frame of the scan. An unsupported one stays focusable, so the D-pad can reach it and its reason is
- * readable, but clicking it only toasts the reason ([onClick] gets it; `null` = it can be chosen). A
- * supported one in an unverified format says so under its properties and can still be chosen.
+ * One frame of the scan, as a radio row: the row itself is the radio (`ListItem(selected)`, which carries the
+ * selected state, plus the radio-button role), the leading [RadioButton] is only its mark. Its selected colours
+ * are the plain ones, so the chosen frame never looks focused; the mark alone tells it apart. An unsupported
+ * one stays focusable, so the D-pad can reach it and its reason is readable, but clicking it only toasts the
+ * reason ([onClick] gets it; `null` = it can be chosen). A supported one in an unverified format says so under
+ * its properties and can still be chosen. While the frame is being read before it is chosen ([reading], an
+ * OpenDisplay frame), its row says so.
  */
 @Composable
-private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onClick: (Txt?) -> Unit) {
+private fun FrameItem(f: SeenFrame, isSelected: Boolean, reading: Boolean, modifier: Modifier, onClick: (Txt?) -> Unit) {
     val reason = f.lookup?.reasonOrNull
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val sep = stringResource(R.string.list_separator)
     ListItem(
         selected = isSelected,
         onClick = { onClick(reason) },
-        modifier = modifier.onTap { onClick(reason) },
-        headlineContent = { Text(if (isSelected) stringResource(R.string.frame_item_selected, f.name) else f.name) },
+        modifier = modifier.semantics { role = Role.RadioButton }.onTap { onClick(reason) },
+        colors = ListItemDefaults.colors(
+            selectedContainerColor = Color.Transparent,
+            selectedContentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+        leadingContent = { RadioButton(selected = isSelected, onClick = null) },
+        headlineContent = { Text(f.name) },
         supportingContent = {
             Column {
                 Text(
@@ -649,6 +669,9 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, modifier: Modifier, onC
                 // a supported format never seen working on a real panel ([FrameFormat.verified])
                 if (f.lookup?.formatOrNull?.verified == false) {
                     Text(stringResource(R.string.frame_unverified), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+                }
+                if (reading) {
+                    Text(stringResource(R.string.frame_row_reading), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
                 }
             }
         },

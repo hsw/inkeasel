@@ -61,7 +61,7 @@
     <string name="frame_toast_reason">Рамка %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Рамка %1$s не поддерживается: %2$s</string>
     <string name="frame_reading_panel">Читаю параметры панели рамки %1$s… Она просыпается примерно раз в минуту.</string>
-    <string name="frame_item_selected">%1$s — выбрана</string>
+    <string name="frame_row_reading">Читаю параметры панели… Она просыпается примерно раз в минуту.</string>
     <string name="frame_no_advert">нет данных о рамке</string>
     <string name="frame_signal">сигнал %1$d дБм</string>
     <string name="frame_unsupported">не поддерживается: %1$s</string>

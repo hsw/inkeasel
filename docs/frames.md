@@ -139,24 +139,27 @@ choose whichever frame was found first, which may be a neighbour's.
   (OpenDisplay; `FrameScanner`, low-latency mode) and lists every frame heard, one entry per name (the name is
   the frame's identity; its MAC may change; a nameless advertisement is skipped), sorted by name and updated
   live: name, MAC, colour and panel type, resolution and rotation, battery, firmware, signal (RSSI) and safe
-  mode if set (e.g. "E6, panel TA · 1024×600, 0° · battery 100 % · firmware 21 · signal -60 dBm"). The chosen
-  frame is marked ("NM000001 — selected"). The scan stops when the screen closes or the app goes to the
-  background. With no frame heard yet it shows "Searching for frames…" and the hint "The frame must be nearby
-  and not connected to a phone." (before Android 12 also that the search needs location on); a scan error
-  shows "Frame search failed: BLE scan error (<code>)" and "Retry".
+  mode if set (e.g. "E6, panel TA · 1024×600, 0° · battery 100 % · firmware 21 · signal -60 dBm"). The list is
+  a radio group: every row has a radio mark in front of the name, filled on the chosen frame (the row's
+  selected state; its colours stay plain, so the mark is not mistaken for the focus). The scan stops when the
+  screen closes or the app goes to the background. With no frame heard yet it shows "Searching for frames…"
+  and the hint "The frame must be nearby and not connected to a phone." (before Android 12 also that the
+  search needs location on); a scan error shows "Frame search failed: BLE scan error (<code>)" and "Retry".
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
 - An OpenDisplay frame is listed with "OpenDisplay · battery 4.20 V" (from its advertisement) and is always
-  selectable: what it can show is known only once connected. Selecting it scans for the frame's name until it
-  next wakes up and advertises (up to 75 s; the screen says "Reading the panel of frame OD000001… It wakes
-  about once a minute."), connects at once and reads the display from its config (`OdClient.interrogate`). A
-  supported display saves the frame with it and closes the screen (with the "not verified on hardware" toast
-  where it applies); an unsupported one, or a failure (not heard, encryption on), toasts why ("Frame OD000001
-  is not supported: …", "Frame OD000001: …") and leaves the selection as it was. The newest choice wins:
-  selecting another frame while one is being read (a NowMean frame, or another OpenDisplay frame, which is
-  then read instead), **Close**, or the Bluetooth panel opening cancels the reading, and the cancelled read
-  chooses nothing; selecting the frame being read again changes nothing. While an upload to an OpenDisplay
-  frame runs, the reading waits for it to finish (one OpenDisplay connection at a time, see below).
+  selectable: what it can show is known only once connected. Selecting it scans for the frame's name until it next
+  wakes up and advertises (up to 75 s; the frame's own row says "Reading the panel… It wakes about once a minute."
+  and keeps the focus; while no row shows the frame, such as when a problem (Bluetooth off, a scan error) hides
+  the list, the line under the "Frame" title says "Reading the panel of frame OD000001… It wakes about once a
+  minute." instead), connects at once and reads the display from its config (`OdClient.interrogate`). A supported
+  display saves the frame with it and closes the screen (with the "not verified on hardware" toast where it
+  applies); an unsupported one, or a failure (not heard, encryption on), toasts why ("Frame OD000001 is not
+  supported: …", "Frame OD000001: …") and leaves the selection as it was. The newest choice wins: selecting
+  another frame while one is being read (a NowMean frame, or another OpenDisplay frame, which is then read
+  instead), **Close**, or the Bluetooth panel opening cancels the reading, and the cancelled read chooses nothing;
+  selecting the frame being read again changes nothing. While an upload to an OpenDisplay frame runs, the reading
+  waits for it to finish (one OpenDisplay connection at a time, see below).
 - Frames the app cannot draw on are listed with the reason ("not supported: …", in the error colour) and
   "unavailable", and cannot be chosen; they stay focusable so the D-pad reaches the reason, and a press only
   toasts it ("Frame NM000001 is not supported: …"). A supported frame whose format was never seen working on a

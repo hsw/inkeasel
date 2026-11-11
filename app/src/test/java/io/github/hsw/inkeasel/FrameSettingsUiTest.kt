@@ -8,13 +8,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
@@ -73,6 +82,9 @@ class FrameSettingsUiTest {
 
     private var frames by mutableStateOf(emptyList<SeenFrame>())
     private var selected by mutableStateOf<SelectedFrame?>(null)
+    private var probing by mutableStateOf<String?>(null)
+    private var btProblem by mutableStateOf<BtProblem?>(null)
+    private var scanError by mutableStateOf<Txt?>(null)
 
     private fun show() {
         compose.setContent {
@@ -88,10 +100,10 @@ class FrameSettingsUiTest {
                 onPoster = { PosterSwitch.Press.TURN_ON },
                 onDisclosureConfirmed = {},
                 sidePadding = 48,
-                probing = null,
+                probing = probing,
                 frames = frames,
-                scanError = null,
-                btProblem = null,
+                scanError = scanError,
+                btProblem = btProblem,
                 onRetry = {},
                 onSelect = { chosenFrames += it },
                 onCancel = { cancelled++ },
@@ -292,5 +304,85 @@ class FrameSettingsUiTest {
         frames = listOf(unsupported, supported) // a new frame ahead of it in the list
         compose.waitForIdle()
         row(supported).assertIsFocused()
+    }
+
+    // The chosen frame's radio mark and the panel reading in its row
+
+    @Test
+    fun chosenFrame_rowIsTheSelectedRadio_theOthersAreNot() { // no input
+        frames = listOf(supported, unsupported)
+        selected = chosen(supported)
+        show()
+        val radio = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
+        row(supported).assertIsSelected().assert(radio)
+        row(unsupported).assertIsNotSelected().assert(radio)
+        // the bare name: no "— selected" after it
+        compose.onNodeWithText(supported.name).assertExists()
+        // and the choice moved: the mark follows
+        selected = chosen(unsupported)
+        compose.waitForIdle()
+        row(supported).assertIsNotSelected()
+        row(unsupported).assertIsSelected()
+    }
+
+    @Test
+    fun noFrameChosen_noRowIsSelected() { // no input
+        frames = listOf(supported, unsupported)
+        show()
+        row(supported).assertIsNotSelected()
+        row(unsupported).assertIsNotSelected()
+    }
+
+    @Test
+    fun probedFrame_readingShowsInItsRow_andTheFocusStaysThere() { // D-pad
+        frames = listOf(supported, unsupported)
+        show()
+        moveDownTo(row(supported))
+        row(supported).press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(listOf(supported), chosenFrames)
+        probing = supported.name // the view model reads the panel before choosing it
+        compose.waitForIdle()
+        row(supported).assertTextContains(str(R.string.frame_row_reading)).assertIsFocused()
+        compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(1)
+        row(unsupported).assert(!hasText(str(R.string.frame_row_reading)))
+        compose.onAllNodesWithText(str(R.string.frame_reading_panel, supported.name)).assertCountEquals(0)
+    }
+
+    @Test
+    fun probing_bluetoothOff_theHeaderLineShowsIt() { // no input
+        frames = listOf(supported)
+        probing = supported.name
+        btProblem = BtProblem.OFF
+        show()
+        compose.onNodeWithText(str(R.string.frame_reading_panel, supported.name)).assertExists()
+        compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(0)
+        // Bluetooth back on: the list shows again, and the reading moves back into the row
+        btProblem = null
+        compose.waitForIdle()
+        compose.onAllNodesWithText(str(R.string.frame_reading_panel, supported.name)).assertCountEquals(0)
+        row(supported).assertTextContains(str(R.string.frame_row_reading))
+    }
+
+    @Test
+    fun probing_frameNotInTheList_theHeaderLineShowsIt() { // no input
+        frames = listOf(supported)
+        probing = "OD000001" // chosen from an earlier scan, not heard by this one yet
+        show()
+        compose.onNodeWithText(str(R.string.frame_reading_panel, "OD000001")).assertExists()
+        compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(0)
+        frames = emptyList()
+        compose.waitForIdle()
+        compose.onNodeWithText(str(R.string.frame_reading_panel, "OD000001")).assertExists()
+    }
+
+    @Test
+    fun probing_scanError_theHeaderLineShowsIt() { // no input
+        frames = listOf(supported)
+        probing = supported.name
+        scanError = Txt(R.string.reason_no_caps)
+        show()
+        compose.onNodeWithText(str(R.string.frame_reading_panel, supported.name)).assertExists()
+        compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(0)
     }
 }

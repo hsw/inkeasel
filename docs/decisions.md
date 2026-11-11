@@ -3,6 +3,20 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Settings: the chosen frame is a radio row
+
+The chosen frame was told apart by "— selected" after its name and by tv-material's selected container colour,
+which on a TV reads much like the focus highlight. Each frame row now leads with a `RadioButton` mark, the
+headline is the bare name, and the row is the radio: `ListItem(selected = chosen)`, whose selectable surface
+carries the selected state in the semantics, plus `Role.RadioButton`, inside a `selectableGroup()`. Its
+selected colours are set to the unselected ones, so only the mark shows the choice and the focus highlight
+stays the one strong colour. The `RadioButton` gets `onClick = null` (in tv-material 1.0.0 it then has no
+semantics of its own) and is only drawn. Rejected: explicit `Modifier.semantics { selected }` on a
+`ListItem(selected = false)` (two sources for one state, the surface's `false` would compete with it); the
+default selected colour (two highlights to tell apart at TV distance). While an OpenDisplay frame is read, the
+reading text moved from a line under the "Frame" title into the frame's own row, where the focus is; the line
+stays only for when no row shows the frame (the list hidden by a problem).
+
 ## 2026-11-11 — Settings: Close keeps the focus until the chosen frame shows up
 
 The settings moved the focus to the first frame found when none was chosen yet (and to it after 1.5 s when the

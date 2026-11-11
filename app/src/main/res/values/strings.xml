@@ -76,9 +76,11 @@
     <!-- %1$s the frame's name, %2$s why (a lowercase reason) -->
     <string name="frame_toast_reason">Frame %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Frame %1$s is not supported: %2$s</string>
-    <!-- under the frame list while an OpenDisplay frame is read before it is chosen: %1$s the frame's name -->
+    <!-- under the "Frame" title while an OpenDisplay frame is read before it is chosen and no frame row shows it
+         (the list is hidden by a problem): %1$s the frame's name -->
     <string name="frame_reading_panel">Reading the panel of frame %1$s… It wakes about once a minute.</string>
-    <string name="frame_item_selected">%1$s — selected</string>
+    <!-- in the row of the OpenDisplay frame being read before it is chosen -->
+    <string name="frame_row_reading">Reading the panel… It wakes about once a minute.</string>
     <string name="frame_no_advert">no frame data</string>
     <string name="frame_signal">signal %1$d dBm</string>
     <string name="frame_unsupported">not supported: %1$s</string>
