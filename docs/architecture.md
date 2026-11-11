@@ -328,15 +328,24 @@ app shows what it needs: a new permission or feature switch gets a row there (a 
 into the settings' "Catalog" group instead, see [catalog.md](catalog.md); the "Frame" section:
 [frames.md](frames.md)).
 
-- **Bluetooth**: whether the permission is granted, with "Allow" (or "App info", see [frames.md](frames.md)) when
-  it is not. One permission set everywhere (`BlePermissions`): Nearby devices (`BLUETOOTH_SCAN` +
-  `BLUETOOTH_CONNECT`) on Android 12+, fine location before.
+Every row there is a tv-material `ListItem` (one row style, one left edge) with no button inside it: the row's
+press does what a button would, and a trailing label names it where the press acts. One focus stop per row is
+what the D-pad expects of a TV list. A button stands on its own line only outside a row ("Grant access", the
+disclosure's buttons).
+
+- **Bluetooth**: whether the permission is granted as the row's text. While it is not, a trailing label says
+  "Allow" (or "App info", see [frames.md](frames.md)) and a press asks (`BleAccess.request`); once granted the
+  row only shows it, and stays focusable like any row. One permission set everywhere (`BlePermissions`): Nearby
+  devices (`BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`) on Android 12+, fine location before.
 - **Now-playing poster**: an on/off switch and the state of the notification access it needs (on only while the
   poster is wanted, prefs `features`, key `poster`, **and** the access is granted; `PosterSwitch`). Without the
   access a press opens the disclosure panel first; "Continue" remembers the wish (key `posterPending`) and the
   poster is switched on when the app comes back with the access granted (`PosterSwitch.enableOnResume`). Whoever
   changes `FeatureStore.posterEnabled` calls `FrameController.onPosterSwitched()`. The panel's text, the per-device
   paths (`ListenerAccessUi`) and the low-RAM case: [now-playing.md](now-playing.md#the-poster-switch-in-the-settings).
+- **App info** (phones and tablets, Android 13+, an app not installed by a store, the access missing;
+  `ListenerAccessUi.restrictedHint`): how to allow the restricted setting, and a press opens App info. It opens
+  only that screen and is not a way into the grant, which stays behind the disclosure.
 - The states are read again whenever the app comes back to the front, e.g. from a system screen.
 - **Privacy policy**: the address of [PRIVACY.md](../PRIVACY.md) as text (`settings_privacy_url`). A tap opens it
   in the browser on a phone or tablet; on TV the row only shows it (a TV app must not launch a browser), and stays

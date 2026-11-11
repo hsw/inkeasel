@@ -72,6 +72,10 @@ e-paper frame over BLE. Primary target: Android TV (D-pad); also runs on tablets
   row.
 - `BlePermissions` is the one BLE permission set; a new permission or feature switch gets a row in "Permissions
   and features", a Catalog content setting goes into the settings' "Catalog" group.
+- Every settings row is a tv-material `ListItem` with no button inside: its press does the action. Settings UI
+  changes are tested on the stateless `FrameSettingsContent` (Compose UI tests under Robolectric, D-pad and
+  touch; `docs/building.md`); no `ui-test-manifest`. An older Android version is tested through a flag the
+  wrapper passes, never `@Config(sdk)` (another ~200 MB download).
 - Notification access is asked for only through the disclosure panel (`PosterSwitch.press` → `DISCLOSE`); any
   new way into the grant goes through it too.
 - Whoever changes `FeatureStore.posterEnabled` calls `FrameController.onPosterSwitched()`. Nothing may follow

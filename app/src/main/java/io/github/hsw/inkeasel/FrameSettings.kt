@@ -461,8 +461,10 @@ private fun CatalogSection(nudity: NudityFilter, lock: NudityLock?, onNudity: ()
 }
 
 /**
- * "Permissions and features": the Bluetooth permission (status, and "Allow" or, once the system no longer
- * asks, "App info"; the frame list above names the path to it then), and the now-playing [poster] switch
+ * "Permissions and features", one `ListItem` per row with no button inside a row (a row's press does what a
+ * button would): the Bluetooth permission (its status; while it is missing a trailing label names what a press
+ * does, "Allow" or, once the system no longer asks, "App info", and the press calls [BleAccess.request]; the
+ * frame list above names the path to it then), and the now-playing [poster] switch
  * with the notification [access] it needs ([ListenerAccessUi]). The switch shows the poster as it works
  * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`). Without the access, the switch
  * and "Grant access" both open the [Disclosure] first; its "Continue" calls [onDisclosureConfirmed]
@@ -471,6 +473,8 @@ private fun CatalogSection(nudity: NudityFilter, lock: NudityLock?, onNudity: ()
  * disclosure; the menu path also under the switch once the poster waits for the access ([pending]), so no way
  * to the grant appears before the disclosure. Where the poster cannot work at all
  * ([ListenerAccessUi.unavailable]) the row says so, the switch is disabled and nothing leads to the grant.
+ * With [ListenerAccessUi.restrictedHint] an "App info" row says how to allow the restricted setting and opens
+ * App info on a press (only that screen: it is not a way into the grant).
  * The access itself is read again by the view model on resume, the screens here. Last, the [PrivacyRow].
  *
  * Every text sits in a row with something focusable, so the D-pad scrolls it into view.
@@ -530,12 +534,19 @@ private fun FeaturesSection(
 
     Text(stringResource(R.string.settings_features), style = MaterialTheme.typography.titleLarge)
     Spacer(Modifier.height(8.dp))
-    SectionRow(
-        title = stringResource(R.string.perm_bt),
-        // the frame list above already says how to allow it (and where, once the system no longer asks)
-        text = stringResource(if (ble.permitted) R.string.perm_bt_granted else R.string.perm_bt_missing),
-        action = if (ble.permitted) null else stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
-        onAction = ble.request,
+    // the frame list above already says how to allow it (and where, once the system no longer asks); granted, the
+    // row only shows it, and stays focusable so the D-pad moves through it as through any row
+    val pressBt: () -> Unit = { if (!ble.permitted) ble.request() }
+    val btAction = if (ble.permitted) null else stringResource(if (ble.blocked) R.string.app_info else R.string.allow)
+    ListItem(
+        selected = false,
+        onClick = pressBt,
+        modifier = Modifier.onTap(pressBt),
+        headlineContent = { Text(stringResource(R.string.perm_bt)) },
+        supportingContent = {
+            Text(stringResource(if (ble.permitted) R.string.perm_bt_granted else R.string.perm_bt_missing), style = MaterialTheme.typography.bodyMedium)
+        },
+        trailingContent = btAction?.let { action -> { Text(action, maxLines = 1) } },
     )
     Spacer(Modifier.height(8.dp))
     ListItem(
@@ -566,7 +577,15 @@ private fun FeaturesSection(
     }
     if (ui.restrictedHint) {
         Spacer(Modifier.height(8.dp))
-        SectionRow(title = null, text = stringResource(R.string.access_restricted), action = stringResource(R.string.app_info), onAction = { openAppInfo(ctx) })
+        // only App info, where the restricted setting is allowed; the grant itself stays behind the disclosure
+        val pressAppInfo: () -> Unit = { openAppInfo(ctx) }
+        ListItem(
+            selected = false,
+            onClick = pressAppInfo,
+            modifier = Modifier.onTap(pressAppInfo),
+            headlineContent = { Text(stringResource(R.string.app_info)) },
+            supportingContent = { Text(stringResource(R.string.access_restricted), style = MaterialTheme.typography.bodyMedium) },
+        )
     }
     Spacer(Modifier.height(8.dp))
     PrivacyRow(tv)
@@ -654,21 +673,6 @@ private fun Disclosure(ui: ListenerAccessUi, onContinue: () -> Unit, onCancel: (
             Button(onClick = onCancel, modifier = (if (adb) Modifier.focusRequester(focus) else Modifier).onTap(onCancel)) {
                 Text(stringResource(R.string.access_disclosure_cancel))
             }
-        }
-    }
-}
-
-/** A compact row: an optional [title] over a dim [text] on the left, an optional button on the right. */
-@Composable
-private fun SectionRow(title: String?, text: String, action: String?, onAction: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            title?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        if (action != null) {
-            Spacer(Modifier.width(16.dp))
-            Button(onClick = onAction, modifier = Modifier.onTap(onAction)) { Text(action, maxLines = 1) }
         }
     }
 }

@@ -3,6 +3,19 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Settings: one row style, no buttons inside rows
+
+In "Permissions and features" the Bluetooth row and the restricted-settings hint were a plain `Row` with the
+text at the container's edge and a `Button` ("Allow", "App info") at the right, while the poster and privacy
+rows were tv-material `ListItem`s with their text inset: two left edges in one section, and a row with a button
+was two focus stops, where the D-pad reached the button only from the side. Now every row is a `ListItem` and
+its press does what the button did: the Bluetooth row asks for the permission (or opens App info once blocked)
+while it is missing, a trailing label naming the action, and only shows the state once granted (still
+focusable, so the D-pad moves through it); the hint is an "App info" row with the hint as its text, which opens
+App info and nothing else (the grant stays behind the disclosure). Rejected: keeping the buttons and only
+aligning the text (still two focus stops, and a D-pad user has to look for the button sideways); a disabled
+Bluetooth row once granted (dimmed, it would read as if Bluetooth were unavailable).
+
 ## 2026-11-11 — Settings: the search says when it has heard nothing; the location hint follows the switch
 
 The frame list said "Searching for frames…" for as long as the scan ran, so a frame out of range, connected to a

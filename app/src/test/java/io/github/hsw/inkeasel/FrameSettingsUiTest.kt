@@ -2,6 +2,10 @@ package io.github.hsw.inkeasel
 
 import android.app.Application
 import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.ResolveInfo
+import android.provider.Settings
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
@@ -19,6 +23,8 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isFocused
@@ -87,12 +93,14 @@ class FrameSettingsUiTest {
     private var scanError by mutableStateOf<Txt?>(null)
     private var scanRun by mutableStateOf(1)
     private var locationOff by mutableStateOf(false)
+    private var bleRequests = 0
+    private var ble = BleAccess(permitted = true, blocked = false, request = { bleRequests++ })
 
     private fun show() {
         compose.setContent {
             FrameSettingsContent(
                 selected = selected,
-                ble = BleAccess(permitted = true, blocked = false, request = {}),
+                ble = ble,
                 poster = false,
                 access = false,
                 pending = false,
@@ -508,4 +516,119 @@ class FrameSettingsUiTest {
         searchingShows()
         compose.onAllNodesWithText(str(R.string.scanning_hint_location)).assertCountEquals(0)
     }
+
+    // One row style in "Permissions and features": every row a ListItem, no button inside a row
+
+    private fun bluetoothRow(): SemanticsNodeInteraction = compose.onNode(hasText(str(R.string.perm_bt)) and hasClickAction())
+    private fun appInfoRow(): SemanticsNodeInteraction =
+        compose.onNode(hasText(str(R.string.access_restricted)) and hasClickAction())
+    private fun privacyRow(): SemanticsNodeInteraction = compose.onNodeWithText(str(R.string.settings_privacy))
+
+    /** The restricted-settings row shows on a phone (Android 13+) for a sideloaded app with the app's own access screen. */
+    private fun withAccessDetailScreen() {
+        val info = ResolveInfo().apply {
+            activityInfo = ActivityInfo().apply {
+                packageName = "com.android.settings"
+                name = "com.android.settings.NotificationAccessDetails"
+            }
+        }
+        shadowOf(app.packageManager).addResolveInfoForIntent(Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS), info)
+    }
+
+    @Test
+    fun featureRows_shareOneLeftEdge() { // no input
+        withAccessDetailScreen()
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        val rows = listOf(nudityRow(), bluetoothRow(), posterRow(), appInfoRow(), privacyRow())
+        // unclipped: the column scrolls, and a row out of view has empty clipped bounds
+        val lefts = rows.map { it.getUnclippedBoundsInRoot().left }
+        assertEquals(List(rows.size) { lefts[0] }, lefts)
+        // and so do their headlines (a plain Row put its text at the container's edge)
+        val heads = listOf(R.string.settings_nudity, R.string.perm_bt, R.string.feature_poster, R.string.app_info, R.string.settings_privacy)
+            .map { compose.onNodeWithText(str(it), useUnmergedTree = true).getUnclippedBoundsInRoot().left }
+        assertEquals(List(heads.size) { heads[0] }, heads)
+    }
+
+    @Test
+    fun bluetoothRow_hasNoButtonInside_andNamesTheAction() { // no input
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        bluetoothRow().assertTextContains(str(R.string.perm_bt_missing)).assertTextContains(str(R.string.allow))
+        compose.onAllNodes(hasAnyAncestor(hasText(str(R.string.perm_bt)) and hasClickAction()) and hasClickAction(), useUnmergedTree = true)
+            .assertCountEquals(0)
+    }
+
+    @Test
+    fun bluetoothRow_missing_dpadCenter_asks() { // D-pad
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        moveDownTo(bluetoothRow())
+        bluetoothRow().press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(1, bleRequests)
+    }
+
+    @Test
+    fun bluetoothRow_missing_tap_asks() { // touch
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        bluetoothRow().performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(1, bleRequests)
+    }
+
+    @Test
+    fun bluetoothRow_blocked_namesAppInfo_andItsPressCallsTheRequest() { // D-pad and touch
+        ble = BleAccess(permitted = false, blocked = true, request = { bleRequests++ }) // the request opens App info then
+        show()
+        bluetoothRow().assertTextContains(str(R.string.app_info))
+        moveDownTo(bluetoothRow())
+        bluetoothRow().press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(1, bleRequests)
+        bluetoothRow().performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(2, bleRequests)
+    }
+
+    @Test
+    fun bluetoothRow_granted_staysFocusable_andAPressDoesNothing() { // D-pad and touch
+        show()
+        bluetoothRow().assertTextContains(str(R.string.perm_bt_granted))
+        bluetoothRow().assert(!hasText(str(R.string.allow))).assert(!hasText(str(R.string.app_info)))
+        moveDownTo(bluetoothRow())
+        bluetoothRow().press(Key.DirectionCenter)
+        compose.waitForIdle()
+        bluetoothRow().performClick()
+        compose.waitForIdle()
+        assertEquals(0, bleRequests)
+        bluetoothRow().press(Key.DirectionDown) // the D-pad moves on from it as from any row
+        compose.waitForIdle()
+        posterRow().assertIsFocused()
+    }
+
+    @Test
+    fun restrictedRow_pressOpensAppInfoOnly() { // D-pad and touch
+        withAccessDetailScreen()
+        show()
+        moveDownTo(appInfoRow())
+        appInfoRow().press(Key.DirectionCenter)
+        compose.waitForIdle()
+        val started = shadowOf(app).nextStartedActivity
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, started.action)
+        assertEquals("package:${app.packageName}", started.dataString)
+        appInfoRow().performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, shadowOf(app).nextStartedActivity.action)
+        assertEquals(null, shadowOf(app).nextStartedActivity) // nothing else: no grant screen, no disclosure step skipped
+        compose.onAllNodesWithText(str(R.string.access_disclosure_title)).assertCountEquals(0)
+    }
+
+    @Test
+    fun restrictedRow_hiddenWithoutTheRestriction() { // no input
+        show() // no access screen resolves here: no restricted setting to tell
+        compose.onAllNodesWithText(str(R.string.access_restricted)).assertCountEquals(0)
+    }
 }
+

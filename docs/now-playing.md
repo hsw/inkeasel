@@ -76,8 +76,8 @@ themselves in `ListenerAccess`: the detail screen, the list screen, or the adb h
 
 - phones and tablets: "Continue" opens the system screen: the app's own page (Android 11+), else the list of
   apps. On Android 13+ an app installed from an APK file (not from a store) may find the switch there greyed
-  out ("Restricted setting"): the section says so and offers App info, where ⋮ → "Allow restricted settings"
-  unlocks it (not shown when a store installed the app);
+  out ("Restricted setting"): an "App info" row says so and opens App info on a press, where ⋮ → "Allow
+  restricted settings" unlocks it (not shown when a store installed the app);
 - Android TV 12+: the list of apps (InkEasel is in it, one D-pad press grants it), plus the menu path as a
   fallback, in the panel and then under the switch: "If the remote cannot reach the switch there, go back and
   use Settings → Apps → Special app access → Notification access → InkEasel" (on Google TV 14 the D-pad cannot

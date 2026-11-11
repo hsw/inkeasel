@@ -140,6 +140,9 @@ Time-driven behaviour runs on `compose.mainClock`. A node is found by its text f
   the cache, and another one downloads about 200 MB, locally and in CI. The stateful wrapper decides what
   depends on the version (e.g. `locationOff`: location switched off where the scan needs it, before Android 12)
   and passes it to the content, so a test passes the flag.
+- **Rows that depend on the device**: what the code asks the package manager for is made to resolve with
+  `shadowOf(app.packageManager).addResolveInfoForIntent(intent, info)` (e.g. the notification-access detail
+  screen, which makes the restricted-settings "App info" row show).
 
 ## Emulators and devices
 
