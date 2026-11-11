@@ -142,6 +142,14 @@ class ViewerRulesTest {
     }
 
     @Test
+    fun pullBlack_goneByAThirdOfTheHeight() {
+        assertEquals(1f, ViewerRules.pullBlack(0f, 900f))
+        assertEquals(0.5f, ViewerRules.pullBlack(150f, 900f), 1e-6f)
+        assertEquals(0f, ViewerRules.pullBlack(300f, 900f), 1e-6f)
+        assertEquals(0f, ViewerRules.pullBlack(450f, 900f)) // half the screen: the grid shows plain
+    }
+
+    @Test
     fun listSteps_stopAtTheEnds() = runTest {
         val items = listOf(commons(1, 1).copy(id = "a"), commons(1, 1).copy(id = "b"), commons(1, 1).copy(id = "c"))
         val steps = ListSteps(items)

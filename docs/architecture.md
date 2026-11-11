@@ -252,7 +252,8 @@ image credit where the licence asks for one, …; they scroll when long), why th
 **Send to frame**, focused (with no frame chosen, a note that none is, instead). Up, Back or a tap hides the
 card (a swipe down does what Back does: hides the card, or closes the viewer; `ViewerRules.swipe` reads a swipe
 by its longer axis, 64 dp or a flick of 800 dp/s; a swipe up does nothing; without the card the picture follows
-the finger down, shrinks and fades the black, `ViewerRules.pullProgress`, and springs back when let go short); Left and Right go on stepping with it shown, and it shows the new picture. Back without the card returns
+the finger down, shrinks and fades the black, gone by a third of the height, `ViewerRules.pullBlack`; the dialog
+dims nothing behind it, so the grid shows; and springs back when let go short); Left and Right go on stepping with it shown, and it shows the new picture. Back without the card returns
 to the grid when a press opened the view (`viewerByPress`), to the details panel of the picture on screen when
 the panel did.
 

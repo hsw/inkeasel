@@ -10,7 +10,8 @@ and then a press on Back. A swipe down now does what Back does: it hides the car
 closes the viewer, back to the grid or to the details panel that opened it. A swipe is read by its longer axis,
 so a slanted sideways swipe still steps, and it counts when it is 64 dp long or, shorter, let go at 800 dp/s or
 more the same way (a flick: the usual way to page on a phone; distance alone missed it). Without the card the
-picture follows the finger down, shrinking while the black fades so the grid shows through; let go short of a
+picture follows the finger down, shrinking while the black fades (gone by a third of the screen; the dialog's
+own dim of what is behind it is off, or the grid stayed near black) so the grid shows through; let go short of a
 swipe it springs back, past it it slides on out and the viewer closes. That feedback tells whether the swipe
 will close and lets it be taken back halfway. Rejected: closing at once even with the card shown (a swipe down
 over the card reads as putting the card away, and Back does the same); a swipe up to show the card (a tap

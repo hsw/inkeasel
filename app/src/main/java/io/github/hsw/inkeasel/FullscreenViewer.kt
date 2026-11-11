@@ -98,8 +98,8 @@ private val SYSTEM_KEYS = setOf(Key.VolumeUp, Key.VolumeDown, Key.VolumeMute, Ke
  * handles itself (the one that shows the card, or one still held when the viewer opens) never also presses the
  * card's button ([HeldCenter]). Back without the card closes ([onClose]) in one press; a swipe down does what
  * Back does ([ViewerSwipe.BACK]). Without the card the picture follows the finger down, shrinking while its
- * black fades so the grid shows through ([ViewerRules.pullProgress]); let go short of a swipe it springs back. The screen is not kept
- * on: a still picture lets the screen saver start as usual.
+ * black fades so the grid shows through ([ViewerRules.pullProgress], [ViewerRules.pullBlack]); let go short of
+ * a swipe it springs back. The screen is not kept on: a still picture lets the screen saver start as usual.
  */
 @Composable
 fun FullscreenViewer(
@@ -137,7 +137,7 @@ fun FullscreenViewer(
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .drawBehind { drawRect(Color.Black, alpha = 1f - ViewerRules.pullProgress(pull.value, size.height)) }
+                .drawBehind { drawRect(Color.Black, alpha = ViewerRules.pullBlack(pull.value, size.height)) }
                 .onPreviewKeyEvent { e ->
                     val down = e.type == KeyEventType.KeyDown
                     when {
@@ -344,13 +344,15 @@ private fun PictureCardOverlay(
 
 /**
  * The viewer's dialog window hides the status and navigation bars (a swipe from an edge shows them for a
- * moment); they return with the activity's window when the viewer closes. A TV has none.
+ * moment); they return with the activity's window when the viewer closes. A TV has none. It does not dim what
+ * is behind it (a dialog's default): the viewer draws its own black, and a picture pulled down shows the grid.
  */
 @Composable
 private fun ImmersiveDialogWindow() {
     val view = LocalView.current
     val window = (view.parent as? DialogWindowProvider)?.window ?: return
     DisposableEffect(window) {
+        window.setDimAmount(0f)
         WindowCompat.getInsetsController(window, view).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             hide(WindowInsetsCompat.Type.systemBars())

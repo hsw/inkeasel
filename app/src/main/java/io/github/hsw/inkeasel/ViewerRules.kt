@@ -222,4 +222,10 @@ object ViewerRules {
      */
     fun pullProgress(pull: Float, height: Float): Float =
         if (height <= 0f) 0f else (pull / height).coerceIn(0f, 1f)
+
+    /**
+     * How opaque the viewer's black is with the picture pulled down by [pull] px in a window [height] px high:
+     * 1 at rest, gone by a third of the height, so the grid is plain to see well before the swipe ends.
+     */
+    fun pullBlack(pull: Float, height: Float): Float = 1f - (3f * pullProgress(pull, height)).coerceAtMost(1f)
 }
