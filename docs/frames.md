@@ -135,16 +135,23 @@ choose whichever frame was found first, which may be a neighbour's.
 
 - Under the "Frame" title: the chosen frame ("Selected: NM000001 · <address> · seen <time>", plus "not
   verified on hardware" for an unverified format), or "No frame selected: choose one to send pictures."
-- While it is open, the app scans for BLE service `0xFFBB` (NowMean) and manufacturer data `0x2446`
-  (OpenDisplay; `FrameScanner`, low-latency mode) and lists every frame heard, one entry per name (the name is
-  the frame's identity; its MAC may change; a nameless advertisement is skipped), sorted by name and updated
-  live: name, MAC, colour and panel type, resolution and rotation, battery, firmware, signal (RSSI) and safe
-  mode if set (e.g. "E6, panel TA · 1024×600, 0° · battery 100 % · firmware 21 · signal -60 dBm"). The list is
-  a radio group: every row has a radio mark in front of the name, filled on the chosen frame (the row's
-  selected state; its colours stay plain, so the mark is not mistaken for the focus). The scan stops when the
-  screen closes or the app goes to the background. With no frame heard yet it shows "Searching for frames…"
-  and the hint "The frame must be nearby and not connected to a phone." (before Android 12 also that the
-  search needs location on); a scan error shows "Frame search failed: BLE scan error (<code>)" and "Retry".
+- While it is open, the app scans for BLE service `0xFFBB` (NowMean) and manufacturer data `0x2446` (OpenDisplay;
+  `FrameScanner`, low-latency mode) and lists every frame heard, one entry per name (the name is the frame's
+  identity; its MAC may change; a nameless advertisement is skipped), sorted by name and updated live: name, MAC,
+  colour and panel type, resolution and rotation, battery, firmware, signal (RSSI) and safe mode if set (e.g. "E6,
+  panel TA · 1024×600, 0° · battery 100 % · firmware 21 · signal -60 dBm"). The list is a radio group: every row
+  has a radio mark in front of the name, filled on the chosen frame (the row's selected state; its colours stay
+  plain, so the mark is not mistaken for the focus). The scan stops when the screen closes or the app goes to the
+  background. With no frame heard yet it shows "Searching for frames…" and the hint "The frame must be nearby and
+  not connected to a phone." (before Android 12, while location is switched off, also that the search needs
+  location on). After 25 s of a running scan with no frame heard (`ScanStatus.NONE_SEEN_MS`) it says "No frames
+  seen yet" instead, with what to check: the frame nearby and not connected to a phone (and, before Android 12
+  while it is off, location on), and that an OpenDisplay frame wakes only about once a minute, its button at once.
+  The search goes on, and the first frame heard replaces the text with the list. Every scan start (the first,
+  "Retry", Bluetooth back on, the permission granted, the app back in the foreground) begins the 25 s again; while
+  a problem hides the list nothing is counted. Each variant is one whole string (`ScanStatus`, used only here; the
+  upload error keeps `BlePermissions.scanHint`). A scan error shows "Frame search failed: BLE scan error (<code>)"
+  and "Retry".
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
 - An OpenDisplay frame is listed with "OpenDisplay · battery 4.20 V" (from its advertisement) and is always
@@ -168,7 +175,11 @@ choose whichever frame was found first, which may be a neighbour's.
 - Without Bluetooth permission the screen asks for it ("Allow"; on Android 11 and older its text names the
   location permission, which the system dialog asks for, and why a Bluetooth search needs it); with Bluetooth
   off it says so and offers the system Bluetooth settings. Before Android 12 the scan also needs location on,
-  and only there does the hint under the search say so (above). Once the system no longer shows its dialog ("Don't
+  and only there, and only while location is off, does the hint under the search say so (above). The settings
+  read only whether location is switched on (`LocationManagerCompat.isLocationEnabled`, never where the device
+  is), while they are open: when they open, at every resume and on `LocationManager.MODE_CHANGED_ACTION` (a
+  receiver for that system broadcast; it only re-reads the switch), so switching location on in the quick settings
+  updates the hint at once. Android 12 and newer count as on. The answer is not stored. Once the system no longer shows its dialog ("Don't
   allow" twice, or "don't ask again"), "Allow" would silently do nothing, so the button becomes "App info"
   and the text names the path: Settings → Apps → InkEasel → Permissions → Nearby devices (Location on
   Android 11 and older). The grant is picked up when the app comes back. A dialog closed without an answer

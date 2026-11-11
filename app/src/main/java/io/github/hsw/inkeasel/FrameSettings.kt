@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -63,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.tv.material3.Button
@@ -74,6 +76,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import io.github.hsw.inkeasel.catalog.NudityFilter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
 private const val TAG = "FrameSettings"
@@ -166,7 +169,8 @@ internal fun EdgeToEdgeDialogWindow() {
 
 /**
  * The stateful part of the settings: the [FrameScanner] and what it reports (the frames seen, a scan error),
- * the Bluetooth state (followed live), and the retry counter. Everything shown is drawn by
+ * the Bluetooth state (followed live), whether location is switched off where the scan needs it (before Android
+ * 12, followed live) and the count of scan starts (`scanRun`). Everything shown is drawn by
  * [FrameSettingsContent], which the UI tests drive with fake frames and states.
  */
 @Composable
@@ -191,7 +195,9 @@ private fun FrameSettings(
     var frames by remember { mutableStateOf(emptyList<SeenFrame>()) }
     var scanError by remember { mutableStateOf<Txt?>(null) }
     var btProblem by remember { mutableStateOf(scanner.unavailable()) }
-    var scanRun by remember { mutableIntStateOf(0) } // bumped by "Retry" to restart the scan
+    // bumped at every scan start: the first, "Retry", Bluetooth back on, the permission granted, the app back in
+    // the foreground; the content's "No frames seen yet" timer starts again with it
+    var scanRun by remember { mutableIntStateOf(0) }
 
     // Bluetooth switched on or off while the screen is open: start or drop the scan accordingly
     DisposableEffect(scanner) {
@@ -200,13 +206,36 @@ private fun FrameSettings(
                 btProblem = scanner.unavailable()
             }
         }
-        val f = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
-        if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(r, f, Context.RECEIVER_NOT_EXPORTED) else ctx.registerReceiver(r, f)
+        registerSystemReceiver(ctx, r, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         onDispose { ctx.unregisterReceiver(r) }
     }
 
+    // Before Android 12 a BLE scan also needs location switched on, and the search hint says so only while it is
+    // off. Only that switch is read (never where the device is), while the screen is open: at the start, on every
+    // resume and when it changes; it is not stored. Android 12 and newer never count it as off.
+    val locationMatters = Build.VERSION.SDK_INT < 31
+    fun readLocationOff() = locationMatters && !locationEnabled(ctx)
+    var locationOff by remember { mutableStateOf(readLocationOff()) }
+    if (locationMatters) {
+        LifecycleResumeEffect(Unit) {
+            locationOff = readLocationOff()
+            onPauseOrDispose {}
+        }
+        DisposableEffect(Unit) {
+            val r = object : BroadcastReceiver() {
+                override fun onReceive(c: Context, i: Intent) {
+                    locationOff = readLocationOff()
+                }
+            }
+            registerSystemReceiver(ctx, r, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
+            onDispose { ctx.unregisterReceiver(r) }
+        }
+    }
+
+    // "Retry" clears the error, which brings this effect back and starts a new scan
     if (ble.permitted && btProblem == null && scanError == null) {
-        LifecycleStartEffect(scanner, scanRun) {
+        LifecycleStartEffect(scanner) {
+            scanRun++
             val stop = scanner.start(
                 onSeen = { frames = SeenFrame.merge(frames, it) },
                 onFailed = { scanError = it },
@@ -231,20 +260,22 @@ private fun FrameSettings(
         frames = frames,
         scanError = scanError,
         btProblem = btProblem,
-        onRetry = {
-            scanError = null
-            scanRun++
-        },
+        locationOff = locationOff,
+        scanRun = scanRun,
+        onRetry = { scanError = null },
         onSelect = onSelect,
         onCancel = onCancel,
     )
 }
 
 /**
- * What the settings show, with no state of the scan or the system of its own: the [frames] seen so far (in
- * list order), a [scanError] (shown with "Retry", which calls [onRetry]) and a [btProblem] (Bluetooth missing
- * or off) come from [FrameSettings]; the rest is [FrameSettingsDialog]'s parameters. Only the focus and the
- * disclosure live here. `internal` for the Compose UI tests (`FrameSettingsUiTest`).
+ * What the settings show, with no state of the scan of its own: the [frames] seen so far (in list order), a
+ * [scanError] (shown with "Retry", which calls [onRetry]) and a [btProblem] (Bluetooth missing or off) come from
+ * [FrameSettings], and so do [locationOff] (location switched off where the scan needs it on: before Android 12)
+ * and [scanRun], which changes at every scan start; the rest is [FrameSettingsDialog]'s parameters. Only the
+ * focus, the disclosure and the "No frames seen yet" timer live here (so the tests' clock drives it); the
+ * notification-access screens and the device kind are read by [FeaturesSection] itself. `internal` for the
+ * Compose UI tests (`FrameSettingsUiTest`).
  */
 @Composable
 internal fun FrameSettingsContent(
@@ -263,11 +294,26 @@ internal fun FrameSettingsContent(
     frames: List<SeenFrame>,
     scanError: Txt?,
     btProblem: BtProblem?,
+    locationOff: Boolean,
+    scanRun: Int,
     onRetry: () -> Unit,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
 ) {
     val ctx = LocalContext.current
+    val listHidden = !ble.permitted || btProblem != null || scanError != null
+
+    // A running scan that has heard no frame for [ScanStatus.NONE_SEEN_MS] says so, and what to check; a frame
+    // heard replaces it with the list, and every scan start begins the wait again.
+    val searching = !listHidden && frames.isEmpty()
+    var noneSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(scanRun, searching) {
+        noneSeen = false
+        if (searching) {
+            delay(ScanStatus.NONE_SEEN_MS)
+            noneSeen = true
+        }
+    }
 
     // Focus: "Close" at first, so OK/Back work at once even before any frame shows up. When the chosen frame
     // shows up the focus moves to it, but only while it has not left "Close" yet (the user moved, or it
@@ -327,7 +373,6 @@ internal fun FrameSettingsContent(
         )
         // the frame being read says so in its own row; while no row shows it (the list is hidden by a problem
         // below), this line does, so a running read stays visible
-        val listHidden = !ble.permitted || btProblem != null || scanError != null
         probing?.takeIf { name -> listHidden || frames.none { it.name == name } }?.let {
             Text(stringResource(R.string.frame_reading_panel, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
         }
@@ -348,10 +393,12 @@ internal fun FrameSettingsContent(
                 }
                 scanError != null -> Problem(Txt(R.string.scan_failed, scanError).text(), stringResource(R.string.retry), onRetry)
                 frames.isEmpty() -> Column {
-                    Text(stringResource(R.string.scanning), style = MaterialTheme.typography.titleMedium)
+                    // before Android 12 the hint names location while it is off
+                    val status = ScanStatus.of(locationOff, noneSeen)
+                    Text(status.title.text(), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        BlePermissions.scanHint.text(),
+                        status.hint.text(),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -679,6 +726,16 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, reading: Boolean, modif
     )
 }
 
+/**
+ * Registers [receiver] for the system broadcasts in [filter]. On Android 13+ it is not exported; before that it is
+ * registered plainly, so it is exported there (the location receiver, Android 11 and older only, always is). Both
+ * actions it is used for are protected system broadcasts, and the receiver only re-reads the state they name.
+ */
+private fun registerSystemReceiver(ctx: Context, receiver: BroadcastReceiver, filter: IntentFilter) {
+    if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+    else ctx.registerReceiver(receiver, filter)
+}
+
 @Composable
 private fun Problem(message: String, action: String, onAction: () -> Unit) {
     Column {
@@ -693,3 +750,7 @@ private fun seenAt(ms: Long): String {
     if (ms <= 0) return stringResource(R.string.frame_seen_long_ago)
     return dateTimeText(ms)
 }
+
+/** Whether location is switched on (not where the device is); a device without a location service counts as on. */
+private fun locationEnabled(ctx: Context): Boolean =
+    ctx.getSystemService(LocationManager::class.java)?.let { LocationManagerCompat.isLocationEnabled(it) } ?: true

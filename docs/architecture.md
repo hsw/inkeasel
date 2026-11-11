@@ -41,9 +41,16 @@ App and screens:
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
   "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access, the
   privacy policy row). A thin stateful wrapper (`FrameSettings`: the scanner, the Bluetooth state receiver, the
-  scan error and the retry counter) feeds the stateless `FrameSettingsContent`, which draws everything and keeps
-  only the focus and the disclosure; the Compose UI tests (`FrameSettingsUiTest`) drive the content with fake
-  frames and states ([building.md](building.md#compose-ui-tests))
+  scan error, whether location is switched off where the scan needs it (before Android 12; read on resume and
+  on `MODE_CHANGED_ACTION`), and `scanRun`, bumped at every scan start) feeds the stateless
+  `FrameSettingsContent`, which draws everything and keeps only the focus, the disclosure and the "No frames
+  seen yet" timer (keyed on `scanRun`, so the tests' clock drives it; texts from `ScanStatus`); the
+  notification-access screens and the device kind are read by its `FeaturesSection` itself. The Compose UI
+  tests drive the content with fake frames and states (`FrameSettingsUiTest`)
+  ([building.md](building.md#compose-ui-tests))
+- `ScanStatus.kt`: what the frame list says while a running scan has heard no frame: "Searching for frames…",
+  then after `NONE_SEEN_MS` "No frames seen yet", each with its hint, the location variant while location is
+  off (pure)
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments), `TxtException` and
   `Throwable.userText`, free of Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
 
@@ -477,6 +484,10 @@ other.
   is awaited), and during an upload when the chosen frame has to be found again by its name (a NowMean frame
   that does not answer at its saved address; an OpenDisplay frame on every upload), filtered to the NowMean
   service or the OpenDisplay manufacturer data (`FrameScanner`; see [frames.md](frames.md)).
+- **Location switch** (Android 11 and older only): while the settings are open, they ask Android whether location
+  is switched on (`LocationManagerCompat.isLocationEnabled`, when they open, at every resume and on
+  `MODE_CHANGED_ACTION`), only to say in the search hint that a Bluetooth search needs it on. The app never reads
+  where the device is; the answer is not stored, logged or sent.
 - **OpenDisplay config**: when such a frame is chosen and at each upload, `OdExchange.display` reads the frame's
   whole config. Only the display record (`Od.display` → `OdDisplay`) is kept and logged (an answer reaches the
   log as its status, opcode and length, `Od.Reply.toString`, never its data); the rest, including the Wi-Fi

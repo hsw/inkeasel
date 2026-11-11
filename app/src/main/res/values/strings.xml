@@ -73,6 +73,11 @@
     <string name="scanning_hint">The frame must be nearby and not connected to a phone.</string>
     <!-- before Android 12 a BLE scan also needs location turned on -->
     <string name="scanning_hint_location">The frame must be nearby and not connected to a phone, and the search needs location turned on.</string>
+    <!-- the frame list after a running scan has heard no frame for 25 s; the search goes on -->
+    <string name="scan_none_seen">No frames seen yet</string>
+    <string name="scan_none_seen_hint">Check that the frame is nearby and not connected to a phone. An OpenDisplay frame wakes about once a minute; its button wakes it at once.</string>
+    <!-- before Android 12, while location is off: a BLE scan also needs it on -->
+    <string name="scan_none_seen_hint_location">Check that the frame is nearby and not connected to a phone, and that location is turned on: the search needs it. An OpenDisplay frame wakes about once a minute; its button wakes it at once.</string>
     <!-- %1$s the frame's name, %2$s why (a lowercase reason) -->
     <string name="frame_toast_reason">Frame %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Frame %1$s is not supported: %2$s</string>

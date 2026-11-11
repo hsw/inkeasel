@@ -3,6 +3,32 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Settings: the search says when it has heard nothing; the location hint follows the switch
+
+The frame list said "Searching for frames…" for as long as the scan ran, so a frame out of range, connected to a
+phone or asleep looked the same as one about to show up. After 25 s of a running scan with no frame heard
+(`ScanStatus.NONE_SEEN_MS`) it now says "No frames seen yet" with what to check, including that an OpenDisplay
+frame wakes only about once a minute and its button wakes it at once. 25 s sits in the 20–30 s range: long enough
+for a NowMean frame nearby to be heard, short of a whole OpenDisplay wake cycle, which the hint names. The search
+goes on, the first frame heard replaces the text, and every scan start (the first, "Retry", Bluetooth back on,
+the permission granted, the app back in the foreground) begins the wait again; while a problem hides the list
+nothing is counted. Before Android 12 a BLE scan also needs location switched on, and the hint used to name it on
+those versions always; now it names it only while location is off. To know that, the settings read whether
+location is switched on (never where the device is), only before Android 12 and only while they are open (at
+the start, on every resume and when it changes); the answer is not stored (PRIVACY.md). Rejected: "Searching…"
+for ever (says nothing when nothing comes); stopping the scan after the wait (an OpenDisplay frame heard a
+minute later would be missed, and a restart costs a press); the hint always naming location before Android 12
+(wrong and distracting while it is on); "Connected" / "Available" labels on the frames (the app keeps no lasting
+link to a frame, so "Connected" would never be true between uploads).
+
+The settings hear Bluetooth going on or off and location being switched through broadcast receivers, registered
+by one helper (`registerSystemReceiver`): not exported on Android 13+, a plain registration before that.
+Rejected: `ContextCompat.registerReceiver` with `RECEIVER_NOT_EXPORTED`, which before Android 13 guards the
+receiver with a signature permission of the app that only root and system-uid senders pass; the Bluetooth state
+broadcast may come from the Bluetooth process, not the system uid, so the app could stop noticing Bluetooth on
+and off on Android 8–12. So before Android 13 the receivers are exported; that is harmless, because both actions
+are protected system broadcasts and the receivers only re-read the real state.
+
 ## 2026-11-11 — Settings: the chosen frame is a radio row
 
 The chosen frame was told apart by "— selected" after its name and by tv-material's selected container colour,

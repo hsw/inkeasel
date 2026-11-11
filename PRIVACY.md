@@ -1,6 +1,6 @@
 # InkEasel privacy policy
 
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 
 InkEasel is an open-source Android app that sends pictures to your own e-paper frame over Bluetooth Low
 Energy. It has no account, no analytics, no ads, no crash reporting and no server of its own. **Nothing is
@@ -25,6 +25,8 @@ sent to the developer.**
   profile). Either one fixes the Catalog's nudity filter at "Hide all nudity". The answer is used only for
   that: it is neither stored nor sent. When the filter in force changes, the app writes it, and which of the
   two set it, to the device's system log (logcat).
+- **Whether location is switched on** (Android 11 and older only), while the settings are open: only to say
+  that the frame search needs it on. Not where the device is; the answer is neither stored nor sent.
 - **Bluetooth Low Energy advertisements** of frames nearby, while the settings search for them (and, when you
   choose an OpenDisplay frame, until it wakes up and advertises), and during an upload (also of a poster, in the
   background) when the chosen frame has to be found by its name (a NowMean frame that does not answer at its saved
@@ -94,7 +96,9 @@ settings, deletes all of them.
 - **Nearby devices** (Bluetooth scan and connect, Android 12 and newer): to find your frame and send pictures
   to it. The app declares that it does not use the scan to find your location.
 - **Location** (Android 11 and older only, together with the old Bluetooth permissions): those versions of
-  Android require it for any Bluetooth Low Energy scan. The app does not read your location.
+  Android require it for any Bluetooth Low Energy scan. The app does not read your location. On those versions,
+  while the settings are open, it checks whether location is switched on (not where the device is), only to
+  tell you that the frame search needs it on; the answer is not stored.
 - **Notification access** (optional): to read what plays for the now-playing poster, as described above. The
   app shows what the access covers before it opens the system screen or tells you where to grant it. The
   poster can be switched off without revoking the access; the reading then goes on (see above) until the

@@ -85,6 +85,8 @@ class FrameSettingsUiTest {
     private var probing by mutableStateOf<String?>(null)
     private var btProblem by mutableStateOf<BtProblem?>(null)
     private var scanError by mutableStateOf<Txt?>(null)
+    private var scanRun by mutableStateOf(1)
+    private var locationOff by mutableStateOf(false)
 
     private fun show() {
         compose.setContent {
@@ -104,6 +106,8 @@ class FrameSettingsUiTest {
                 frames = frames,
                 scanError = scanError,
                 btProblem = btProblem,
+                locationOff = locationOff,
+                scanRun = scanRun,
                 onRetry = {},
                 onSelect = { chosenFrames += it },
                 onCancel = { cancelled++ },
@@ -384,5 +388,124 @@ class FrameSettingsUiTest {
         show()
         compose.onNodeWithText(str(R.string.frame_reading_panel, supported.name)).assertExists()
         compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(0)
+    }
+
+    // The scan status: "Searching for frames…", then "No frames seen yet" after 25 s of a running scan with none
+
+    private fun searchingShows() {
+        compose.onNodeWithText(str(R.string.scanning)).assertExists()
+        compose.onNodeWithText(str(R.string.scanning_hint)).assertExists() // location is not named
+        compose.onAllNodesWithText(str(R.string.scan_none_seen)).assertCountEquals(0)
+    }
+
+    private fun noneSeenShows() {
+        compose.onNodeWithText(str(R.string.scan_none_seen)).assertExists()
+        compose.onNodeWithText(str(R.string.scan_none_seen_hint)).assertExists()
+        compose.onAllNodesWithText(str(R.string.scanning)).assertCountEquals(0)
+    }
+
+    private fun advance(ms: Long) {
+        compose.mainClock.advanceTimeBy(ms)
+        compose.waitForIdle()
+    }
+
+    @Test
+    fun noFrameHeard_searching_thenNoneSeenAfter25s() { // no input; clock
+        show()
+        searchingShows()
+        advance(ScanStatus.NONE_SEEN_MS - 1_000)
+        searchingShows()
+        advance(2_000)
+        noneSeenShows()
+    }
+
+    @Test
+    fun noneSeen_aFrameShowsUp_theListReplacesIt() { // no input; clock
+        show()
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        noneSeenShows()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        row(supported).assertExists()
+        compose.onAllNodesWithText(str(R.string.scan_none_seen)).assertCountEquals(0)
+        compose.onAllNodesWithText(str(R.string.scanning)).assertCountEquals(0)
+    }
+
+    @Test
+    fun aNewScanRun_startsTheWaitAgain() { // no input; clock
+        show()
+        advance(ScanStatus.NONE_SEEN_MS - 5_000)
+        scanRun++ // e.g. the app back in the foreground
+        compose.waitForIdle()
+        advance(10_000) // 30 s since the open, 10 s since the new start
+        searchingShows()
+        advance(ScanStatus.NONE_SEEN_MS)
+        noneSeenShows()
+        scanRun++ // e.g. "Retry": searching again
+        compose.waitForIdle()
+        searchingShows()
+    }
+
+    @Test
+    fun bluetoothOff_noWait_untilTheScanRunsAgain() { // no input; clock
+        btProblem = BtProblem.OFF
+        show()
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        btProblem = null // Bluetooth back on: the wrapper starts the scan
+        scanRun++
+        compose.waitForIdle()
+        searchingShows()
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        noneSeenShows()
+    }
+
+    @Test
+    fun whileAProblemHidesTheList_nothingIsCounted() { // no input; clock
+        btProblem = BtProblem.OFF
+        show()
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        btProblem = null // the list shows again, before any new scan start
+        compose.waitForIdle()
+        searchingShows()
+        advance(ScanStatus.NONE_SEEN_MS - 1_000)
+        searchingShows()
+        advance(2_000)
+        noneSeenShows()
+    }
+
+    // The location hint (before Android 12 a BLE scan needs location on): named only while location is off. The
+    // flag comes from the wrapper (always off on Android 12+), whose re-read (resume, MODE_CHANGED_ACTION) is left
+    // to the emulator check.
+
+    @Test
+    fun locationOff_theHintNamesLocation() { // no input; clock
+        locationOff = true
+        show()
+        compose.onNodeWithText(str(R.string.scanning_hint_location)).assertExists()
+        compose.onAllNodesWithText(str(R.string.scanning_hint)).assertCountEquals(0)
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        compose.onNodeWithText(str(R.string.scan_none_seen_hint_location)).assertExists()
+        compose.onAllNodesWithText(str(R.string.scan_none_seen_hint)).assertCountEquals(0)
+    }
+
+    @Test
+    fun locationOn_theHintDoesNotNameIt() { // no input; clock
+        show()
+        searchingShows()
+        compose.onAllNodesWithText(str(R.string.scanning_hint_location)).assertCountEquals(0)
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        noneSeenShows()
+        compose.onAllNodesWithText(str(R.string.scan_none_seen_hint_location)).assertCountEquals(0)
+    }
+
+    @Test
+    fun locationSwitchedOn_theHintFollows() { // no input
+        locationOff = true
+        show()
+        compose.onNodeWithText(str(R.string.scanning_hint_location)).assertExists()
+        locationOff = false
+        compose.waitForIdle()
+        searchingShows()
+        compose.onAllNodesWithText(str(R.string.scanning_hint_location)).assertCountEquals(0)
     }
 }

@@ -136,6 +136,11 @@ stateless content composable (e.g. `FrameSettingsContent`) with fake state, at T
 Time-driven behaviour runs on `compose.mainClock`. A node is found by its text from the resources
 (`app.getString`), with `hasClickAction()` where a header line repeats the same text.
 
+- **An older Android version** is not tested with `@Config(sdk = …)`: only the SDK 36 `android-all` jar is in
+  the cache, and another one downloads about 200 MB, locally and in CI. The stateful wrapper decides what
+  depends on the version (e.g. `locationOff`: location switched off where the scan needs it, before Android 12)
+  and passes it to the content, so a test passes the flag.
+
 ## Emulators and devices
 
 ### AVDs

@@ -58,6 +58,9 @@
     <string name="scanning">Поиск рамок…</string>
     <string name="scanning_hint">Рамка должна быть рядом и не подключена к телефону.</string>
     <string name="scanning_hint_location">Рамка должна быть рядом и не подключена к телефону, а для поиска нужна включённая геолокация.</string>
+    <string name="scan_none_seen">Рамок пока не видно</string>
+    <string name="scan_none_seen_hint">Проверьте, что рамка рядом и не подключена к телефону. Рамка OpenDisplay просыпается примерно раз в минуту; кнопка на рамке будит её сразу.</string>
+    <string name="scan_none_seen_hint_location">Проверьте, что рамка рядом и не подключена к телефону, а геолокация включена: она нужна для поиска. Рамка OpenDisplay просыпается примерно раз в минуту; кнопка на рамке будит её сразу.</string>
     <string name="frame_toast_reason">Рамка %1$s: %2$s</string>
     <string name="frame_toast_unsupported">Рамка %1$s не поддерживается: %2$s</string>
     <string name="frame_reading_panel">Читаю параметры панели рамки %1$s… Она просыпается примерно раз в минуту.</string>
