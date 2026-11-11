@@ -3,6 +3,16 @@
 Design decisions with their reasons and the options that were turned down, newest first. An entry marked
 *planned* is decided but not implemented yet; the change that implements it drops the mark.
 
+## 2026-11-11 — Settings: Close keeps the focus until the chosen frame shows up
+
+The settings moved the focus to the first frame found when none was chosen yet (and to it after 1.5 s when the
+chosen one had not shown up), so one OK right after opening, or one meant for something else, silently chose
+whichever frame answered first: with several nearby, possibly a neighbour's. Now the focus moves only to the
+chosen frame, once, and only while it is still on **Close** where it starts; with no frame chosen it stays on
+**Close**, and choosing takes a move onto the list and a press. Rejected: a confirmation dialog on the first
+choice (one more step on every first setup, and the stray OK would just as well confirm it); focusing the
+first frame after a delay (the same stray press, only later).
+
 ## 2026-11-10 — OpenDisplay: a failed GATT operation ends the session at once
 
 `OdSession` ignored the status Android reports for a characteristic or descriptor write, so a write the stack

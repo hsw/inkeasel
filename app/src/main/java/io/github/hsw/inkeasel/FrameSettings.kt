@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +67,7 @@ import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
 import io.github.hsw.inkeasel.catalog.NudityFilter
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 private const val TAG = "FrameSettings"
 
@@ -261,24 +262,24 @@ internal fun FrameSettingsContent(
 ) {
     val ctx = LocalContext.current
 
-    // Focus: "Close" at first, so OK/Back work at once even before any frame shows up; then, once, the
-    // chosen frame (given a moment to show up) or else the first one that can be chosen, unless the user
-    // has already moved onto the list.
+    // Focus: "Close" at first, so OK/Back work at once even before any frame shows up. When the chosen frame
+    // shows up the focus moves to it, but only while it has not left "Close" yet (the user moved, or it
+    // already went to the chosen frame once). With no frame chosen it stays on "Close": a frame found nearby
+    // may be a neighbour's, and one stray OK on it would choose it.
     val cancelFocus = remember { FocusRequester() }
     val targetFocus = remember { FocusRequester() }
-    var listTouched by remember { mutableStateOf(false) }
-    // an OpenDisplay frame (lookup null) reports its panel only once chosen: it may be the one
-    val supported = frames.filter { f -> f.lookup.let { it == null || it is FormatLookup.Supported } }
-    val target = (supported.firstOrNull { it.name == selected?.name } ?: supported.firstOrNull())?.name
+    var onClose by remember { mutableStateOf(false) }
+    var leftClose by remember { mutableStateOf(false) }
+    val target = selected?.name?.takeIf { name -> frames.any { it.name == name } }
     LaunchedEffect(Unit) {
         withFrameNanos {}
         runCatching { cancelFocus.requestFocus() }
     }
     LaunchedEffect(target) {
-        if (target == null || listTouched) return@LaunchedEffect
-        if (selected != null && target != selected.name) delay(1_500) // restarted if the chosen one shows up
+        if (target == null) return@LaunchedEffect
+        snapshotFlow { onClose || leftClose }.first { it } // "Close" got its first focus
         withFrameNanos {}
-        if (!listTouched) runCatching { targetFocus.requestFocus() }
+        if (onClose && !leftClose) runCatching { targetFocus.requestFocus() }
     }
 
     val sep = stringResource(R.string.list_separator)
@@ -288,7 +289,20 @@ internal fun FrameSettingsContent(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             Spacer(Modifier.width(16.dp))
-            Button(onClick = onCancel, modifier = Modifier.focusRequester(cancelFocus).onTap(onCancel)) { Text(stringResource(R.string.close)) }
+            Button(
+                onClick = onCancel,
+                modifier = Modifier
+                    .focusRequester(cancelFocus)
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            onClose = true
+                        } else if (onClose) {
+                            onClose = false
+                            leftClose = true
+                        }
+                    }
+                    .onTap(onCancel),
+            ) { Text(stringResource(R.string.close)) }
         }
         Spacer(Modifier.height(16.dp))
         Text(stringResource(R.string.settings_frame), style = MaterialTheme.typography.titleLarge)
@@ -337,8 +351,7 @@ internal fun FrameSettingsContent(
                         FrameItem(
                             f,
                             isSelected = f.name == selected?.name,
-                            modifier = (if (f.name == target) Modifier.focusRequester(targetFocus) else Modifier)
-                                .onFocusChanged { if (it.isFocused) listTouched = true },
+                            modifier = if (f.name == target) Modifier.focusRequester(targetFocus) else Modifier,
                         ) { reason ->
                             if (reason == null) {
                                 if (f.lookup?.formatOrNull?.verified == false) {

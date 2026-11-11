@@ -128,9 +128,10 @@ The catalog cards keep the frame's shape: their aspect is the chosen frame's for
 Uploads go only to the frame chosen in **Settings → Frame** (`FrameSettings.kt`, a dialog over the catalog).
 Open it with the header button ("Frame: <name>" or "No frame selected"); a fresh start with no frame chosen
 (and the Bluetooth permission granted) opens it by itself. The settings scroll as one column (a phone in
-landscape is short); **Close** sits next to the title and has the first focus. Once frames show up, the
-focus moves once to the chosen frame (or, if it has not shown up within 1.5 s, the first one that can be
-chosen), unless the user has already moved onto the list.
+landscape is short); **Close** sits next to the title and has the first focus. When the chosen frame shows
+up, the focus moves to it once, and only while it is still on **Close** (a move anywhere else, to a frame, the
+nudity row or a switch, keeps it there). With no frame chosen the focus stays on **Close**: one OK must not
+choose whichever frame was found first, which may be a neighbour's.
 
 - Under the "Frame" title: the chosen frame ("Selected: NM000001 · <address> · seen <time>", plus "not
   verified on hardware" for an unverified format), or "No frame selected: choose one to send pictures."

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -103,6 +104,18 @@ class FrameSettingsUiTest {
     /** A frame's row: the clickable node with its name (the header line "Selected: …" names it too). */
     private fun row(f: SeenFrame): SemanticsNodeInteraction = compose.onNode(hasText(f.name, substring = true) and hasClickAction())
     private fun SemanticsNodeInteraction.press(key: Key) = performKeyInput { pressKey(key) }
+    private fun nudityRow(): SemanticsNodeInteraction = compose.onNodeWithText(str(R.string.settings_nudity))
+    private fun posterRow(): SemanticsNodeInteraction = compose.onNodeWithText(str(R.string.feature_poster))
+
+    /** Presses Down on whatever has the focus until [to] has it (D-pad). */
+    private fun moveDownTo(to: SemanticsNodeInteraction) {
+        repeat(10) {
+            if (runCatching { to.assertIsFocused() }.isSuccess) return
+            compose.onNode(isFocused()).press(Key.DirectionDown)
+            compose.waitForIdle()
+        }
+        to.assertIsFocused()
+    }
 
     @Test
     fun open_closeHasTheFocus() { // D-pad
@@ -206,5 +219,78 @@ class FrameSettingsUiTest {
         compose.waitForIdle()
         assertEquals(1, cancelled)
         assertEquals(emptyList<SeenFrame>(), chosenFrames)
+    }
+
+    // Focus while frames show up: the chosen frame only, and only while the focus is still on Close
+
+    @Test
+    fun noFrameChosen_framesShowUp_focusStaysOnClose() { // D-pad
+        show()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        frames = listOf(supported, unsupported)
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    @Test
+    fun chosenFrameShowsUp_focusMovesToItOnce() { // D-pad
+        selected = chosen(supported)
+        show()
+        close().assertIsFocused()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        row(supported).assertIsFocused()
+        // back on Close, a frame showing up later leaves the focus there
+        row(supported).press(Key.DirectionUp)
+        compose.waitForIdle()
+        close().assertIsFocused()
+        frames = listOf(supported, unsupported)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    @Test
+    fun movedToAFrameRow_chosenFrameShowingUpLater_doesNotMoveTheFocus() { // D-pad
+        frames = listOf(unsupported)
+        selected = chosen(supported)
+        show()
+        close().assertIsFocused()
+        moveDownTo(row(unsupported))
+        frames = listOf(supported, unsupported)
+        compose.waitForIdle()
+        row(unsupported).assertIsFocused()
+    }
+
+    @Test
+    fun movedToTheNudityRow_chosenFrameShowingUpLater_doesNotMoveTheFocus() { // D-pad
+        selected = chosen(supported)
+        show()
+        moveDownTo(nudityRow())
+        frames = listOf(supported)
+        compose.waitForIdle()
+        nudityRow().assertIsFocused()
+    }
+
+    @Test
+    fun movedToThePosterRow_chosenFrameShowingUpLater_doesNotMoveTheFocus() { // D-pad
+        selected = chosen(supported)
+        show()
+        moveDownTo(posterRow())
+        frames = listOf(supported)
+        compose.waitForIdle()
+        posterRow().assertIsFocused()
+    }
+
+    @Test
+    fun onTheChosenFrame_aNewFrameShowingUp_doesNotMoveTheFocus() { // D-pad
+        frames = listOf(supported)
+        selected = chosen(supported)
+        show()
+        row(supported).assertIsFocused()
+        frames = listOf(unsupported, supported) // a new frame ahead of it in the list
+        compose.waitForIdle()
+        row(supported).assertIsFocused()
     }
 }
