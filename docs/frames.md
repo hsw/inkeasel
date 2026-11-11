@@ -129,9 +129,12 @@ Uploads go only to the frame chosen in **Settings → Frame** (`FrameSettings.kt
 Open it with the header button ("Frame: <name>" or "No frame selected"); a fresh start with no frame chosen
 (and the Bluetooth permission granted) opens it by itself. The settings scroll as one column (a phone in
 landscape is short); **Close** sits next to the title and has the first focus. When the chosen frame shows
-up, the focus moves to it once, and only while it is still on **Close** (a move anywhere else, to a frame, the
-nudity row or a switch, keeps it there). With no frame chosen the focus stays on **Close**: one OK must not
-choose whichever frame was found first, which may be a neighbour's.
+up, the focus moves to it once, and only while it is still on **Close**: a D-pad move anywhere else (to a frame,
+a nudity row or a switch), or any touch in the settings (a tap or a scroll moves no focus, so a finger down counts
+as moving), keeps it where it is. A problem's button that had the focus and goes away with its problem ("Retry",
+the permission granted, Bluetooth back on) gives it back to **Close**, and the chosen frame may then take it once
+more. With no frame chosen the focus stays on **Close**: one OK must not choose whichever frame was found first,
+which may be a neighbour's.
 
 - Under the "Frame" title: the chosen frame ("Selected: NM000001 · <address> · seen <time>", plus "not
   verified on hardware" for an unverified format), or "No frame selected: choose one to send pictures."

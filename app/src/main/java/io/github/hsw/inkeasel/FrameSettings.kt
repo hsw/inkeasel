@@ -16,6 +16,8 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -54,6 +56,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
@@ -301,7 +305,14 @@ internal fun FrameSettingsContent(
     onCancel: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val listHidden = !ble.permitted || btProblem != null || scanError != null
+    // what the frame area shows: a problem (each with its own button) or the list
+    val area = when {
+        !ble.permitted -> FrameArea.NO_PERMISSION
+        btProblem != null -> FrameArea.BLUETOOTH
+        scanError != null -> FrameArea.SCAN_ERROR
+        else -> FrameArea.LIST
+    }
+    val listHidden = area != FrameArea.LIST
 
     // A running scan that has heard no frame for [ScanStatus.NONE_SEEN_MS] says so, and what to check; a frame
     // heard replaces it with the list, and every scan start begins the wait again.
@@ -316,28 +327,50 @@ internal fun FrameSettingsContent(
     }
 
     // Focus: "Close" at first, so OK/Back work at once even before any frame shows up. When the chosen frame
-    // shows up the focus moves to it, but only while it has not left "Close" yet (the user moved, or it
-    // already went to the chosen frame once). With no frame chosen it stays on "Close": a frame found nearby
-    // may be a neighbour's, and one stray OK on it would choose it.
+    // shows up the focus moves to it, but only while it has not left "Close" yet: the user moved with the D-pad,
+    // touched the content (a tap or a scroll moves no focus, so a pointer down counts as moving), or it already
+    // went to the chosen frame once. With no frame chosen it stays on "Close": a frame found nearby may be a
+    // neighbour's, and one stray OK on it would choose it. When the frame area changes under the focus (a
+    // problem's button had it, and "Retry", the permission or Bluetooth made the problem go), the focused node is
+    // gone: the focus goes back to "Close" (the view system may already have put it there, which alone would read
+    // as a move away), and the chosen frame may take it from there once again.
     val cancelFocus = remember { FocusRequester() }
     val targetFocus = remember { FocusRequester() }
-    var onClose by remember { mutableStateOf(false) }
+    var closeFocused by remember { mutableStateOf(false) } // whether "Close" has the focus now
     var leftClose by remember { mutableStateOf(false) }
-    val target = selected?.name?.takeIf { name -> frames.any { it.name == name } }
+    // whether the frame area holds the focus: a plain field, read below only by the composition that changes the
+    // area, which runs before the change takes the focused node away
+    val areaFocus = remember { AreaFocus() }
+    val areaHadFocus = areaFocus.held
+    val target = selected?.name?.takeIf { name -> !listHidden && frames.any { it.name == name } }
     LaunchedEffect(Unit) {
         withFrameNanos {}
         runCatching { cancelFocus.requestFocus() }
     }
-    LaunchedEffect(target) {
-        if (target == null) return@LaunchedEffect
-        snapshotFlow { onClose || leftClose }.first { it } // "Close" got its first focus
+    LaunchedEffect(area) {
+        if (!areaHadFocus) return@LaunchedEffect
         withFrameNanos {}
-        if (onClose && !leftClose) runCatching { targetFocus.requestFocus() }
+        leftClose = false
+        runCatching { cancelFocus.requestFocus() }
+    }
+    LaunchedEffect(target, leftClose) {
+        if (target == null || leftClose) return@LaunchedEffect
+        snapshotFlow { closeFocused || leftClose }.first { it } // "Close" has the focus
+        withFrameNanos {}
+        if (closeFocused && !leftClose) runCatching { targetFocus.requestFocus() }
     }
 
     val sep = stringResource(R.string.list_separator)
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = sidePadding.dp, vertical = 32.dp)
+        Modifier.fillMaxSize()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    leftClose = true
+                }
+            }
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = sidePadding.dp, vertical = 32.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
@@ -348,9 +381,9 @@ internal fun FrameSettingsContent(
                     .focusRequester(cancelFocus)
                     .onFocusChanged {
                         if (it.isFocused) {
-                            onClose = true
-                        } else if (onClose) {
-                            onClose = false
+                            closeFocused = true
+                        } else if (closeFocused) {
+                            closeFocused = false
                             leftClose = true
                         }
                     }
@@ -377,22 +410,22 @@ internal fun FrameSettingsContent(
             Text(stringResource(R.string.frame_reading_panel, it), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
         }
         Spacer(Modifier.height(16.dp))
-        Box(Modifier.fillMaxWidth()) {
-            when {
-                !ble.permitted -> Problem(
+        Box(Modifier.fillMaxWidth().onFocusChanged { areaFocus.held = it.hasFocus }) {
+            when (area) {
+                FrameArea.NO_PERMISSION -> Problem(
                     if (ble.blocked) blockedText() else BlePermissions.neededText.text(),
                     stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
                     ble.request,
                 )
-                btProblem != null -> Problem(btProblem.sentence.text(), stringResource(R.string.bt_settings)) {
+                FrameArea.BLUETOOTH -> Problem(requireNotNull(btProblem).sentence.text(), stringResource(R.string.bt_settings)) {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
                         Log.w(TAG, "no Bluetooth settings screen", e)
                     }
                 }
-                scanError != null -> Problem(Txt(R.string.scan_failed, scanError).text(), stringResource(R.string.retry), onRetry)
-                frames.isEmpty() -> Column {
+                FrameArea.SCAN_ERROR -> Problem(Txt(R.string.scan_failed, requireNotNull(scanError)).text(), stringResource(R.string.retry), onRetry)
+                FrameArea.LIST -> if (frames.isEmpty()) Column {
                     // before Android 12 the hint names location while it is off
                     val status = ScanStatus.of(locationOff, noneSeen)
                     Text(status.title.text(), style = MaterialTheme.typography.titleMedium)
@@ -402,8 +435,7 @@ internal fun FrameSettingsContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-                else -> Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                } else Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     for (f in frames) key(f.name) {
                         FrameItem(
                             f,
@@ -749,6 +781,9 @@ private fun radioRowColors() = ListItemDefaults.colors(
     selectedContentColor = MaterialTheme.colorScheme.onSurface,
 )
 
+/** What the frame area shows: one of the problems that hide the list, or the list (with the scan status). */
+private enum class FrameArea { NO_PERMISSION, BLUETOOTH, SCAN_ERROR, LIST }
+
 /**
  * Registers [receiver] for the system broadcasts in [filter]. On Android 13+ it is not exported; before that it is
  * registered plainly, so it is exported there (the location receiver, Android 11 and older only, always is). Both
@@ -757,6 +792,11 @@ private fun radioRowColors() = ListItemDefaults.colors(
 private fun registerSystemReceiver(ctx: Context, receiver: BroadcastReceiver, filter: IntentFilter) {
     if (Build.VERSION.SDK_INT >= 33) ctx.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
     else ctx.registerReceiver(receiver, filter)
+}
+
+/** Whether the frame area holds the focus; not a state, so a focus move inside it recomposes nothing. */
+private class AreaFocus {
+    var held = false
 }
 
 @Composable

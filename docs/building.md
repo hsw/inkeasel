@@ -132,6 +132,7 @@ stateless content composable (e.g. `FrameSettingsContent`) with fake state, at T
   ignores touch (so a tap that calls its action twice is caught too).
 - **Back** on a dialog: a `KEYCODE_BACK` down and up dispatched to the dialog's window
   (`ShadowDialog.getLatestDialog()`); Espresso is not on the test classpath.
+- **Touch without a tap**: a scroll is `performTouchInput { swipeUp() }`; neither it nor a tap moves the focus.
 
 Time-driven behaviour runs on `compose.mainClock`. A node is found by its text from the resources
 (`app.getString`), with `hasClickAction()` where a header line repeats the same text.

@@ -78,9 +78,15 @@ The settings moved the focus to the first frame found when none was chosen yet (
 chosen one had not shown up), so one OK right after opening, or one meant for something else, silently chose
 whichever frame answered first: with several nearby, possibly a neighbour's. Now the focus moves only to the
 chosen frame, once, and only while it is still on **Close** where it starts; with no frame chosen it stays on
-**Close**, and choosing takes a move onto the list and a press. Rejected: a confirmation dialog on the first
-choice (one more step on every first setup, and the stray OK would just as well confirm it); focusing the
-first frame after a delay (the same stray press, only later).
+**Close**, and choosing takes a move onto the list and a press. On a touch screen a tap or a scroll moves no
+focus (tv-material ignores touch, `Modifier.onTap` takes it), so a finger down anywhere in the settings counts as
+leaving **Close**: the chosen frame showing up later does not pull the column back up to the list. A problem's
+button that had the focus and goes away with its problem ("Retry", the permission granted, Bluetooth back on)
+takes the focused node with it; the focus goes back to **Close** and the chosen frame may take it once more, as
+at the start. Rejected: a confirmation dialog on the first choice (one more step on every first setup, and the
+stray OK would just as well confirm it); focusing the first frame after a delay (the same stray press, only
+later); skipping the move whenever the input mode is touch (a phone not touched yet is where a TV is at the
+start, and one rule serves both inputs).
 
 ## 2026-11-10 — OpenDisplay: a failed GATT operation ends the session at once
 

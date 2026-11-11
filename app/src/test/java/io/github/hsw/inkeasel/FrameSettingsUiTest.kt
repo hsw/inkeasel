@@ -34,7 +34,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.swipeUp
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.catalog.NudityFilter
 import org.junit.Assert.assertEquals
@@ -99,7 +101,7 @@ class FrameSettingsUiTest {
     private val nudityChosen = mutableListOf<NudityFilter>()
     private var bleRequests = 0
     private var retries = 0
-    private var ble = BleAccess(permitted = true, blocked = false, request = { bleRequests++ })
+    private var ble by mutableStateOf(BleAccess(permitted = true, blocked = false, request = { bleRequests++ }))
 
     private fun show() {
         compose.setContent {
@@ -219,6 +221,8 @@ class FrameSettingsUiTest {
         row(unsupported).performScrollTo().performClick()
         compose.waitForIdle()
         assertEquals(emptyList<SeenFrame>(), chosenFrames)
+        val reason = Txt(R.string.frame_toast_unsupported, unsupported.name, Txt(R.string.reason_no_caps)).resolve(app)
+        assertEquals(reason, ShadowToast.getTextOfLatestToast())
     }
 
     /** Back on the dialog itself (its `onDismissRequest`) leaves the frame as it was: it only cancels. */
@@ -274,11 +278,108 @@ class FrameSettingsUiTest {
         frames = listOf(supported)
         compose.waitForIdle()
         row(supported).assertIsFocused()
-        // back on Close, a frame showing up later leaves the focus there
+        // back on Close, the chosen frame gone and showing up again leaves the focus there
         row(supported).press(Key.DirectionUp)
         compose.waitForIdle()
         close().assertIsFocused()
+        frames = emptyList()
+        compose.waitForIdle()
         frames = listOf(supported, unsupported)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    @Test
+    fun leftCloseAndBack_chosenFrameShowingUpLater_staysOnClose() { // D-pad
+        selected = chosen(supported)
+        show()
+        close().press(Key.DirectionDown)
+        nudityRow().assertIsFocused()
+        nudityRow().press(Key.DirectionUp)
+        compose.waitForIdle()
+        close().assertIsFocused()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    @Test
+    fun chosenFrameNowUnsupported_stillTakesTheFocus() { // D-pad
+        selected = chosen(unsupported) // the user's own frame: its row says why it cannot be used now
+        show()
+        frames = listOf(supported, unsupported)
+        compose.waitForIdle()
+        row(unsupported).assertIsFocused()
+    }
+
+    // Touch moves no focus (tv-material ignores it, `onTap` takes the tap): a tap or a scroll in the content
+    // counts as leaving Close all the same
+
+    @Test
+    fun tappedANudityRow_chosenFrameShowingUpLater_doesNotMoveTheFocus() { // touch
+        selected = chosen(supported)
+        show()
+        nudityRow(NudityFilter.SHOW_ALL).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(listOf(NudityFilter.SHOW_ALL), nudityChosen)
+        close().assertIsFocused() // the tap moved no focus
+        frames = listOf(supported)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    @Test
+    fun scrolledTheContent_chosenFrameShowingUpLater_doesNotMoveTheFocus() { // touch
+        selected = chosen(supported)
+        show()
+        posterRow().performTouchInput { swipeUp() }
+        compose.waitForIdle()
+        close().assertIsFocused()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        close().assertIsFocused()
+    }
+
+    // A problem's button had the focus and the problem went: nothing is focused, so the focus goes back to Close,
+    // and the chosen frame takes it from there once again
+
+    @Test
+    fun retryFocused_theErrorGoes_closeTakesTheFocus_thenTheChosenFrame() { // D-pad
+        selected = chosen(supported)
+        scanError = Txt(R.string.reason_no_caps)
+        show()
+        moveDownTo(problemButton(str(R.string.retry)))
+        problemButton(str(R.string.retry)).press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(1, retries)
+        scanError = null // what the wrapper's onRetry does
+        compose.waitForIdle()
+        close().assertIsFocused()
+        frames = listOf(supported)
+        compose.waitForIdle()
+        row(supported).assertIsFocused()
+    }
+
+    @Test
+    fun allowFocused_thePermissionGranted_theChosenFrameAlreadyHeardTakesTheFocus() { // D-pad
+        selected = chosen(supported)
+        frames = listOf(supported, unsupported)
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        close().assertIsFocused() // the list is hidden: the chosen frame cannot take it yet
+        moveDownTo(problemButton(str(R.string.allow)))
+        ble = BleAccess(permitted = true, blocked = false, request = { bleRequests++ })
+        compose.waitForIdle()
+        row(supported).assertIsFocused()
+    }
+
+    @Test
+    fun bluetoothSettingsFocused_bluetoothBackOn_noFrameChosen_closeTakesTheFocus() { // D-pad
+        btProblem = BtProblem.OFF
+        show()
+        moveDownTo(problemButton(str(R.string.bt_settings)))
+        btProblem = null
+        frames = listOf(supported)
         compose.waitForIdle()
         close().assertIsFocused()
     }
