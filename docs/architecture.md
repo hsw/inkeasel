@@ -46,8 +46,8 @@ App and screens:
   `FrameSettingsContent`, which draws everything and keeps only the focus, the disclosure and the "No frames
   seen yet" timer (keyed on `scanRun`, so the tests' clock drives it; texts from `ScanStatus`); the
   notification-access screens and the device kind are read by its `FeaturesSection` itself. The Compose UI
-  tests drive the content with fake frames and states (`FrameSettingsUiTest`)
-  ([building.md](building.md#compose-ui-tests))
+  tests drive the content with fake frames and states (`FrameSettingsUiTest`) and the wrapper on Robolectric's
+  Bluetooth shadows (`FrameSettingsDialogTest`) ([building.md](building.md#compose-ui-tests))
 - `ScanStatus.kt`: what the frame list says while a running scan has heard no frame: "Searching for frames…",
   then after `NONE_SEEN_MS` "No frames seen yet", each with its hint, the location variant while location is
   off (pure)

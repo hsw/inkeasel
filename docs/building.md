@@ -119,7 +119,7 @@ Tests that guard project rules:
 
 Screens are tested on the real composables under Robolectric with `createComposeRule()` (`ui-test-junit4` on the
 Compose BOM; `testOptions.unitTests.isIncludeAndroidResources`, so the app's strings and themes load). The rule
-hosts the content in a bare `ComponentActivity`; `ComposeHostRule` (in `FrameSettingsUiTest.kt`) registers it
+hosts the content in a bare `ComponentActivity`; `ComposeHostRule` (in `ComposeTesting.kt`, with the shared test helpers) registers it
 with Robolectric's package manager first, chained outside the compose rule. `ui-test-manifest` is not used: it
 would merge an exported `ComponentActivity` into the debug APK installed on devices. Such a test drives a
 stateless content composable (e.g. `FrameSettingsContent`) with fake state, at TV width
@@ -144,6 +144,12 @@ Time-driven behaviour runs on `compose.mainClock`. A node is found by its text f
 - **Rows that depend on the device**: what the code asks the package manager for is made to resolve with
   `shadowOf(app.packageManager).addResolveInfoForIntent(intent, info)` (e.g. the notification-access detail
   screen, which makes the restricted-settings "App info" row show).
+- **The stateful wrapper** (`FrameSettingsDialogTest`): the real `FrameSettingsDialog` under
+  `createAndroidComposeRule<ComponentActivity>()` on Robolectric's Bluetooth shadows. The LE scanner's shadow
+  keeps the callback of each running scan (`scanCallbacks`), so a test sees a scan start and stop and fails it
+  (`onScanFailed`); `shadowOf(adapter).setEnabled(…)` plus an `ACTION_STATE_CHANGED` broadcast switches
+  Bluetooth; `activityRule.scenario.moveToState(CREATED)` and back to `RESUMED` sends the app to the background
+  and back. The location switch is read only before Android 12, so its re-read is checked on the emulator.
 
 ## Emulators and devices
 

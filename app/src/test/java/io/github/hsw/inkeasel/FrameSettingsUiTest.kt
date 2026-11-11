@@ -1,13 +1,11 @@
 package io.github.hsw.inkeasel
 
 import android.app.Application
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.ResolveInfo
 import android.provider.Settings
 import android.view.KeyEvent
-import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -43,7 +41,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-import org.junit.rules.ExternalResource
 import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -51,18 +48,6 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowDialog
 import org.robolectric.shadows.ShadowToast
-
-/**
- * `createComposeRule()` launches a bare `ComponentActivity` to host the content. The app's manifest does not
- * declare one, and `ui-test-manifest` would merge an exported one into the debug APK, so this registers it with
- * Robolectric's package manager before the compose rule starts it (docs/building.md).
- */
-class ComposeHostRule : ExternalResource() {
-    override fun before() {
-        val app = ApplicationProvider.getApplicationContext<Application>()
-        shadowOf(app.packageManager).addActivityIfNotPresent(ComponentName(app, ComponentActivity::class.java))
-    }
-}
 
 /**
  * The settings content ([FrameSettingsContent]) on the real composables at TV width, driven with fake frames
@@ -79,7 +64,6 @@ class FrameSettingsUiTest {
     val rules: RuleChain = RuleChain.outerRule(ComposeHostRule()).around(compose)
 
     private val app = ApplicationProvider.getApplicationContext<Application>()
-    private fun str(id: Int, vararg args: Any): String = app.getString(id, *args)
 
     private val e6 = FrameAdvert.parse(byteArrayOf(0x43, 0x13, 0x64, 0x15))
     private val supported = SeenFrame("NM000001", "AA:BB:CC:DD:EE:01", -60, e6)
@@ -585,21 +569,16 @@ class FrameSettingsUiTest {
     // The scan status: "Searching for frames…", then "No frames seen yet" after 25 s of a running scan with none
 
     private fun searchingShows() {
-        compose.onNodeWithText(str(R.string.scanning)).assertExists()
+        compose.searchingShows()
         compose.onNodeWithText(str(R.string.scanning_hint)).assertExists() // location is not named
-        compose.onAllNodesWithText(str(R.string.scan_none_seen)).assertCountEquals(0)
     }
 
     private fun noneSeenShows() {
-        compose.onNodeWithText(str(R.string.scan_none_seen)).assertExists()
+        compose.noneSeenShows()
         compose.onNodeWithText(str(R.string.scan_none_seen_hint)).assertExists()
-        compose.onAllNodesWithText(str(R.string.scanning)).assertCountEquals(0)
     }
 
-    private fun advance(ms: Long) {
-        compose.mainClock.advanceTimeBy(ms)
-        compose.waitForIdle()
-    }
+    private fun advance(ms: Long) = compose.advance(ms)
 
     @Test
     fun noFrameHeard_searching_thenNoneSeenAfter25s() { // no input; clock
