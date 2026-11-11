@@ -13,7 +13,7 @@ frame straight from the gallery. License: [Apache-2.0](LICENSE).
 |---|---|
 | ![The catalog on Android TV: a tab of picture cards in four columns](docs/screenshots/tv-catalog.png) | ![The catalog on a tablet in portrait: three columns](docs/screenshots/tablet-catalog.png) |
 
-![Settings: the frame search and "Permissions and features"](docs/screenshots/settings.png)
+![Settings: the frames found nearby, with the chosen one marked, and the Catalog nudity filter](docs/screenshots/settings.png)
 
 ## Supported frames
 
