@@ -77,6 +77,12 @@ android {
     androidResources {
         generateLocaleConfig = true
     }
+    // Robolectric loads the app's merged resources (strings, themes) for the Compose UI tests
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // the catalog database's schema history, committed: each version's JSON shows what changed
@@ -117,4 +123,8 @@ dependencies {
     testImplementation("androidx.paging:paging-testing:3.3.6")
     // the same OkHttp line as the app (5.x would replace OkHttp 4 on the test classpath)
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // Compose UI tests under Robolectric (the BOM's version). No ui-test-manifest: it would merge an exported
+    // ComponentActivity into the debug APK; the tests register the host activity themselves (ComposeHostRule).
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
 }

@@ -75,7 +75,8 @@ Debug and release builds differ beyond signing and R8:
     JAVA_HOME=<JDK 21> ./gradlew testDebugUnitTest
 
 All tests are JVM unit tests (`app/src/test/`): JUnit 4 and `kotlinx-coroutines-test`; the Room DAOs, the
-database, the catalog import and the paging source on an in-memory database under Robolectric; HTTP against
+database, the catalog import and the paging source on an in-memory database under Robolectric; the settings
+screen on its real composables ([Compose UI tests](#compose-ui-tests), also under Robolectric); HTTP against
 MockWebServer; JSON with the real `org.json` library (`android.jar` has only stubs; it differs from
 Android's copy in corner cases such as `optString` on JSON null, so the code keeps to plain values). Fixture
 answers of the live sources are in `app/src/test/resources/catalog/`. Pure logic stays free of Android types
@@ -83,7 +84,10 @@ so that it runs here without Robolectric (see [architecture.md](architecture.md)
 
 **Robolectric** 4.16.1 runs at SDK 36 (`app/src/test/resources/robolectric.properties`) and needs JDK 21.
 Its first run downloads `android-all-instrumented` (about 200 MB) from Maven Central into the local Maven
-repository (`~/.m2/repository`), so that run needs network access and write access there.
+repository (`~/.m2/repository`), so that run needs network access and write access there. The tests read the
+app's merged resources (`processDebugResources`), so a resource change needs one run that builds them; in a
+sandboxed shell where `packageDebugResources` fails (`clonefile`), `-x packageDebugResources` still works for a
+test-only run once they are built.
 
 Its SQLite is newer than the one on minSdk 26 (3.18), so a passing test does not make newer SQL safe:
 UPSERT needs 3.24, window functions 3.25, `RETURNING` 3.35; before 3.32 a statement binds at most 999
@@ -110,6 +114,27 @@ Tests that guard project rules:
   `uv run tools/dither-golden.py` (needs network: it installs the pinned library from PyPI; not in CI), which
   prints them as Kotlin literals to paste into the test. The pattern formulas live in both files; change them
   together, and regenerate after a change to the palettes or the dithering.
+
+### Compose UI tests
+
+Screens are tested on the real composables under Robolectric with `createComposeRule()` (`ui-test-junit4` on the
+Compose BOM; `testOptions.unitTests.isIncludeAndroidResources`, so the app's strings and themes load). The rule
+hosts the content in a bare `ComponentActivity`; `ComposeHostRule` (in `FrameSettingsUiTest.kt`) registers it
+with Robolectric's package manager first, chained outside the compose rule. `ui-test-manifest` is not used: it
+would merge an exported `ComponentActivity` into the debug APK installed on devices. Such a test drives a
+stateless content composable (e.g. `FrameSettingsContent`) with fake state, at TV width
+(`@Config(qualifiers = "w960dp-h540dp")`), and names which input it uses:
+
+- **D-pad**: what a TV remote sends, the only input tv-material components react to. The focus is checked with
+  `assertIsFocused()`, moved with `performKeyInput { pressKey(Key.DirectionDown) }` and pressed with
+  `pressKey(Key.DirectionCenter)` on the focused node (`@OptIn(ExperimentalTestApi::class)`).
+- **Touch**: `performScrollTo()` then `performClick()`; it reaches only `Modifier.onTap`, as tv-material
+  ignores touch (so a tap that calls its action twice is caught too).
+- **Back** on a dialog: a `KEYCODE_BACK` down and up dispatched to the dialog's window
+  (`ShadowDialog.getLatestDialog()`); Espresso is not on the test classpath.
+
+Time-driven behaviour runs on `compose.mainClock`. A node is found by its text from the resources
+(`app.getString`), with `hasClickAction()` where a header line repeats the same text.
 
 ## Emulators and devices
 

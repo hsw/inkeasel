@@ -156,6 +156,11 @@ internal fun EdgeToEdgeDialogWindow() {
     }
 }
 
+/**
+ * The stateful part of the settings: the [FrameScanner] and what it reports (the frames seen, a scan error),
+ * the Bluetooth state (followed live), and the retry counter. Everything shown is drawn by
+ * [FrameSettingsContent], which the UI tests drive with fake frames and states.
+ */
 @Composable
 private fun FrameSettings(
     selected: SelectedFrame?,
@@ -201,6 +206,60 @@ private fun FrameSettings(
             onStopOrDispose { stop() }
         }
     }
+
+    FrameSettingsContent(
+        selected = selected,
+        ble = ble,
+        poster = poster,
+        access = access,
+        pending = pending,
+        nudity = nudity,
+        nudityLock = nudityLock,
+        onNudity = onNudity,
+        onPoster = onPoster,
+        onDisclosureConfirmed = onDisclosureConfirmed,
+        sidePadding = sidePadding,
+        probing = probing,
+        frames = frames,
+        scanError = scanError,
+        btProblem = btProblem,
+        onRetry = {
+            scanError = null
+            scanRun++
+        },
+        onSelect = onSelect,
+        onCancel = onCancel,
+    )
+}
+
+/**
+ * What the settings show, with no state of the scan or the system of its own: the [frames] seen so far (in
+ * list order), a [scanError] (shown with "Retry", which calls [onRetry]) and a [btProblem] (Bluetooth missing
+ * or off) come from [FrameSettings]; the rest is [FrameSettingsDialog]'s parameters. Only the focus and the
+ * disclosure live here. `internal` for the Compose UI tests (`FrameSettingsUiTest`).
+ */
+@Composable
+internal fun FrameSettingsContent(
+    selected: SelectedFrame?,
+    ble: BleAccess,
+    poster: Boolean,
+    access: Boolean,
+    pending: Boolean,
+    nudity: NudityFilter,
+    nudityLock: NudityLock?,
+    onNudity: () -> Unit,
+    onPoster: () -> PosterSwitch.Press,
+    onDisclosureConfirmed: () -> Unit,
+    sidePadding: Int,
+    probing: String?,
+    frames: List<SeenFrame>,
+    scanError: Txt?,
+    btProblem: BtProblem?,
+    onRetry: () -> Unit,
+    onSelect: (SeenFrame) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val ctx = LocalContext.current
 
     // Focus: "Close" at first, so OK/Back work at once even before any frame shows up; then, once, the
     // chosen frame (given a moment to show up) or else the first one that can be chosen, unless the user
@@ -256,17 +315,14 @@ private fun FrameSettings(
                     stringResource(if (ble.blocked) R.string.app_info else R.string.allow),
                     ble.request,
                 )
-                btProblem != null -> Problem(btProblem!!.sentence.text(), stringResource(R.string.bt_settings)) {
+                btProblem != null -> Problem(btProblem.sentence.text(), stringResource(R.string.bt_settings)) {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
                         Log.w(TAG, "no Bluetooth settings screen", e)
                     }
                 }
-                scanError != null -> Problem(Txt(R.string.scan_failed, scanError!!).text(), stringResource(R.string.retry)) {
-                    scanError = null
-                    scanRun++
-                }
+                scanError != null -> Problem(Txt(R.string.scan_failed, scanError).text(), stringResource(R.string.retry), onRetry)
                 frames.isEmpty() -> Column {
                     Text(stringResource(R.string.scanning), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))

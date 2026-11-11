@@ -40,7 +40,10 @@ App and screens:
   `CENTER_KEYS`; `Modifier.dropHeldCenter` (applies `HeldCenter`)
 - `FrameSettings.kt`: the settings dialog: "Frame" (live frame list, select), "Catalog" (the Nudity row) and
   "Permissions and features" (Bluetooth, the poster switch with its disclosure panel, notification access, the
-  privacy policy row)
+  privacy policy row). A thin stateful wrapper (`FrameSettings`: the scanner, the Bluetooth state receiver, the
+  scan error and the retry counter) feeds the stateless `FrameSettingsContent`, which draws everything and keeps
+  only the focus and the disclosure; the Compose UI tests (`FrameSettingsUiTest`) drive the content with fake
+  frames and states ([building.md](building.md#compose-ui-tests))
 - `Txt.kt`: `Txt` (a user-facing text as a string resource id and arguments), `TxtException` and
   `Throwable.userText`, free of Android types; `TxtAndroid.kt` resolves them with a `Context` or in Compose
 
