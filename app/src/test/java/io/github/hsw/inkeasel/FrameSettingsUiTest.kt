@@ -98,6 +98,7 @@ class FrameSettingsUiTest {
     private var nudityLock by mutableStateOf<NudityLock?>(null)
     private val nudityChosen = mutableListOf<NudityFilter>()
     private var bleRequests = 0
+    private var retries = 0
     private var ble = BleAccess(permitted = true, blocked = false, request = { bleRequests++ })
 
     private fun show() {
@@ -120,7 +121,7 @@ class FrameSettingsUiTest {
                 btProblem = btProblem,
                 locationOff = locationOff,
                 scanRun = scanRun,
-                onRetry = {},
+                onRetry = { retries++ },
                 onSelect = { chosenFrames += it },
                 onCancel = { cancelled++ },
             )
@@ -403,6 +404,81 @@ class FrameSettingsUiTest {
         show()
         compose.onNodeWithText(str(R.string.frame_reading_panel, supported.name)).assertExists()
         compose.onAllNodesWithText(str(R.string.frame_row_reading)).assertCountEquals(0)
+    }
+
+    // The problems that hide the frame list (no permission, Bluetooth off, a scan error): the frames seen are not
+    // listed, nothing waits for "No frames seen yet", and the problem's button does what it names
+
+    /** The problem's button: the clickable node with only [text] (the Bluetooth row may name the same action). */
+    private fun problemButton(text: String): SemanticsNodeInteraction =
+        compose.onNode(hasText(text) and hasClickAction() and !hasText(str(R.string.perm_bt)))
+
+    /** No frame row, no scan status, even after the 25 s wait. */
+    private fun listHidden(f: SeenFrame) {
+        advance(ScanStatus.NONE_SEEN_MS + 1_000)
+        compose.onAllNodes(hasText(f.name, substring = true) and hasClickAction()).assertCountEquals(0)
+        compose.onAllNodesWithText(str(R.string.scanning)).assertCountEquals(0)
+        compose.onAllNodesWithText(str(R.string.scan_none_seen)).assertCountEquals(0)
+    }
+
+    @Test
+    fun noPermission_hidesTheList_andItsButtonAsks() { // D-pad and touch; clock
+        frames = listOf(supported)
+        probing = supported.name
+        ble = BleAccess(permitted = false, blocked = false, request = { bleRequests++ })
+        show()
+        compose.onNodeWithText(BlePermissions.neededText.resolve(app)).assertExists()
+        listHidden(supported)
+        compose.onNodeWithText(str(R.string.frame_reading_panel, supported.name)).assertExists()
+        close().assertIsFocused() // no frame chosen: nothing takes the focus from Close
+        moveDownTo(problemButton(str(R.string.allow)))
+        problemButton(str(R.string.allow)).press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(1, bleRequests)
+        problemButton(str(R.string.allow)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(2, bleRequests)
+    }
+
+    @Test
+    fun noPermission_blocked_theButtonNamesAppInfo() { // touch
+        ble = BleAccess(permitted = false, blocked = true, request = { bleRequests++ })
+        show()
+        compose.onNodeWithText(Txt(R.string.perm_bt_blocked, Txt(R.string.app_name), BlePermissions.settingsName).resolve(app)).assertExists()
+        problemButton(str(R.string.app_info)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(1, bleRequests)
+    }
+
+    @Test
+    fun bluetoothOff_hidesTheList_andItsButtonOpensBluetoothSettings() { // D-pad and touch; clock
+        frames = listOf(supported)
+        btProblem = BtProblem.OFF
+        show()
+        listHidden(supported)
+        moveDownTo(problemButton(str(R.string.bt_settings)))
+        problemButton(str(R.string.bt_settings)).press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(Settings.ACTION_BLUETOOTH_SETTINGS, shadowOf(app).nextStartedActivity.action)
+        problemButton(str(R.string.bt_settings)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(Settings.ACTION_BLUETOOTH_SETTINGS, shadowOf(app).nextStartedActivity.action)
+    }
+
+    @Test
+    fun scanError_hidesTheList_andRetryCallsIt() { // D-pad and touch; clock
+        frames = listOf(supported)
+        scanError = Txt(R.string.reason_no_caps)
+        show()
+        compose.onNodeWithText(Txt(R.string.scan_failed, Txt(R.string.reason_no_caps)).resolve(app)).assertExists()
+        listHidden(supported)
+        moveDownTo(problemButton(str(R.string.retry)))
+        problemButton(str(R.string.retry)).press(Key.DirectionCenter)
+        compose.waitForIdle()
+        assertEquals(1, retries)
+        problemButton(str(R.string.retry)).performScrollTo().performClick()
+        compose.waitForIdle()
+        assertEquals(2, retries)
     }
 
     // The scan status: "Searching for frames…", then "No frames seen yet" after 25 s of a running scan with none

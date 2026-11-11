@@ -476,9 +476,9 @@ private fun CatalogSection(choice: NudityFilter, lock: NudityLock?, onNudity: (N
  * "Permissions and features", one `ListItem` per row with no button inside a row (a row's press does what a
  * button would): the Bluetooth permission (its status; while it is missing a trailing label names what a press
  * does, "Allow" or, once the system no longer asks, "App info", and the press calls [BleAccess.request]; the
- * frame list above names the path to it then), and the now-playing [poster] switch
- * with the notification [access] it needs ([ListenerAccessUi]). The switch shows the poster as it works
- * ([PosterSwitch]); pressing it calls [onPoster] (`MainViewModel.pressPoster`). Without the access, the switch
+ * frame list above names the path to it then), and the now-playing [poster] switch with the notification
+ * [access] it needs ([ListenerAccessUi]). The switch shows the poster as it works ([PosterSwitch]); pressing it
+ * calls [onPoster] (`MainViewModel.pressPoster`). Without the access, the switch
  * and "Grant access" both open the [Disclosure] first; its "Continue" calls [onDisclosureConfirmed]
  * (`MainViewModel.confirmDisclosure`) and starts the grant flow: the system screen [ListenerAccessUi.grant]
  * names. The menu path on TV and the adb command (where no screen leads to the switch) are shown in the
