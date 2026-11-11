@@ -18,6 +18,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -76,6 +78,7 @@ import androidx.tv.material3.ListItem
 import androidx.tv.material3.ListItemDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.RadioButton
+import androidx.tv.material3.RadioButtonDefaults
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Switch
 import androidx.tv.material3.Text
@@ -490,13 +493,16 @@ private fun CatalogSection(choice: NudityFilter, lock: NudityLock?, onNudity: (N
         for (row in NuditySetting.rows(choice, locked = lock != null)) key(row.filter) {
             val press: () -> Unit = { if (enabled) onNudity(row.filter) }
             val reason = lock?.takeIf { row.marked }?.reason
+            val interaction = remember { MutableInteractionSource() }
+            val focused by interaction.collectIsFocusedAsState()
             ListItem(
                 selected = row.marked,
                 onClick = press,
                 enabled = enabled,
                 modifier = Modifier.semantics { role = Role.RadioButton }.onTap(press),
                 colors = radioRowColors(),
-                leadingContent = { RadioButton(selected = row.marked, onClick = null, enabled = enabled) },
+                interactionSource = interaction,
+                leadingContent = { RowRadio(selected = row.marked, focused = focused, enabled = enabled) },
                 headlineContent = { Text(row.text.text()) },
                 supportingContent = reason?.let { { Text(it.text(), style = MaterialTheme.typography.bodyMedium) } },
             )
@@ -746,12 +752,15 @@ private fun FrameItem(f: SeenFrame, isSelected: Boolean, reading: Boolean, modif
     val reason = f.lookup?.reasonOrNull
     val dim = MaterialTheme.colorScheme.onSurfaceVariant
     val sep = stringResource(R.string.list_separator)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     ListItem(
         selected = isSelected,
         onClick = { onClick(reason) },
         modifier = modifier.semantics { role = Role.RadioButton }.onTap { onClick(reason) },
         colors = radioRowColors(),
-        leadingContent = { RadioButton(selected = isSelected, onClick = null) },
+        interactionSource = interaction,
+        leadingContent = { RowRadio(selected = isSelected, focused = focused) },
         headlineContent = { Text(f.name) },
         supportingContent = {
             Column {
@@ -786,6 +795,24 @@ private fun radioRowColors() = ListItemDefaults.colors(
     selectedContainerColor = Color.Transparent,
     selectedContentColor = MaterialTheme.colorScheme.onSurface,
 )
+
+/**
+ * The radio mark of a radio row. A focused row turns light (`inverseSurface`), where the default mark (`primary`,
+ * a light purple) all but vanishes, so there the mark takes the colours meant for that surface: `inversePrimary`
+ * when marked, the row's dark content colour when not.
+ */
+@Composable
+private fun RowRadio(selected: Boolean, focused: Boolean, enabled: Boolean = true) {
+    val colors = if (focused) {
+        RadioButtonDefaults.colors(
+            selectedColor = MaterialTheme.colorScheme.inversePrimary,
+            unselectedColor = MaterialTheme.colorScheme.inverseOnSurface,
+        )
+    } else {
+        RadioButtonDefaults.colors()
+    }
+    RadioButton(selected = selected, onClick = null, enabled = enabled, colors = colors)
+}
 
 /** What the frame area shows: one of the problems that hide the list, or the list (with the scan status). */
 private enum class FrameArea { NO_PERMISSION, BLUETOOTH, SCAN_ERROR, LIST }
