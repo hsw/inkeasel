@@ -39,16 +39,21 @@ phone or asleep looked the same as one about to show up. After 25 s of a running
 (`ScanStatus.NONE_SEEN_MS`) it now says "No frames seen yet" with what to check, including that an OpenDisplay
 frame wakes only about once a minute and its button wakes it at once. 25 s sits in the 20–30 s range: long enough
 for a NowMean frame nearby to be heard, short of a whole OpenDisplay wake cycle, which the hint names. The search
-goes on, the first frame heard replaces the text, and every scan start (the first, "Retry", Bluetooth back on,
-the permission granted, the app back in the foreground) begins the wait again; while a problem hides the list
-nothing is counted. Before Android 12 a BLE scan also needs location switched on, and the hint used to name it on
-those versions always; now it names it only while location is off. To know that, the settings read whether
-location is switched on (never where the device is), only before Android 12 and only while they are open (at
-the start, on every resume and when it changes); the answer is not stored (PRIVACY.md). Rejected: "Searching…"
-for ever (says nothing when nothing comes); stopping the scan after the wait (an OpenDisplay frame heard a
-minute later would be missed, and a restart costs a press); the hint always naming location before Android 12
-(wrong and distracting while it is on); "Connected" / "Available" labels on the frames (the app keeps no lasting
-link to a frame, so "Connected" would never be true between uploads).
+goes on, the first frame heard replaces the text, and every scan start (the first, "Retry", Bluetooth back on, the
+permission granted, the app back in the foreground) begins the wait again; while a problem hides the list nothing
+is counted. Before Android 12 a BLE scan also needs location switched on, and the hint used to name it on those
+versions always; now it names it only while location is off. To know that, the settings read whether location is
+switched on (never where the device is), only before Android 12 and only while they are open (at the start, on
+every resume and when it changes); the answer is not stored (PRIVACY.md). A scan started while location was off
+hears nothing even after it is switched on (seen on an Android 11 TV box: the list stayed empty until the settings
+were reopened), so a change of the switch starts the scan again, and the wait with it. The scan still runs while
+location is off, under the hint. Rejected: "Searching…" for ever (says nothing when nothing comes); stopping the
+scan after the wait (an OpenDisplay frame heard a minute later would be missed, and a restart costs a press); the
+hint always naming location before Android 12 (wrong and distracting while it is on); no scan while location is
+off (the read switch would become a hard gate: a device whose scan works without location, or reports the switch
+wrongly, would never list a frame, while the scan's only cost is the 25 s wait, whose text then names location
+too); "Connected" / "Available" labels on the frames (the app keeps no lasting link to a frame, so "Connected"
+would never be true between uploads).
 
 The settings hear Bluetooth going on or off and location being switched through broadcast receivers, registered
 by one helper (`registerSystemReceiver`): not exported on Android 13+, a plain registration before that.

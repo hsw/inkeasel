@@ -151,9 +151,9 @@ which may be a neighbour's.
   seen yet" instead, with what to check: the frame nearby and not connected to a phone (and, before Android 12
   while it is off, location on), and that an OpenDisplay frame wakes only about once a minute, its button at once.
   The search goes on, and the first frame heard replaces the text with the list. Every scan start (the first,
-  "Retry", Bluetooth back on, the permission granted, the app back in the foreground) begins the 25 s again; while
-  a problem hides the list nothing is counted. Each variant is one whole string (`ScanStatus`, used only here; the
-  upload error keeps `BlePermissions.scanHint`). A scan error shows "Frame search failed: BLE scan error (<code>)"
+  "Retry", Bluetooth back on, location switched before Android 12, the permission granted, the app back in the
+  foreground) begins the 25 s again; while a problem hides the list nothing is counted. Each variant is one whole
+  string (`ScanStatus`, used only here; the upload error keeps `BlePermissions.scanHint`). A scan error shows "Frame search failed: BLE scan error (<code>)"
   and "Retry".
 - Selecting a frame saves it (with its advertisement and the time it was seen) and closes the screen.
   **Close** or Back closes it with the frame unchanged.
@@ -182,7 +182,9 @@ which may be a neighbour's.
   read only whether location is switched on (`LocationManagerCompat.isLocationEnabled`, never where the device
   is), while they are open: when they open, at every resume and on `LocationManager.MODE_CHANGED_ACTION` (a
   receiver for that system broadcast; it only re-reads the switch), so switching location on in the quick settings
-  updates the hint at once. Android 12 and newer count as on. The answer is not stored. Once the system no longer shows its dialog ("Don't
+  updates the hint at once and starts the search again: a scan started while location was off hears nothing even
+  after it is switched on (seen on an Android 11 TV box). The scan still runs while location is off, in case the
+  device does not need it. Android 12 and newer count as on. The answer is not stored. Once the system no longer shows its dialog ("Don't
   allow" twice, or "don't ask again"), "Allow" would silently do nothing, so the button becomes "App info"
   and the text names the path: Settings → Apps → InkEasel → Permissions → Nearby devices (Location on
   Android 11 and older). The grant is picked up when the app comes back. A dialog closed without an answer

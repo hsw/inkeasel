@@ -175,10 +175,12 @@ internal fun EdgeToEdgeDialogWindow() {
  * The stateful part of the settings: the [FrameScanner] and what it reports (the frames seen, a scan error),
  * the Bluetooth state (followed live), whether location is switched off where the scan needs it (before Android
  * 12, followed live) and the count of scan starts (`scanRun`). Everything shown is drawn by
- * [FrameSettingsContent], which the UI tests drive with fake frames and states.
+ * [FrameSettingsContent], which the UI tests drive with fake frames and states. [locationMatters] (whether the
+ * scan needs location on: before Android 12) is a parameter only so that `FrameSettingsDialogTest`, which runs on
+ * a newer SDK, can drive that path; `internal` for the same test.
  */
 @Composable
-private fun FrameSettings(
+internal fun FrameSettings(
     selected: SelectedFrame?,
     ble: BleAccess,
     poster: Boolean,
@@ -193,14 +195,16 @@ private fun FrameSettings(
     probing: String?,
     onSelect: (SeenFrame) -> Unit,
     onCancel: () -> Unit,
+    locationMatters: Boolean = Build.VERSION.SDK_INT < 31,
 ) {
     val ctx = LocalContext.current
     val scanner = remember { FrameScanner(ctx) }
     var frames by remember { mutableStateOf(emptyList<SeenFrame>()) }
     var scanError by remember { mutableStateOf<Txt?>(null) }
     var btProblem by remember { mutableStateOf(scanner.unavailable()) }
-    // bumped at every scan start: the first, "Retry", Bluetooth back on, the permission granted, the app back in
-    // the foreground; the content's "No frames seen yet" timer starts again with it
+    // bumped at every scan start: the first, "Retry", Bluetooth back on, location switched (before Android 12), the
+    // permission granted, the app back in the foreground; the content's "No frames seen yet" timer starts again
+    // with it
     var scanRun by remember { mutableIntStateOf(0) }
 
     // Bluetooth switched on or off while the screen is open: start or drop the scan accordingly
@@ -217,7 +221,6 @@ private fun FrameSettings(
     // Before Android 12 a BLE scan also needs location switched on, and the search hint says so only while it is
     // off. Only that switch is read (never where the device is), while the screen is open: at the start, on every
     // resume and when it changes; it is not stored. Android 12 and newer never count it as off.
-    val locationMatters = Build.VERSION.SDK_INT < 31
     fun readLocationOff() = locationMatters && !locationEnabled(ctx)
     var locationOff by remember { mutableStateOf(readLocationOff()) }
     if (locationMatters) {
@@ -236,9 +239,12 @@ private fun FrameSettings(
         }
     }
 
-    // "Retry" clears the error, which brings this effect back and starts a new scan
+    // "Retry" clears the error, which brings this effect back and starts a new scan. A scan started while location
+    // was off (before Android 12) hears nothing even once it is switched on (seen on an Android 11 TV box), so
+    // the scan is keyed on the switch and starts again when it changes; it still runs while location is off, so
+    // a device whose scan does not need it is not stopped by the hint (docs/decisions.md).
     if (ble.permitted && btProblem == null && scanError == null) {
-        LifecycleStartEffect(scanner) {
+        LifecycleStartEffect(scanner, locationOff) {
             scanRun++
             val stop = scanner.start(
                 onSeen = { frames = SeenFrame.merge(frames, it) },

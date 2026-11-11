@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.content.Intent
+import android.location.LocationManager
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
@@ -19,6 +20,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import io.github.hsw.inkeasel.catalog.NudityFilter
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -33,7 +35,8 @@ import org.robolectric.annotation.Config
  * scan it starts and stops, a scan error and "Retry", the Bluetooth state followed live, and the "No frames seen
  * yet" wait begun again at every scan start (it counts the starts the content's timer is keyed on). What the
  * content draws is tested with fake states in [FrameSettingsUiTest]. The location switch is read only before
- * Android 12, which these tests (SDK 36) do not run; that re-read is left to the emulator check.
+ * Android 12; these tests run on SDK 36, so the location test composes the wrapper itself with `locationMatters`
+ * set, on Robolectric's location shadow.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(qualifiers = "w960dp-h540dp")
@@ -72,6 +75,37 @@ class FrameSettingsDialogTest {
                 onCancel = {},
             )
         }
+        compose.waitForIdle()
+    }
+
+    /** The wrapper alone, as before Android 12 (the scan needs location on). */
+    private fun showLocationMatters() {
+        compose.setContent {
+            FrameSettings(
+                selected = null,
+                ble = BleAccess(permitted = true, blocked = false, request = {}),
+                poster = false,
+                access = false,
+                pending = false,
+                nudityChoice = NudityFilter.HIDE_EXPLICIT,
+                nudityLock = null,
+                onNudity = {},
+                onPoster = { PosterSwitch.Press.TURN_ON },
+                onDisclosureConfirmed = {},
+                sidePadding = 48,
+                probing = null,
+                onSelect = {},
+                onCancel = {},
+                locationMatters = true,
+            )
+        }
+        compose.waitForIdle()
+    }
+
+    private fun locationSwitched(on: Boolean) {
+        shadowOf(app.getSystemService(LocationManager::class.java)).setLocationEnabled(on)
+        app.sendBroadcast(Intent(LocationManager.MODE_CHANGED_ACTION))
+        shadowOf(Looper.getMainLooper()).idle()
         compose.waitForIdle()
     }
 
@@ -143,5 +177,22 @@ class FrameSettingsDialogTest {
         compose.onAllNodesWithText(BtProblem.OFF.sentence.resolve(app)).assertCountEquals(0)
         assertEquals(1, scans().size)
         searchingShows()
+    }
+
+    @Test
+    fun locationSwitchedOn_startsANewScan_andTheWaitAgain() { // no input; clock
+        locationSwitched(on = false)
+        showLocationMatters()
+        val first = scans().single()
+        compose.onNodeWithText(str(R.string.scanning_hint_location)).assertExists()
+        advance(ScanStatus.NONE_SEEN_MS - 5_000)
+        locationSwitched(on = true)
+        compose.onAllNodesWithText(str(R.string.scanning_hint_location)).assertCountEquals(0)
+        val second = scans().single() // the scan started while location was off is stopped
+        assertNotSame(first, second)
+        advance(10_000) // 30 s since the open, 10 s since the new start
+        searchingShows()
+        advance(ScanStatus.NONE_SEEN_MS)
+        noneSeenShows()
     }
 }
